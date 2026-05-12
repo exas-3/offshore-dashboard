@@ -1,0 +1,36 @@
+app = 'offshore-dashboard'
+primary_region = 'ams'
+
+[build]
+
+[env]
+  DB_PATH   = '/data/offshore.db'
+  NODE_ENV  = 'production'
+  PORT      = '3001'
+
+[processes]
+  app = 'npm run start:prod'
+
+[[mounts]]
+  source      = 'offshore_data'
+  destination = '/data'
+
+[http_service]
+  internal_port        = 3001
+  force_https          = true
+  auto_stop_machines   = 'off'
+  auto_start_machines  = true
+  min_machines_running = 1
+  processes            = ['app']
+
+  [[http_service.checks]]
+    grace_period     = "30s"
+    interval         = "20s"
+    method           = "GET"
+    path             = "/api/health"
+    timeout          = "10s"
+
+[[vm]]
+  memory    = '2gb'
+  cpus      = 1
+  memory_mb = 2048
