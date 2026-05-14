@@ -2,9 +2,9 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 const COLORS = [
-  '#c8a951', '#3ecf6a', '#4a9fd8', '#f5a623', '#9b6bd8',
+  '#c084fc', '#3ecf6a', '#4a9fd8', '#f5a623', '#c084fc',
   '#e05252', '#3ec8cf', '#cfb33e', '#7ecf3e', '#cf6b3e',
-  '#4a5448',
+  '#5a4575',
 ];
 
 function displayName(d) {

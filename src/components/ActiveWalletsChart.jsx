@@ -5,13 +5,20 @@ import {
   Tooltip, ResponsiveContainer,
 } from 'recharts';
 
-const CustomTooltip = ({ active, payload, label }) => {
+function fmtTs(ts, hourly) {
+  const d = new Date(ts * 1000);
+  return hourly
+    ? `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}h`
+    : `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+const CustomTooltip = ({ active, payload, label, isHourly }) => {
   if (!active || !payload?.length) return null;
   return (
     <div className="chart-tooltip">
-      <div className="chart-tooltip-label">{label}</div>
+      <div className="chart-tooltip-label">{fmtTs(label, isHourly)}</div>
       <div className="chart-tooltip-row">
-        <span style={{ color: '#c8a951' }}>Active wallets</span>
+        <span style={{ color: '#c084fc' }}>Active wallets</span>
         <span>{payload[0].value.toLocaleString()}</span>
       </div>
     </div>
@@ -30,7 +37,7 @@ export default function ActiveWalletsChart({ dailyActiveWallets, hourlyActiveWal
     : 0;
 
   return (
-    <div className="card chart-card">
+    <div className="card chart-card" style={{ marginBottom: 16 }}>
       <div className="chart-header">
         <span className="card-title" style={{ margin: 0 }}>
           DAILY ACTIVE WALLETS — {view === 'daily' ? 'DAILY' : 'HOURLY'} FROM LAUNCH
@@ -65,24 +72,25 @@ export default function ActiveWalletsChart({ dailyActiveWallets, hourlyActiveWal
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={data} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1a241a" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e1a35" vertical={false} />
             <XAxis
-              dataKey="label"
-              tick={{ fill: '#4a5448', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+              dataKey="ts"
+              tick={{ fill: '#5a4575', fontSize: 11, fontFamily: 'JetBrains Mono' }}
               axisLine={false}
               tickLine={false}
               interval={tickInterval}
+              tickFormatter={ts => fmtTs(ts, view === 'hourly')}
             />
             <YAxis
-              tick={{ fill: '#4a5448', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+              tick={{ fill: '#5a4575', fontSize: 11, fontFamily: 'JetBrains Mono' }}
               axisLine={false}
               tickLine={false}
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip isHourly={view === 'hourly'} />} />
             <Bar
               dataKey="activeWallets"
               name="Active wallets"
-              fill="#c8a951"
+              fill="#c084fc"
               radius={[2, 2, 0, 0]}
               maxBarSize={view === 'daily' ? 60 : 14}
             />

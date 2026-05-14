@@ -1,6 +1,0 @@
-{
-  "/api/stats/route": "app/api/stats/route.js",
-  "/api/health/route": "app/api/health/route.js",
-  "/api/players/route": "app/api/players/route.js",
-  "/api/emissions/route": "app/api/emissions/route.js"
-}

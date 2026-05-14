@@ -4,7 +4,7 @@ import {
   getStats, getLatestTokenInfo, getLatestEthPrice,
   getOpBreakdown, getTotalTransferCount, computeTrueHolderCount,
 } from '../../../lib/index.js';
-import { fetchVaultBalance } from '../../../server/etherscan.js';
+import { fetchVaultBalance, fetchDirtyPrice, fetchLatestInfCost } from '../../../server/etherscan.js';
 
 const WEEKDAY_PHASE  = 5400;
 const WEEKEND_ANCHOR = 9 * 3600 + 30 * 60;
@@ -51,15 +51,19 @@ export async function GET() {
     if (_cache && Date.now() - _cacheTs < TTL) {
       return NextResponse.json(_cache);
     }
-    const [stats, tokenInfo, ethPrice, opBreakdown, totalTxs] = await Promise.all([
+    const [stats, tokenInfo, ethPrice, opBreakdown, totalTxs, dirtyPrice, infCost] = await Promise.all([
       getStats(), getLatestTokenInfo(), getLatestEthPrice(),
       getOpBreakdown(), getTotalTransferCount(),
+      fetchDirtyPrice().catch(() => null),
+      fetchLatestInfCost().catch(() => null),
     ]);
     const result = {
       ...stats,
       supply:      tokenInfo.supply,
       holders:     tokenInfo.holders,
       ethPrice,
+      dirtyPrice,
+      infCost,
       opBreakdown,
       totalTxs,
       cycle: vaultCycle(),

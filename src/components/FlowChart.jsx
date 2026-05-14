@@ -5,16 +5,23 @@ import {
   Tooltip, ResponsiveContainer, Legend, ReferenceLine,
 } from 'recharts';
 
-const CustomTooltip = ({ active, payload, label }) => {
+function fmtTs(ts, hourly) {
+  const d = new Date(ts * 1000);
+  return hourly
+    ? `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}h`
+    : `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+const CustomTooltip = ({ active, payload, label, isHourly }) => {
   if (!active || !payload?.length) return null;
   const byKey = Object.fromEntries(payload.map(p => [p.dataKey, p.value]));
   const net = byKey.net ?? 0;
   const proto = byKey.protocolMint ?? 0;
   return (
     <div className="chart-tooltip">
-      <div className="chart-tooltip-label">{label}</div>
+      <div className="chart-tooltip-label">{fmtTs(label, isHourly)}</div>
       <div className="chart-tooltip-row">
-        <span style={{ color: '#c8a951' }}>Minted</span>
+        <span style={{ color: '#c084fc' }}>Minted</span>
         <span>{(byKey.minted ?? 0).toLocaleString()}</span>
       </div>
       <div className="chart-tooltip-row">
@@ -23,7 +30,7 @@ const CustomTooltip = ({ active, payload, label }) => {
       </div>
       {proto > 0 && (
         <div className="chart-tooltip-row">
-          <span style={{ color: '#9b59d8' }}>Protocol Mint</span>
+          <span style={{ color: '#d946ef' }}>Protocol Mint</span>
           <span>{proto.toLocaleString()}</span>
         </div>
       )}
@@ -104,17 +111,18 @@ export default function FlowChart({ dailyFlowBuckets, hourlyFlowBuckets }) {
       ) : (
         <ResponsiveContainer width="100%" height={260}>
           <ComposedChart data={data} margin={{ top: 8, right: 8, left: -10, bottom: 0 }} barCategoryGap="20%">
-            <CartesianGrid strokeDasharray="3 3" stroke="#1a241a" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e1a35" vertical={false} />
             <XAxis
-              dataKey="label"
-              tick={{ fill: '#4a5448', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+              dataKey="ts"
+              tick={{ fill: '#5a4575', fontSize: 11, fontFamily: 'JetBrains Mono' }}
               axisLine={false}
               tickLine={false}
               interval={tickInterval}
+              tickFormatter={ts => fmtTs(ts, view === 'hourly')}
             />
             <YAxis
               yAxisId="vol"
-              tick={{ fill: '#4a5448', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+              tick={{ fill: '#5a4575', fontSize: 11, fontFamily: 'JetBrains Mono' }}
               axisLine={false}
               tickLine={false}
               tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
@@ -122,18 +130,18 @@ export default function FlowChart({ dailyFlowBuckets, hourlyFlowBuckets }) {
             <YAxis
               yAxisId="net"
               orientation="right"
-              tick={{ fill: '#4a5448', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+              tick={{ fill: '#5a4575', fontSize: 11, fontFamily: 'JetBrains Mono' }}
               axisLine={false}
               tickLine={false}
               tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v >= -1000 ? v : `${(v / 1000).toFixed(0)}k`}
             />
-            <ReferenceLine yAxisId="net" y={0} stroke="#263026" strokeDasharray="4 4" />
-            <Tooltip content={<CustomTooltip />} />
+            <ReferenceLine yAxisId="net" y={0} stroke="#2a2448" strokeDasharray="4 4" />
+            <Tooltip content={<CustomTooltip isHourly={view === 'hourly'} />} />
             <Legend content={<CustomLegend />} />
-            <Bar yAxisId="vol" dataKey="minted"       name="Minted"        fill="#c8a951" maxBarSize={40} radius={[2, 2, 0, 0]} />
+            <Bar yAxisId="vol" dataKey="minted"       name="Minted"        fill="#c084fc" maxBarSize={40} radius={[2, 2, 0, 0]} />
             <Bar yAxisId="vol" dataKey="spent"        name="Spent"         fill="#e05252" maxBarSize={40} radius={[2, 2, 0, 0]} />
             {hasProtocol && (
-              <Bar yAxisId="vol" dataKey="protocolMint" name="Protocol Mint" fill="#9b59d8" maxBarSize={40} radius={[2, 2, 0, 0]} />
+              <Bar yAxisId="vol" dataKey="protocolMint" name="Protocol Mint" fill="#d946ef" maxBarSize={40} radius={[2, 2, 0, 0]} />
             )}
             <Line
               yAxisId="net"

@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 
 
 
@@ -9,12 +10,14 @@ function shortAddr(addr) {
 }
 
 function fmt(n) {
+  if (n == null) return '0';
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}k`;
   return n.toFixed(0);
 }
 
 export default function TopEarners({ earners, loading, onRefresh }) {
+  const router = useRouter();
   const max = earners[0]?.total ?? 1;
   const [reconcile, setReconcile] = useState({ running: false, done: 0, total: 0, error: null });
 
@@ -46,14 +49,6 @@ export default function TopEarners({ earners, loading, onRefresh }) {
             <span className="card-title-sub">{earners.length} wallets</span>
           )}
         </span>
-        <button
-          className="toggle-btn"
-          style={{ marginLeft: 'auto', fontSize: 10, padding: '3px 10px' }}
-          onClick={startReconcile}
-          disabled={reconcile.running}
-        >
-          {reconcile.running ? `Rechecking… ${pct}%` : 'Recheck from RPC'}
-        </button>
       </div>
 
       {reconcile.running && (
@@ -83,14 +78,13 @@ export default function TopEarners({ earners, loading, onRefresh }) {
             {earners.map((e, i) => (
               <div key={e.addr} className="earners-row">
                 <span className="earner-rank">#{i + 1}</span>
-                <a
-                  href={`https://mega.etherscan.io/address/${e.addr}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <span
                   className="earner-addr"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => router.push(`/players/${e.addr}`)}
                 >
                   {shortAddr(e.addr)}
-                </a>
+                </span>
                 <span className="earner-total">{fmt(e.total)}</span>
                 <span className="earner-ops">{e.ops.toLocaleString()}</span>
                 <div className="earner-bar-wrap">

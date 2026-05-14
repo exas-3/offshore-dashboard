@@ -11,13 +11,20 @@ function fmt(v) {
   return v.toFixed(0);
 }
 
-const CustomTooltip = ({ active, payload, label }) => {
+function fmtTs(ts, hourly) {
+  const d = new Date(ts * 1000);
+  return hourly
+    ? `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}h`
+    : `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+const CustomTooltip = ({ active, payload, label, isHourly }) => {
   if (!active || !payload?.length) return null;
   return (
     <div className="chart-tooltip">
-      <div className="chart-tooltip-label">{label}</div>
+      <div className="chart-tooltip-label">{fmtTs(label, isHourly)}</div>
       <div className="chart-tooltip-row">
-        <span style={{ color: '#c8a951' }}>Supply</span>
+        <span style={{ color: '#c084fc' }}>Supply</span>
         <span>{fmt(payload[0].value)} $DIRTY</span>
       </div>
     </div>
@@ -68,34 +75,35 @@ export default function SupplyChart({ dailySupply, hourlySupply }) {
           <AreaChart data={data} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
             <defs>
               <linearGradient id="supplyGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="#c8a951" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#c8a951" stopOpacity={0} />
+                <stop offset="5%"  stopColor="#c084fc" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="#c084fc" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1a241a" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e1a35" vertical={false} />
             <XAxis
-              dataKey="label"
-              tick={{ fill: '#4a5448', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+              dataKey="ts"
+              tick={{ fill: '#5a4575', fontSize: 11, fontFamily: 'JetBrains Mono' }}
               axisLine={false}
               tickLine={false}
               interval={tickInterval}
+              tickFormatter={ts => fmtTs(ts, view === 'hourly')}
             />
             <YAxis
               domain={[min, max]}
-              tick={{ fill: '#4a5448', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+              tick={{ fill: '#5a4575', fontSize: 11, fontFamily: 'JetBrains Mono' }}
               axisLine={false}
               tickLine={false}
               tickFormatter={fmt}
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip isHourly={view === 'hourly'} />} />
             <Area
               type="monotone"
               dataKey="supply"
-              stroke="#c8a951"
+              stroke="#c084fc"
               strokeWidth={2}
               fill="url(#supplyGrad)"
-              dot={view === 'daily' ? { fill: '#c8a951', r: 3 } : false}
-              activeDot={{ r: 4, fill: '#c8a951' }}
+              dot={view === 'daily' ? { fill: '#c084fc', r: 3 } : false}
+              activeDot={{ r: 4, fill: '#c084fc' }}
             />
           </AreaChart>
         </ResponsiveContainer>

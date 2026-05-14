@@ -26,16 +26,17 @@ export default function VaultCycle({ cycle, opBreakdown }) {
       <div className="vault-body">
         <div className="vault-ring-wrap">
           <svg width="180" height="180" className="vault-ring">
-            <circle cx="90" cy="90" r={r} fill="none" stroke="#1a241a" strokeWidth="8" />
+            <circle cx="90" cy="90" r={r} fill="none" stroke="#1e1a35" strokeWidth="8" />
             <circle
               cx="90" cy="90" r={r}
               fill="none"
-              stroke="#c8a951"
+              stroke="#c084fc"
               strokeWidth="8"
               strokeDasharray={circ}
               strokeDashoffset={offset}
               strokeLinecap="round"
               transform="rotate(-90 90 90)"
+              suppressHydrationWarning
             />
           </svg>
           <div className="vault-ring-inner">

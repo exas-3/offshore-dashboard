@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import FarmersTable from '../components/FarmersTable';
 
 const REFRESH_MS = 15_000;
 const STORAGE_KEY = 'offshore-tracked-whales';
@@ -43,13 +44,28 @@ function fmtK(n) {
 }
 
 export default function WhalePage({ whales, dexSummary = {}, whaleLoading }) {
-  const [selected, setSelected]   = useState(loadSelected);
+  const [tab, setTab]             = useState('tracker');
+  const [farmers, setFarmers]     = useState([]);
+  const [farmLoad, setFarmLoad]   = useState(false);
+  const [selected, setSelected]   = useState(() => new Set());
   const [activity, setActivity]   = useState([]);
   const [notifOn, setNotifOn]     = useState(false);
   const [notifState, setNotifState] = useState(() => (typeof window !== 'undefined' ? Notification.permission : 'default'));
   const [filter, setFilter]       = useState('ALL'); // ALL | MINT | SPEND | BURN
   const lastCheckTs               = useRef(Math.floor(Date.now() / 1000));
   const [actLoading, setActLoading] = useState(false);
+
+  const loadFarmers = useCallback(async () => {
+    setFarmLoad(true);
+    try {
+      const d = await fetch('/api/farmers?limit=200').then(r => r.json());
+      setFarmers(Array.isArray(d) ? d : []);
+    } finally {
+      setFarmLoad(false);
+    }
+  }, []);
+
+  useEffect(() => { if (tab === 'farmers' && farmers.length === 0) loadFarmers(); }, [tab, farmers.length, loadFarmers]);
 
   const toggle = useCallback((addr) => {
     setSelected(prev => {
@@ -102,6 +118,8 @@ export default function WhalePage({ whales, dexSummary = {}, whaleLoading }) {
     }
   }, [selected, notifOn]);
 
+  useEffect(() => { setSelected(loadSelected()); }, []);
+
   useEffect(() => {
     fetchActivity();
     const t = setInterval(fetchActivity, REFRESH_MS);
@@ -113,7 +131,21 @@ export default function WhalePage({ whales, dexSummary = {}, whaleLoading }) {
                  : activity.filter(a => a.kind === filter);
 
   return (
-    <div className="whale-page">
+    <div>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+        <button className={`toggle-btn ${tab === 'tracker' ? 'toggle-btn--active' : ''}`}
+          onClick={() => setTab('tracker')} style={{ fontSize: 11, padding: '5px 14px' }}>
+          TRACKER
+        </button>
+        <button className={`toggle-btn ${tab === 'farmers' ? 'toggle-btn--active' : ''}`}
+          onClick={() => setTab('farmers')} style={{ fontSize: 11, padding: '5px 14px' }}>
+          DIRTY FARMERS
+        </button>
+      </div>
+
+    {tab === 'farmers' && <FarmersTable farmers={farmers} loading={farmLoad} />}
+
+    {tab === 'tracker' && <div className="whale-page">
       {/* ── left: wallet list ── */}
       <div className="wt-sidebar">
         <div className="wt-sidebar-header">
@@ -214,7 +246,7 @@ export default function WhalePage({ whales, dexSummary = {}, whaleLoading }) {
                 const meta = OP_META[row.opType] ?? { label: row.opType, cls: 'dim' };
                 const isSend = row.from === row.wallet;
                 return (
-                  <div key={row.hash} className={`wt-act-row wt-act-row--${meta.cls} ${row.kind === 'SWAP' ? 'wt-act-row--swap' : ''}`}>
+                  <div key={`${row.hash}-${row.log_index}`} className={`wt-act-row wt-act-row--${meta.cls} ${row.kind === 'SWAP' ? 'wt-act-row--swap' : ''}`}>
                     <span className="wt-act-wallet">{shortAddr(row.wallet)}</span>
                     <span className="wt-act-type">{meta.label}</span>
                     <span className="wt-act-amount">
@@ -226,7 +258,7 @@ export default function WhalePage({ whales, dexSummary = {}, whaleLoading }) {
                        : row.opType === 'DEX_BUY'  ? 'bought'
                        : isSend ? 'spent' : 'received'}
                     </span>
-                    <span className="wt-act-time">{timeAgo(row.ts)}</span>
+                    <span className="wt-act-time" suppressHydrationWarning>{timeAgo(row.ts)}</span>
                     <a
                       href={`https://mega.etherscan.io/tx/${row.hash}`}
                       target="_blank"
@@ -242,6 +274,7 @@ export default function WhalePage({ whales, dexSummary = {}, whaleLoading }) {
           </div>
         )}
       </div>
+    </div>}
     </div>
   );
 }

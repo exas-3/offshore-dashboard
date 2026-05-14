@@ -1,9 +1,12 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
+import VaultCycle from '../components/VaultCycle';
+import { getVaultCycle } from '../api';
 
 function fmt(n) {
   if (n == null) return '—';
@@ -32,8 +35,8 @@ const CycleTooltip = ({ active, payload, label }) => {
       <div className="chart-tooltip-label">{label}</div>
       {payload.map(p => p.value > 0 && (
         <div key={p.dataKey} className="chart-tooltip-row">
-          <span style={{ color: p.fill }}>{p.name}</span>
-          <span>{p.value.toLocaleString()} USDm</span>
+          <span style={{ color: p.fill }}>To Players</span>
+          <span>{p.value.toLocaleString('en-US')} USDm</span>
         </div>
       ))}
     </div>
@@ -41,8 +44,23 @@ const CycleTooltip = ({ active, payload, label }) => {
 };
 
 export default function VaultPage() {
-  const [data, setData]     = useState(null);
-  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const [data, setData]         = useState(null);
+  const [loading, setLoading]   = useState(true);
+  const [cycle, setCycle]       = useState(getVaultCycle());
+  const [opBreakdown, setOpBreakdown] = useState(null);
+
+  useEffect(() => {
+    const t = setInterval(() => setCycle(getVaultCycle()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/stats')
+      .then(r => r.json())
+      .then(d => setOpBreakdown(d.opBreakdown ?? null))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch('/api/vault')
@@ -63,17 +81,15 @@ export default function VaultPage() {
   return (
     <div className="vault-page">
 
+      {/* ── current cycle ── */}
+      <VaultCycle cycle={cycle} opBreakdown={opBreakdown} />
+
       {/* ── stat cards ── */}
-      <div className="stats-row">
+      <div className="stats-row" style={{ marginTop: 16 }}>
         <div className="stat-card stat-card--gold">
           <div className="stat-label">TOTAL DISTRIBUTED</div>
           <div className="stat-value">{loading ? '—' : fmt(stats?.distributed)}</div>
           <div className="stat-sub">USDm to players</div>
-        </div>
-        <div className="stat-card stat-card--red">
-          <div className="stat-label">TOTAL BURNED</div>
-          <div className="stat-value">{loading ? '—' : fmt(stats?.burned)}</div>
-          <div className="stat-sub">USDm to 0x0</div>
         </div>
         <div className="stat-card stat-card--green">
           <div className="stat-label">CYCLES PAID</div>
@@ -97,14 +113,12 @@ export default function VaultPage() {
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={cycles} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1a241a" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill:'#4a5448', fontSize:10, fontFamily:'JetBrains Mono' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill:'#4a5448', fontSize:10, fontFamily:'JetBrains Mono' }} axisLine={false} tickLine={false}
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e1a35" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill:'#5a4575', fontSize:10, fontFamily:'JetBrains Mono' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill:'#5a4575', fontSize:10, fontFamily:'JetBrains Mono' }} axisLine={false} tickLine={false}
                      tickFormatter={v => v>=1000?`${(v/1000).toFixed(0)}k`:v} />
               <Tooltip content={<CycleTooltip />} />
-              <Legend formatter={v => v==='distributed'?'To Players':'Burned to 0x0'} />
-              <Bar dataKey="distributed" name="distributed" stackId="a" fill="#c8a951" maxBarSize={60} />
-              <Bar dataKey="burned"      name="burned"      stackId="a" fill="#e05252" maxBarSize={60} radius={[2,2,0,0]} />
+              <Bar dataKey="distributed" name="To Players" fill="#c084fc" maxBarSize={60} radius={[2,2,0,0]} />
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -120,11 +134,31 @@ export default function VaultPage() {
         ) : (
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={cycles} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1a241a" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill:'#4a5448', fontSize:10, fontFamily:'JetBrains Mono' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill:'#4a5448', fontSize:10, fontFamily:'JetBrains Mono' }} axisLine={false} tickLine={false} />
-              <Tooltip formatter={v=>[v,'Recipients']} labelStyle={{color:'var(--text)'}} contentStyle={{background:'var(--card)',border:'1px solid var(--border)'}} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e1a35" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill:'#5a4575', fontSize:10, fontFamily:'JetBrains Mono' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill:'#5a4575', fontSize:10, fontFamily:'JetBrains Mono' }} axisLine={false} tickLine={false} />
+              <Tooltip formatter={v=>[v,'Recipients']} labelStyle={{color:'var(--text-2)'}} itemStyle={{color:'#4a9fd8'}} contentStyle={{background:'#0e0c1a',border:'1px solid var(--border-2)',borderRadius:4,fontFamily:'var(--mono)',fontSize:11}} />
               <Bar dataKey="recipients" fill="#4a9fd8" maxBarSize={60} radius={[2,2,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* ── new recipients per cycle ── */}
+      <div className="card chart-card" style={{ marginTop: 16 }}>
+        <div className="chart-header">
+          <span className="card-title" style={{ margin: 0 }}>NEW RECIPIENTS PER CYCLE</span>
+        </div>
+        {cycles.length === 0 ? (
+          <div className="feed-empty" style={{ height: 160 }}>No data</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={cycles} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e1a35" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill:'#5a4575', fontSize:10, fontFamily:'JetBrains Mono' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill:'#5a4575', fontSize:10, fontFamily:'JetBrains Mono' }} axisLine={false} tickLine={false} />
+              <Tooltip formatter={v=>[v,'New recipients']} labelStyle={{color:'var(--text-2)'}} itemStyle={{color:'#3ecf6a'}} contentStyle={{background:'#0e0c1a',border:'1px solid var(--border-2)',borderRadius:4,fontFamily:'var(--mono)',fontSize:11}} />
+              <Bar dataKey="newRecipients" fill="#3ecf6a" maxBarSize={60} radius={[2,2,0,0]} />
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -149,9 +183,9 @@ export default function VaultPage() {
                   return (
                     <div key={e.addr} className="earners-row">
                       <span className="earner-rank">#{i+1}</span>
-                      <a href={`https://mega.etherscan.io/address/${e.addr}`} target="_blank" rel="noopener noreferrer" className="earner-addr">
+                      <span className="earner-addr" style={{ cursor:'pointer' }} onClick={() => router.push(`/players/${e.addr}`)}>
                         {shortAddr(e.addr)}
-                      </a>
+                      </span>
                       <span className="earner-total">{fmt(e.total)}</span>
                       <span className="earner-ops">{e.payouts}</span>
                       <div className="earner-bar-wrap">
@@ -178,9 +212,11 @@ export default function VaultPage() {
               <div className="feed-body">
                 {recent.map(p => (
                   <div key={`${p.hash}:${p.log_index}`} className="feed-row feed-row--gold">
-                    <span className="feed-addr">{shortAddr(p.recipient)}</span>
+                    <span className="feed-addr" style={{ cursor:'pointer' }} onClick={() => router.push(`/players/${p.recipient}`)}>
+                      {shortAddr(p.recipient)}
+                    </span>
                     <span className="feed-amount">{fmt(p.amount)} USDm</span>
-                    <span className="feed-time">{timeAgo(p.timestamp)}</span>
+                    <span className="feed-time" suppressHydrationWarning>{timeAgo(p.timestamp)}</span>
                     <a href={`https://mega.etherscan.io/tx/${p.hash}`} target="_blank" rel="noopener noreferrer" className="feed-link">{'[->'}{']'}</a>
                   </div>
                 ))}

@@ -1,42 +1,54 @@
 'use client';
-import { useState, useEffect } from 'react';
+
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 const TABS = [
-  { href: '/',        label: 'Dashboard'     },
-  { href: '/vault',   label: 'Swiss Vault'   },
-  { href: '/whales',  label: 'Whale Tracker' },
-  { href: '/players', label: 'Players'       },
+  { href: '/',          label: 'Dashboard'  },
+  { href: '/vault',     label: 'Swiss Vault' },
+  { href: '/companies', label: 'Ongoing Ops' },
 ];
 
-export default function Header({ ethPrice, lastUpdate, children }) {
+export default function Header({ ethPrice, dirtyPrice, infCost }) {
   const pathname = usePathname();
-  const [ago, setAgo] = useState('—');
+  const router   = useRouter();
+  const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    const tick = () => {
-      if (!lastUpdate) return setAgo('loading...');
-      const s = Math.floor((Date.now() - lastUpdate) / 1000);
-      setAgo(s < 60 ? `${s}s ago` : `${Math.floor(s / 60)}m ago`);
-    };
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [lastUpdate]);
+  function handleSearch(e) {
+    e.preventDefault();
+    const addr = search.trim().toLowerCase();
+    if (/^0x[0-9a-f]{40}$/i.test(addr)) {
+      router.push(`/players/${addr}`);
+      setSearch('');
+    }
+  }
 
   return (
     <header className="header">
       <div className="header-left">
-        <div className="header-logo">
-          <span className="logo-text">OFFSHORE</span>
-          <span className="logo-sub">PROTOCOL</span>
-        </div>
-        <div className="live-badge">
-          <span className="live-dot" />
-          LIVE
-        </div>
-        <div className="network-badge">MegaETH</div>
+        <Link href="/" style={{ textDecoration: 'none' }}>
+          <div className="header-logo">
+            <span className="logo-text">OFFSHORE</span>
+            <span className="logo-sub">DASHBOARD</span>
+          </div>
+        </Link>
+        <form onSubmit={handleSearch} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="search address…"
+            style={{
+              width: 220, background: 'var(--bg-2)', border: '1px solid var(--border-2)',
+              color: 'var(--text)', padding: '5px 10px', borderRadius: 4,
+              fontFamily: 'var(--mono)', fontSize: 11, outline: 'none',
+            }}
+          />
+          {/^0x[0-9a-f]{40}$/i.test(search.trim()) && (
+            <button type="submit" className="toggle-btn toggle-btn--active"
+              style={{ fontSize: 10, padding: '5px 10px' }}>→</button>
+          )}
+        </form>
       </div>
 
       <div className="header-tabs">
@@ -52,16 +64,23 @@ export default function Header({ ethPrice, lastUpdate, children }) {
       </div>
 
       <div className="header-right">
-        {children}
-        {ethPrice != null && (
+        {dirtyPrice != null && (
           <div className="eth-price">
-            <span className="eth-label">ETH/USD</span>
-            <span className="eth-value">
-              ${ethPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <span className="eth-label">DIRTY</span>
+            <span className="eth-value" style={{ color: '#c084fc' }}>
+              ${dirtyPrice.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
             </span>
           </div>
         )}
-        <div className="last-update">/ {ago}</div>
+        {infCost != null && (
+          <div className="eth-price">
+            <span className="eth-label">OP COST</span>
+            <span className="eth-value" style={{ color: 'orange' }}>
+              {infCost.toFixed(2)} INF
+            </span>
+          </div>
+        )}
+
       </div>
     </header>
   );

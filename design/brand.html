@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Offshore · Brand Assets</title>
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="alternate icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<link rel="alternate icon" type="image/png" sizes="16x16" href="assets/favicon-16.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #000;
+    --amber: #ffb000;
+    --amber-soft: #b07a00;
+    --amber-dim: #5a3e00;
+    --rule: #2a1d00;
+    --rule-soft: #150e00;
+    --fg: #ffb000;
+    --fg-soft: #b07a00;
+    --fg-dim: #5a3e00;
+  }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  body::before {
+    content:'';
+    position: fixed; inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(to bottom, rgba(255,176,0,0.025) 0 1px, transparent 1px 3px);
+    z-index: 100;
+    mix-blend-mode: screen;
+  }
+
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 28px 32px 80px; }
+
+  header.page {
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 18px;
+    margin-bottom: 28px;
+    display: flex; align-items: baseline; gap: 24px; flex-wrap: wrap;
+  }
+  header.page h1 {
+    margin: 0; font-size: 13px; font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--amber);
+  }
+  header.page .meta {
+    color: var(--fg-soft); font-size: 11px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  header.page .meta span + span::before { content: ' · '; color: var(--fg-dim); padding: 0 4px; }
+  .blink {
+    display: inline-block; width: 8px; height: 14px;
+    background: var(--amber); vertical-align: -2px;
+    animation: blink 1.05s steps(2,end) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  section.row {
+    display: grid; grid-template-columns: 220px 1fr; gap: 32px;
+    padding: 28px 0; border-bottom: 1px solid var(--rule);
+  }
+  section.row .meta-col h2 {
+    margin: 0 0 4px; font-size: 13px; font-weight: 600;
+    color: var(--amber); letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  section.row .meta-col .sub {
+    color: var(--fg-soft); font-size: 12px; line-height: 1.55; max-width: 26ch;
+  }
+  section.row .meta-col .files {
+    margin-top: 14px; display: flex; flex-direction: column; gap: 4px;
+    color: var(--fg-dim); font-size: 11px; letter-spacing: 0.04em;
+  }
+  section.row .meta-col .files a {
+    color: var(--amber-soft); text-decoration: none;
+    border-bottom: 1px dotted var(--amber-dim);
+  }
+  section.row .meta-col .files a:hover { color: var(--amber); border-color: var(--amber); }
+
+  .strip { display: flex; align-items: flex-end; gap: 28px; flex-wrap: wrap; }
+  .swatch { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .swatch .frame {
+    background: #050505; border: 1px solid var(--rule);
+    display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden;
+  }
+  .swatch .frame > svg { width: 100%; height: 100%; display: block; }
+  .swatch .lbl { color: var(--fg-dim); font-size: 10px; letter-spacing: 0.1em; }
+
+  .s16{width:16px;height:16px}.s24{width:24px;height:24px}.s32{width:32px;height:32px}
+  .s48{width:48px;height:48px}.s64{width:64px;height:64px}.s128{width:128px;height:128px}
+  .s180{width:180px;height:180px}.s256{width:256px;height:256px}
+
+  .px-render { image-rendering: pixelated; image-rendering: crisp-edges; }
+
+  .tabsim {
+    display: flex; align-items: center; gap: 8px;
+    background: #1a1a1a; border: 1px solid #2a2a2a;
+    border-radius: 6px 6px 0 0; padding: 6px 10px 6px 8px; margin-top: 14px;
+    font-family: -apple-system, system-ui, sans-serif; font-size: 11px;
+    color: #c8c8c8; width: fit-content; max-width: 100%;
+  }
+  .tabsim .favicon-slot { width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
+  .tabsim .favicon-slot > svg { width: 100%; height: 100%; }
+  .tabsim .x { color: #888; margin-left: 6px; }
+
+  .wordmark {
+    display: inline-flex; align-items: center; gap: 16px;
+    padding: 22px 28px; background: #050505; border: 1px solid var(--rule);
+    margin-top: 16px;
+  }
+  .wordmark .mark-slot { width: 56px; height: 56px; }
+  .wordmark .mark-slot > svg { width: 100%; height: 100%; }
+  .wordmark .text { display: flex; flex-direction: column; gap: 2px; }
+  .wordmark .name {
+    font-size: 22px; letter-spacing: 0.18em; color: var(--amber);
+    font-weight: 600; text-transform: uppercase;
+  }
+  .wordmark .tag {
+    font-size: 10px; letter-spacing: 0.2em; color: var(--fg-soft); text-transform: uppercase;
+  }
+
+  .snippet {
+    background: #050505; border: 1px solid var(--rule);
+    padding: 16px 18px; color: var(--fg-soft);
+    font-size: 11.5px; line-height: 1.7; overflow-x: auto;
+    white-space: pre; margin-top: 20px;
+  }
+  .snippet .k { color: var(--amber); }
+  .snippet .a { color: var(--fg); }
+  .snippet .v { color: #cfb27a; }
+  .snippet .c { color: var(--fg-dim); }
+
+  footer.page {
+    margin-top: 36px; padding-top: 16px; color: var(--fg-dim);
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    display: flex; justify-content: space-between;
+  }
+
+  /* ====================================================== */
+  /* INLINE SVG ANIMATIONS — CSS transforms only            */
+  /* ====================================================== */
+
+  /* Pixel-art globe — satellite traveling the equator. */
+  .sat {
+    animation: offshore-sat 3.2s ease-in-out infinite;
+  }
+  @keyframes offshore-sat {
+    0%, 100% { transform: translateX(0); }
+    50%      { transform: translateX(13px); }
+  }
+
+  /* Beacon globe — meridian spin (scaleX), beacon dot pulse, ring emissions */
+  .meridian {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: offshore-spin 6s ease-in-out infinite;
+  }
+  .beacon-dot {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: offshore-dot 2.4s ease-in-out infinite;
+  }
+  .ring-a, .ring-b {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: offshore-ring 2.4s ease-out infinite;
+  }
+  .ring-b { animation-delay: -1.2s; }
+
+  @keyframes offshore-spin {
+    0%, 100% { transform: scaleX(1); }
+    50%      { transform: scaleX(0); }
+  }
+  @keyframes offshore-dot {
+    0%, 100% { transform: scale(1);   opacity: 1; }
+    15%      { transform: scale(1.2); opacity: 1; }
+    50%      { transform: scale(1);   opacity: 0.55; }
+  }
+  @keyframes offshore-ring {
+    0%   { transform: scale(1); opacity: 0.9; }
+    100% { transform: scale(4); opacity: 0; }
+  }
+
+  /* For pixel art swatches, the SVG translates need to also apply to <use>-clones if any.
+     We're inlining directly, so no shadow-DOM concerns. */
+
+  @media (prefers-reduced-motion: reduce) {
+    .sat, .meridian, .beacon-dot, .ring-a, .ring-b { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header class="page">
+  <h1>offshore · brand assets</h1>
+  <div class="meta">
+    <span>favicon: pixel-art globe</span>
+    <span>mark: beacon globe</span>
+    <span>amber #ffb000 · ibm plex mono</span>
+    <span>live<span class="blink"></span></span>
+  </div>
+</header>
+
+<!-- =========================================================== -->
+<!--  Row 1 · Favicon (static beacon, simplified)                -->
+<!-- =========================================================== -->
+<section class="row">
+  <div class="meta-col">
+    <h2>Favicon</h2>
+    <p class="sub">Simplified beacon — outer circle, equator, meridian, dot. Rings drop out at favicon scale (too noisy). Static; browsers don't reliably animate favicons in tabs anyway.</p>
+    <div class="files">
+      <div><a href="assets/favicon.svg" target="_blank">favicon.svg</a></div>
+      <div><a href="assets/favicon-16.png" target="_blank">favicon-16.png</a></div>
+      <div><a href="assets/favicon-32.png" target="_blank">favicon-32.png</a></div>
+      <div><a href="assets/favicon-64.png" target="_blank">favicon-64.png</a></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="strip">
+      <div class="swatch"><div class="frame s16"><img src="assets/favicon-16.png" width="16" height="16" alt=""></div><div class="lbl">16 png</div></div>
+      <div class="swatch"><div class="frame s32"><img src="assets/favicon-32.png" width="32" height="32" alt=""></div><div class="lbl">32 png</div></div>
+      <div class="swatch"><div class="frame s64"><img src="assets/favicon-64.png" width="64" height="64" alt=""></div><div class="lbl">64 png</div></div>
+      <div class="swatch"><div class="frame s128"><img src="assets/favicon.svg" width="128" height="128" alt=""></div><div class="lbl">128 svg</div></div>
+      <div class="swatch"><div class="frame s256"><img src="assets/favicon.svg" width="256" height="256" alt=""></div><div class="lbl">256 svg</div></div>
+    </div>
+
+    <div class="tabsim">
+      <div class="favicon-slot"><img src="assets/favicon.svg" width="14" height="14" alt=""></div>
+      <span>Offshore · Analytics</span><span class="x">×</span>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================== -->
+<!--  Row 2 · Mark (beacon) — animated inline                    -->
+<!-- =========================================================== -->
+<section class="row">
+  <div class="meta-col">
+    <h2>Mark · Beacon</h2>
+    <p class="sub">Wireframe globe with a rotating meridian and a pulsing offshore beacon (dot + two staggered rings). Drop inline anywhere you want the live mark — header, login, splash.</p>
+    <div class="files">
+      <div><a href="assets/logo-beacon.svg" target="_blank">logo-beacon.svg</a> <span style="color:var(--fg-dim)">· static still</span></div>
+      <div><a href="assets/apple-touch-icon.png" target="_blank">apple-touch-icon.png</a></div>
+      <div><a href="assets/og-mark.png" target="_blank">og-mark.png</a></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="strip">
+      <div class="swatch"><div class="frame s48"  data-mount="beacon"></div><div class="lbl">48</div></div>
+      <div class="swatch"><div class="frame s64"  data-mount="beacon"></div><div class="lbl">64</div></div>
+      <div class="swatch"><div class="frame s128" data-mount="beacon"></div><div class="lbl">128</div></div>
+      <div class="swatch"><div class="frame s180" data-mount="beacon"></div><div class="lbl">180</div></div>
+      <div class="swatch"><div class="frame s256" data-mount="beacon"></div><div class="lbl">256</div></div>
+    </div>
+
+    <div class="wordmark">
+      <div class="mark-slot" data-mount="beacon"></div>
+      <div class="text">
+        <div class="name">Offshore</div>
+        <div class="tag">megaETH · analytics · Q2 2013</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================== -->
+<!--  Row 3 · Drop-in for dashboard                              -->
+<!-- =========================================================== -->
+<section class="row" style="grid-template-columns: 1fr;">
+  <div>
+    <h2 style="margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--amber); letter-spacing: 0.06em; text-transform: uppercase;">Drop-in · Animated mark</h2>
+    <p class="sub" style="max-width: 70ch;">Paste this anywhere you want the live beacon mark in the dashboard. CSS uses <em style="font-style:normal;color:var(--amber)">transforms</em> only (rx/r animation isn't reliably supported in all browsers). SVG is inlined so author CSS hits the elements directly — no shadow-DOM workarounds.</p>
+
+<div class="snippet"><span class="c">/* CSS */</span>
+<span class="k">.meridian</span> {
+  <span class="a">transform-box</span>: <span class="v">fill-box</span>;
+  <span class="a">transform-origin</span>: <span class="v">center</span>;
+  <span class="a">animation</span>: <span class="v">offshore-spin 6s ease-in-out infinite</span>;
+}
+<span class="k">.beacon-dot</span> {
+  <span class="a">transform-box</span>: <span class="v">fill-box</span>;
+  <span class="a">transform-origin</span>: <span class="v">center</span>;
+  <span class="a">animation</span>: <span class="v">offshore-dot 2.4s ease-in-out infinite</span>;
+}
+<span class="k">.ring-a</span>, <span class="k">.ring-b</span> {
+  <span class="a">transform-box</span>: <span class="v">fill-box</span>;
+  <span class="a">transform-origin</span>: <span class="v">center</span>;
+  <span class="a">animation</span>: <span class="v">offshore-ring 2.4s ease-out infinite</span>;
+}
+<span class="k">.ring-b</span> { <span class="a">animation-delay</span>: <span class="v">-1.2s</span>; }
+
+<span class="a">@keyframes</span> <span class="v">offshore-spin</span> { 0%,100%{transform:scaleX(1)} 50%{transform:scaleX(0)} }
+<span class="a">@keyframes</span> <span class="v">offshore-dot</span>  { 0%,100%{transform:scale(1);opacity:1} 15%{transform:scale(1.2)} 50%{transform:scale(1);opacity:.55} }
+<span class="a">@keyframes</span> <span class="v">offshore-ring</span> { 0%{transform:scale(1);opacity:.9} 100%{transform:scale(4);opacity:0} }
+
+<span class="c">&lt;!-- HTML — inline SVG (not via &lt;use&gt;) --&gt;</span>
+<span class="k">&lt;svg</span> <span class="a">viewBox</span>=<span class="v">"0 0 64 64"</span> <span class="a">width</span>=<span class="v">"56"</span> <span class="a">height</span>=<span class="v">"56"</span><span class="k">&gt;</span>
+  <span class="k">&lt;rect</span> <span class="a">width</span>=<span class="v">"64"</span> <span class="a">height</span>=<span class="v">"64"</span> <span class="a">fill</span>=<span class="v">"#000"</span><span class="k">/&gt;</span>
+  <span class="k">&lt;circle</span> <span class="a">cx</span>=<span class="v">"32"</span> <span class="a">cy</span>=<span class="v">"32"</span> <span class="a">r</span>=<span class="v">"24"</span> <span class="a">fill</span>=<span class="v">"none"</span> <span class="a">stroke</span>=<span class="v">"#ffb000"</span> <span class="a">stroke-width</span>=<span class="v">"2"</span><span class="k">/&gt;</span>
+  <span class="k">&lt;line</span> <span class="a">x1</span>=<span class="v">"8"</span> <span class="a">y1</span>=<span class="v">"32"</span> <span class="a">x2</span>=<span class="v">"56"</span> <span class="a">y2</span>=<span class="v">"32"</span> <span class="a">stroke</span>=<span class="v">"#ffb000"</span> <span class="a">stroke-width</span>=<span class="v">"2"</span><span class="k">/&gt;</span>
+  <span class="k">&lt;ellipse</span> <span class="a">class</span>=<span class="v">"meridian"</span> <span class="a">cx</span>=<span class="v">"32"</span> <span class="a">cy</span>=<span class="v">"32"</span> <span class="a">rx</span>=<span class="v">"10"</span> <span class="a">ry</span>=<span class="v">"24"</span>
+            <span class="a">fill</span>=<span class="v">"none"</span> <span class="a">stroke</span>=<span class="v">"#ffb000"</span> <span class="a">stroke-width</span>=<span class="v">"2"</span><span class="k">/&gt;</span>
+  <span class="k">&lt;ellipse</span> <span class="a">cx</span>=<span class="v">"32"</span> <span class="a">cy</span>=<span class="v">"32"</span> <span class="a">rx</span>=<span class="v">"24"</span> <span class="a">ry</span>=<span class="v">"10"</span> <span class="a">fill</span>=<span class="v">"none"</span>
+            <span class="a">stroke</span>=<span class="v">"#ffb000"</span> <span class="a">stroke-width</span>=<span class="v">"1.5"</span> <span class="a">opacity</span>=<span class="v">"0.55"</span><span class="k">/&gt;</span>
+  <span class="k">&lt;circle</span> <span class="a">class</span>=<span class="v">"ring-b"</span> <span class="a">cx</span>=<span class="v">"44"</span> <span class="a">cy</span>=<span class="v">"22"</span> <span class="a">r</span>=<span class="v">"4"</span> <span class="a">fill</span>=<span class="v">"none"</span> <span class="a">stroke</span>=<span class="v">"#ffb000"</span> <span class="a">stroke-width</span>=<span class="v">"1"</span><span class="k">/&gt;</span>
+  <span class="k">&lt;circle</span> <span class="a">class</span>=<span class="v">"ring-a"</span> <span class="a">cx</span>=<span class="v">"44"</span> <span class="a">cy</span>=<span class="v">"22"</span> <span class="a">r</span>=<span class="v">"4"</span> <span class="a">fill</span>=<span class="v">"none"</span> <span class="a">stroke</span>=<span class="v">"#ffb000"</span> <span class="a">stroke-width</span>=<span class="v">"1.5"</span><span class="k">/&gt;</span>
+  <span class="k">&lt;circle</span> <span class="a">class</span>=<span class="v">"beacon-dot"</span> <span class="a">cx</span>=<span class="v">"44"</span> <span class="a">cy</span>=<span class="v">"22"</span> <span class="a">r</span>=<span class="v">"4"</span> <span class="a">fill</span>=<span class="v">"#ffb000"</span><span class="k">/&gt;</span>
+<span class="k">&lt;/svg&gt;</span>
+
+<span class="c">&lt;!-- Favicon (static — browsers don't animate these reliably) --&gt;</span>
+<span class="k">&lt;link</span> <span class="a">rel</span>=<span class="v">"icon"</span> <span class="a">type</span>=<span class="v">"image/svg+xml"</span> <span class="a">href</span>=<span class="v">"assets/favicon.svg"</span><span class="k">&gt;</span>
+<span class="k">&lt;link</span> <span class="a">rel</span>=<span class="v">"apple-touch-icon"</span> <span class="a">href</span>=<span class="v">"assets/apple-touch-icon.png"</span><span class="k">&gt;</span></div>
+  </div>
+</section>
+
+<footer class="page">
+  <div>animated marks are inline svg + page css transforms · favicons are static</div>
+  <div>q2 2013 · live</div>
+</footer>
+
+</div>
+
+<!-- ============================================================ -->
+<!--  Mount inline SVGs into [data-mount] slots                   -->
+<!-- ============================================================ -->
+<script>
+(() => {
+  const SVG_BEACON =
+    '<svg viewBox="0 0 64 64">'
+    + '<rect width="64" height="64" fill="#000000"/>'
+    + '<circle cx="32" cy="32" r="24" fill="none" stroke="#ffb000" stroke-width="2"/>'
+    + '<line x1="8" y1="32" x2="56" y2="32" stroke="#ffb000" stroke-width="2"/>'
+    + '<ellipse class="meridian" cx="32" cy="32" rx="10" ry="24" fill="none" stroke="#ffb000" stroke-width="2"/>'
+    + '<ellipse cx="32" cy="32" rx="24" ry="10" fill="none" stroke="#ffb000" stroke-width="1.5" opacity="0.55"/>'
+    + '<circle class="ring-b" cx="44" cy="22" r="4" fill="none" stroke="#ffb000" stroke-width="1"/>'
+    + '<circle class="ring-a" cx="44" cy="22" r="4" fill="none" stroke="#ffb000" stroke-width="1.5"/>'
+    + '<circle class="beacon-dot" cx="44" cy="22" r="4" fill="#ffb000"/>'
+    + '</svg>';
+
+  const map = { 'globe-px': SVG_PX, 'beacon': SVG_BEACON };
+  for (const slot of document.querySelectorAll('[data-mount]')) {
+    const key = slot.getAttribute('data-mount');
+    slot.innerHTML = map[key] || '';
+  }
+})();
+</script>
+
+</body>
+</html>

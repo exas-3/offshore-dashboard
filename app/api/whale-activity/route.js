@@ -4,7 +4,7 @@ import { getWalletActivity } from '../../../lib/index.js';
 
 const LP = '0x6bd9eef21c2419feffafbf4850153a3b3a74a5e1';
 function normalizeTx(t) {
-  return { hash: t.hash, ts: t.timestamp, from: t.from_addr, to: t.to_addr, amount: t.amount, kind: t.kind, opType: t.op_type };
+  return { hash: t.hash, log_index: t.log_index, ts: t.timestamp, from: t.from_addr, to: t.to_addr, amount: t.amount, kind: t.kind, opType: t.op_type };
 }
 
 export async function GET(req) {

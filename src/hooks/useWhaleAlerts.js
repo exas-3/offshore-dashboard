@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const POLL_MS   = 15_000;
-const TOAST_TTL = 6_000;
+const POLL_MS   = 10_000;
+const TOAST_TTL = 8_000;
+const MIN_DIRTY = 1000;
 
-// ── Web Audio tones ───────────────────────────────────────────────────────────
+// ── Web Audio ─────────────────────────────────────────────────────────────────
 
 let _ctx = null;
 function audioCtx() {
@@ -25,75 +26,78 @@ function playTone(type, freqStart, freqEnd, duration, volume) {
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + duration);
-  } catch { /* AudioContext blocked until user interaction */ }
+  } catch {}
 }
 
-// Buys: rising sine — pitch, duration, and volume scale with size
-function playBuySmall()  { playTone('sine', 600,  820, 0.20, 0.12); }  // quick ping
-function playBuyMedium() { playTone('sine', 440,  960, 0.38, 0.20); }  // clear chirp
-function playBuyLarge()  { playTone('sine', 330, 1400, 0.58, 0.39); }  // whale sweep (+30%)
-function playBuyXLarge() { playTone('sine', 260, 1800, 0.80, 0.50); }  // massive pump (+30% of large)
+// Tier 1 — 1k–5k DIRTY
+function playBuyTier1()  { playTone('sine',     500,  780, 0.22, 0.14); }
+function playSellTier1() { playTone('triangle', 480,  310, 0.22, 0.14); }
 
-// Sells: falling triangle — deeper and longer with size
-function playSellSmall()  { playTone('triangle', 520, 370, 0.22, 0.12); }  // soft drop
-function playSellMedium() { playTone('triangle', 500, 210, 0.44, 0.20); }  // clear fall
-function playSellLarge()  { playTone('triangle', 540,  95, 0.70, 0.39); }  // deep dump (+30%)
-function playSellXLarge() { playTone('triangle', 580,  55, 0.95, 0.50); }  // crash alarm (+30% of large)
+// Tier 2 — 5k–10k DIRTY
+function playBuyTier2()  { playTone('sine',     380,  1100, 0.42, 0.26); }
+function playSellTier2() { playTone('triangle', 520,   140, 0.42, 0.26); }
 
-function playSoundForEvent(opType, amount) {
-  const isBuy = opType === 'DEX_BUY';
-  if (isBuy) {
-    if (amount <= 200)        playBuySmall();
-    else if (amount <= 1000)  playBuyMedium();
-    else if (amount <= 10000) playBuyLarge();
-    else                      playBuyXLarge();
-  } else {
-    if (amount <= 200)        playSellSmall();
-    else if (amount <= 1000)  playSellMedium();
-    else if (amount <= 10000) playSellLarge();
-    else                      playSellXLarge();
-  }
+// Tier 3 — 10k+ DIRTY
+function playBuyTier3()  { playTone('sine',     260,  1600, 0.75, 0.45); }
+function playSellTier3() { playTone('triangle', 600,    60, 0.85, 0.45); }
+
+function tier(amount) {
+  if (amount >= 10_000) return 3;
+  if (amount >= 5_000)  return 2;
+  return 1;
+}
+
+function playSound(opType, amount) {
+  const t   = tier(amount);
+  const buy = opType === 'DEX_BUY';
+  if (t === 3) buy ? playBuyTier3()  : playSellTier3();
+  else if (t === 2) buy ? playBuyTier2()  : playSellTier2();
+  else              buy ? playBuyTier1()  : playSellTier1();
 }
 
 // ── hook ─────────────────────────────────────────────────────────────────────
 
 export default function useWhaleAlerts(enabled) {
   const [toasts, setToasts] = useState([]);
-  const lastTs = useRef(Math.floor(Date.now() / 1000) - 60);
+  const lastTs = useRef(Math.floor(Date.now() / 1000) - 30);
 
   const poll = useCallback(async () => {
     if (!enabled) return;
     try {
-      const res  = await fetch(`/api/dex-activity?since=${lastTs.current}&limit=20`);
+      const res = await fetch(`/api/dex-activity?since=${lastTs.current}&limit=30`);
       const { activity } = await res.json();
       if (!activity?.length) return;
 
-      const fresh = activity.filter(a => a.ts > lastTs.current);
-      if (!fresh.length) return;
+      const fresh = activity
+        .filter(a => a.ts > lastTs.current && a.amount >= MIN_DIRTY);
 
-      lastTs.current = fresh[0].ts - 1;
+      if (fresh.length) {
+        lastTs.current = activity[0].ts;
 
-      // Play sound for the largest event in the batch
-      const largest = fresh.reduce((best, a) => a.amount > best.amount ? a : best, fresh[0]);
-      playSoundForEvent(largest.opType, largest.amount);
+        // Play sound for largest event in the batch
+        const largest = fresh.reduce((b, a) => a.amount > b.amount ? a : b, fresh[0]);
+        playSound(largest.opType, largest.amount);
 
-      const now = Date.now();
-      const newToasts = fresh.slice(0, 8).map(a => ({
-        id:        a.hash,
-        wallet:    a.wallet,
-        opType:    a.opType,
-        amount:    a.amount,
-        ts:        a.ts,
-        hash:      a.hash,
-        expiresAt: now + TOAST_TTL,
-      }));
+        const now = Date.now();
+        const newToasts = fresh.slice(0, 6).map(a => ({
+          id:        a.hash,
+          wallet:    a.wallet,
+          opType:    a.opType,
+          amount:    a.amount,
+          hash:      a.hash,
+          tier:      tier(a.amount),
+          expiresAt: now + TOAST_TTL,
+        }));
 
-      setToasts(prev => {
-        const seen = new Set(prev.map(t => t.id));
-        const deduped = newToasts.filter(t => !seen.has(t.id));
-        return [...deduped, ...prev].slice(0, 12);
-      });
-    } catch { /* silent */ }
+        setToasts(prev => {
+          const seen = new Set(prev.map(t => t.id));
+          const deduped = newToasts.filter(t => !seen.has(t.id));
+          return [...deduped, ...prev].slice(0, 10);
+        });
+      } else if (activity.length) {
+        lastTs.current = activity[0].ts;
+      }
+    } catch {}
   }, [enabled]);
 
   useEffect(() => {

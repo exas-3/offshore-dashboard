@@ -10,16 +10,19 @@ function fmt(v) {
   return v.toFixed(0);
 }
 
-const CustomTooltip = ({ active, payload, label }) => {
+function fmtTs(ts, hourly) {
+  const d = new Date(ts * 1000);
+  return hourly
+    ? `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}h`
+    : `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+const CustomTooltip = ({ active, payload, label, isHourly }) => {
   if (!active || !payload?.length) return null;
   const byKey = Object.fromEntries(payload.map(p => [p.dataKey, p.value ?? 0]));
   return (
     <div className="chart-tooltip">
-      <div className="chart-tooltip-label">{label}</div>
-      <div className="chart-tooltip-row">
-        <span style={{ color: '#3ecf6a' }}>Refunded</span>
-        <span>{(byKey.minted ?? 0).toLocaleString()}</span>
-      </div>
+      <div className="chart-tooltip-label">{fmtTs(label, isHourly)}</div>
       <div className="chart-tooltip-row">
         <span style={{ color: '#4a9fd8' }}>Purchased</span>
         <span>{(byKey.purchased ?? 0).toLocaleString()}</span>
@@ -27,6 +30,10 @@ const CustomTooltip = ({ active, payload, label }) => {
       <div className="chart-tooltip-row">
         <span style={{ color: '#e05252' }}>Consumed</span>
         <span>{(byKey.burned ?? 0).toLocaleString()}</span>
+      </div>
+      <div className="chart-tooltip-row">
+        <span style={{ color: '#3ecf6a' }}>Refunded</span>
+        <span>{(byKey.minted ?? 0).toLocaleString()}</span>
       </div>
     </div>
   );
@@ -43,46 +50,50 @@ const CustomLegend = ({ payload }) => (
   </div>
 );
 
-export default function InfluenceChart({ dailyInfluence, hourlyInfluence, influenceStats }) {
-  const [view, setView] = useState('daily');
+const RANGES = [
+  { key: '24h',  label: '24h' },
+  { key: '72h',  label: '72h' },
+  { key: 'all',  label: 'All' },
+];
 
-  const data    = view === 'daily' ? dailyInfluence : hourlyInfluence;
+export default function InfluenceChart({ dailyInfluence, hourlyInfluence, influenceStats }) {
+  const [range, setRange] = useState('all');
+
+  const data = range === 'all'
+    ? (dailyInfluence ?? [])
+    : range === '72h'
+      ? (hourlyInfluence ?? []).slice(-72)
+      : (hourlyInfluence ?? []).slice(-24);
+
   const isEmpty = !data?.length || data.every(d => d.minted === 0 && d.burned === 0);
 
-  const tickInterval = view === 'hourly'
+  const tickInterval = range !== 'all'
     ? Math.max(1, Math.floor((data?.length ?? 0) / 12))
     : 0;
+
+  const rangeLabel = range === 'all' ? 'ALL TIME (DAILY)' : range.toUpperCase() + ' (HOURLY)';
 
   return (
     <div className="card chart-card">
       <div className="chart-header">
         <span className="card-title" style={{ margin: 0 }}>
-          INFLUENCE FLOW — {view === 'daily' ? 'DAILY' : 'HOURLY'} FROM LAUNCH
+          INFLUENCE FLOW — {rangeLabel}
         </span>
         <div className="chart-toggle">
-          <button
-            className={`toggle-btn ${view === 'daily' ? 'toggle-btn--active' : ''}`}
-            onClick={() => setView('daily')}
-          >
-            Daily
-          </button>
-          <button
-            className={`toggle-btn ${view === 'hourly' ? 'toggle-btn--active' : ''}`}
-            onClick={() => setView('hourly')}
-          >
-            Hourly
-          </button>
+          {RANGES.map(r => (
+            <button
+              key={r.key}
+              className={`toggle-btn ${range === r.key ? 'toggle-btn--active' : ''}`}
+              onClick={() => setRange(r.key)}
+            >
+              {r.label}
+            </button>
+          ))}
         </div>
       </div>
 
       {influenceStats && (
         <div className="influence-stats">
-          <span className="influence-stat">
-            <span className="influence-stat-label">REFUNDED</span>
-            <span className="influence-stat-value" style={{ color: 'var(--green)' }}>
-              {influenceStats.totalRefunded?.toLocaleString() ?? influenceStats.totalMinted.toLocaleString()}
-            </span>
-          </span>
           <span className="influence-stat">
             <span className="influence-stat-label">PURCHASED</span>
             <span className="influence-stat-value" style={{ color: 'var(--blue, #4a9fd8)' }}>
@@ -93,6 +104,12 @@ export default function InfluenceChart({ dailyInfluence, hourlyInfluence, influe
             <span className="influence-stat-label">CONSUMED</span>
             <span className="influence-stat-value" style={{ color: 'var(--red)' }}>
               {influenceStats.totalBurned.toLocaleString()}
+            </span>
+          </span>
+          <span className="influence-stat">
+            <span className="influence-stat-label">REFUNDED</span>
+            <span className="influence-stat-value" style={{ color: 'var(--green)' }}>
+              {influenceStats.totalRefunded?.toLocaleString() ?? influenceStats.totalMinted.toLocaleString()}
             </span>
           </span>
           <span className="influence-stat">
@@ -113,25 +130,26 @@ export default function InfluenceChart({ dailyInfluence, hourlyInfluence, influe
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={data} margin={{ top: 8, right: 8, left: -10, bottom: 0 }} barCategoryGap="20%">
-            <CartesianGrid strokeDasharray="3 3" stroke="#1a241a" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e1a35" vertical={false} />
             <XAxis
-              dataKey="label"
-              tick={{ fill: '#4a5448', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+              dataKey="ts"
+              tick={{ fill: '#5a4575', fontSize: 11, fontFamily: 'JetBrains Mono' }}
               axisLine={false}
               tickLine={false}
               interval={tickInterval}
+              tickFormatter={ts => fmtTs(ts, range !== 'all')}
             />
             <YAxis
-              tick={{ fill: '#4a5448', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+              tick={{ fill: '#5a4575', fontSize: 11, fontFamily: 'JetBrains Mono' }}
               axisLine={false}
               tickLine={false}
               tickFormatter={fmt}
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip isHourly={range !== 'all'} />} />
             <Legend content={<CustomLegend />} />
-            <Bar dataKey="minted"    name="Refunded"  fill="#3ecf6a" maxBarSize={40} />
             <Bar dataKey="purchased" name="Purchased" fill="#4a9fd8" maxBarSize={40} />
-            <Bar dataKey="burned"    name="Consumed"  fill="#e05252" maxBarSize={40} radius={[2, 2, 0, 0]} />
+            <Bar dataKey="burned"    name="Consumed"  fill="#e05252" maxBarSize={40} />
+            <Bar dataKey="minted"    name="Refunded"  fill="#3ecf6a" maxBarSize={40} radius={[2, 2, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       )}

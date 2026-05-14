@@ -123,7 +123,7 @@ export default function WhaleLeaderboard({ whales, supply, loading, knownContrac
                   {OP_LABEL[w.favOp] ?? '—'}
                 </span>
 
-                <span className="whale-last">{timeAgo(w.lastActive)}</span>
+                <span className="whale-last" suppressHydrationWarning>{timeAgo(w.lastActive)}</span>
 
                 <a
                   href={`https://mega.etherscan.io/address/${w.address}`}

@@ -82,3 +82,18 @@ CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS companies (
+  address      TEXT PRIMARY KEY,
+  owner        TEXT NOT NULL,
+  active       BOOLEAN NOT NULL DEFAULT FALSE,
+  completable  BOOLEAN NOT NULL DEFAULT FALSE,
+  liquidatable BOOLEAN NOT NULL DEFAULT FALSE,
+  end_time     BIGINT  NOT NULL DEFAULT 0,
+  liq_price    TEXT    NOT NULL DEFAULT '0',
+  auto_trade   BOOLEAN NOT NULL DEFAULT FALSE,
+  cooldown_end BIGINT  NOT NULL DEFAULT 0,
+  last_updated BIGINT  NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_companies_owner ON companies(owner);
+CREATE INDEX IF NOT EXISTS idx_companies_auto  ON companies(auto_trade);

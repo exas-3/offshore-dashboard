@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Offshore · MegaETH Analytics Dashboard</title>
+
+<link rel="stylesheet" href="lib/terminal.css" />
+
+<style>
+  html, body { margin: 0; padding: 0; background: #000; min-height: 100vh; font-family: 'IBM Plex Mono', ui-monospace, monospace; color: #ffb000; }
+  body { overflow: hidden; }
+  #root { width: 100vw; height: 100vh; }
+
+  /* Theme overrides (driven by [data-theme] on the .tm root) */
+  .tm[data-theme="green"] {
+    --t-fg: #4ade80;
+    --t-fg-soft: #2c8d4e;
+    --t-fg-mut: #1d5a32;
+    --t-fg-dim: #0f3119;
+    --t-bg-soft: #02060300;
+    --t-rule: #0e2113;
+    --t-rule-soft: #08160c;
+    --t-rule-hot: #185030;
+    --t-hdr: #cfe4b3;
+    --t-hdr-soft: #82a368;
+    --t-warn: #f0d27c;
+    --t-sel: #082011;
+    --t-focus: #4ade80;
+  }
+  .tm[data-theme="green"] .tm-heat-cell { background: rgba(74, 222, 128, 0.5) !important; } /* will be overridden inline */
+  .tm[data-theme="paper"] {
+    --t-bg: #f7f3e8;
+    --t-bg-soft: #efe9d6;
+    --t-rule: #d4cab2;
+    --t-rule-soft: #e3dac1;
+    --t-rule-hot: #b29a6a;
+    --t-fg: #6b4400;
+    --t-fg-soft: #886215;
+    --t-fg-mut: #b29a6a;
+    --t-fg-dim: #d4c89e;
+    --t-num: #1a1408;
+    --t-hdr: #5a3f1f;
+    --t-hdr-soft: #8a6a3a;
+    --t-pos: #2c7a39;
+    --t-neg: #b22a2a;
+    --t-warn: #b27628;
+    --t-sel: #efe6cb;
+    --t-focus: #2c5b96;
+  }
+  .tm[data-theme="paper"] .tm-main-scroll::-webkit-scrollbar { background: var(--t-bg-soft); }
+  .tm[data-theme="paper"] .tm-main-scroll::-webkit-scrollbar-thumb { background: var(--t-rule-hot); border: 2px solid var(--t-bg-soft); }
+  .tm[data-theme="paper"] .tm-blink { animation: none; }
+  .tm[data-theme="paper"] body { background: var(--t-bg); }
+
+  .tm[data-theme="purple"] {
+    --t-bg: #050009;
+    --t-bg-soft: #0c0316;
+    --t-panel: #03000a;
+    --t-rule: #2c0858;
+    --t-rule-soft: #18043a;
+    --t-rule-hot: #4e1090;
+    --t-fg: #a674ff;
+    --t-fg-soft: #7548c4;
+    --t-fg-mut: #4a2a82;
+    --t-fg-dim: #2a1850;
+    --t-num: #ffffff;
+    --t-hdr: #e0b8ff;
+    --t-hdr-soft: #946dc8;
+    --t-pos: #4ae3a5;
+    --t-neg: #ff5099;
+    --t-warn: #ffafef;
+    --t-sel: #14063a;
+    --t-focus: #a674ff;
+  }
+
+  /* Density */
+  .tm[data-density="compact"] .tm-content { gap: 8px; padding: 6px 8px 10px; }
+  .tm[data-density="compact"] .tm-region-body { padding: 4px 8px 6px; }
+  .tm[data-density="compact"] .tm-stat { padding: 6px 10px; }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script src="lib/data.js"></script>
+<script type="text/babel" data-presets="react">
+// Manual bootstrap (Babel's auto-loader was racing on some files before).
+window.__appReady = (async () => {
+  const files = [
+    'tweaks-panel.jsx',
+    'lib/terminal.jsx',
+    'lib/offshore.jsx',
+  ];
+  for (const f of files) {
+    let src;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { src = await fetch(f, { cache: 'no-cache' }).then((r) => r.text()); break; }
+      catch (e) { if (attempt === 2) throw e; await new Promise((r) => setTimeout(r, 120)); }
+    }
+    const out = Babel.transform(src, { presets: ['react'], filename: f }).code;
+    (0, eval)(out);
+  }
+})();
+</script>
+
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+(async () => {
+// Wait for both the UI components and the real data to be ready.
+await Promise.all([window.__appReady, window.__dataReady]);
+
+const { useState, useEffect } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "amber",
+  "density": "compact",
+  "showToasts": true,
+  "showRail": true
+}/*EDITMODE-END*/;
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  // Mirror theme to body bg so the corners around the dashboard match.
+  useEffect(() => {
+    document.body.style.background = t.theme === 'paper' ? '#f7f3e8' : t.theme === 'purple' ? '#050009' : '#000';
+  }, [t.theme]);
+
+  return (
+    <>
+      <OffshoreDashboard theme={t.theme} density={t.density} showToasts={t.showToasts} showRail={t.showRail} onThemeChange={(v) => setTweak('theme', v)} />
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Theme" />
+        <TweakSelect
+          label="Color"
+          value={t.theme}
+          options={[
+            { value: 'amber',  label: 'Amber' },
+            { value: 'green',  label: 'Green' },
+            { value: 'paper',  label: 'Paper' },
+            { value: 'purple', label: 'Purple' },
+          ]}
+          onChange={(v) => setTweak('theme', v)}
+        />
+        <TweakRadio
+          label="Density"
+          value={t.density}
+          options={[
+            { value: 'regular', label: 'Regular' },
+            { value: 'compact', label: 'Compact' },
+          ]}
+          onChange={(v) => setTweak('density', v)}
+        />
+        <TweakSection label="Live data" />
+        <TweakToggle label="Trade toasts" value={t.showToasts} onChange={(v) => setTweak('showToasts', v)} />
+        <TweakToggle label="Wallet rail"  value={t.showRail}   onChange={(v) => setTweak('showRail',   v)} />
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+})();
+</script>
+</body>
+</html>

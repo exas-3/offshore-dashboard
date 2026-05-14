@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 
 const COLORS = {
-  extortion: '#c8a951',
+  extortion: '#c084fc',
   armsDeal:  '#4a9fd8',
   drugDeal:  '#3ecf6a',
   partial:   '#555f54',
@@ -115,14 +115,14 @@ export default function OpsBreakdownChart({ dailyOpBreakdown, hourlyOpBreakdown 
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={data} margin={{ top: 8, right: 8, left: -10, bottom: 0 }} barCategoryGap="20%">
-            <CartesianGrid strokeDasharray="3 3" stroke="#1a241a" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e1a35" vertical={false} />
             <XAxis
               dataKey="label"
-              tick={{ fill: '#4a5448', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+              tick={{ fill: '#5a4575', fontSize: 11, fontFamily: 'JetBrains Mono' }}
               axisLine={false} tickLine={false} interval={tickInterval}
             />
             <YAxis
-              tick={{ fill: '#4a5448', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+              tick={{ fill: '#5a4575', fontSize: 11, fontFamily: 'JetBrains Mono' }}
               axisLine={false} tickLine={false}
               tickFormatter={fmt}
             />

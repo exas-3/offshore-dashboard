@@ -15,7 +15,7 @@ const BATCH     = 500;
 
 const sqlite = new Database(DB_PATH, { readonly: true });
 const sql    = postgres(process.env.DATABASE_URL, {
-  ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
+  ssl: false,
   max: 5,
 });
 

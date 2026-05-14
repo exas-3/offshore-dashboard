@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { getRecentTransfers } from '../../../lib/index.js';
 
 function normalizeTx(t) {
-  return { hash: t.hash, ts: t.timestamp, from: t.from_addr, to: t.to_addr, amount: t.amount, kind: t.kind, opType: t.op_type };
+  return { hash: t.hash, log_index: t.log_index, ts: t.timestamp, from: t.from_addr, to: t.to_addr, amount: t.amount, kind: t.kind, opType: t.op_type };
 }
 
 export async function GET(req) {

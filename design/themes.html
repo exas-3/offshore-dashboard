@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Offshore · Theme Color Schemes</title>
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --amber:    #ffb000;
+    --rule:     #2a1d00;
+    --fg-soft:  #b07a00;
+    --fg-dim:   #5a3e00;
+  }
+  html, body {
+    margin: 0; padding: 0;
+    background: #000;
+    color: var(--amber);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  body::before {
+    content:'';
+    position: fixed; inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(to bottom, rgba(255,176,0,0.025) 0 1px, transparent 1px 3px);
+    z-index: 9999;
+    mix-blend-mode: screen;
+  }
+  .wrap { max-width: 1320px; margin: 0 auto; padding: 28px 32px 80px; }
+
+  header.page {
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 18px;
+    margin-bottom: 28px;
+    display: flex; align-items: baseline; gap: 24px; flex-wrap: wrap;
+  }
+  header.page h1 {
+    margin: 0; font-size: 13px; font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--amber);
+  }
+  header.page .meta { color: var(--fg-soft); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+  header.page .meta span + span::before { content: ' · '; color: var(--fg-dim); padding: 0 4px; }
+
+  .lede {
+    color: var(--fg-soft); font-size: 12px; line-height: 1.6;
+    max-width: 80ch; margin: -8px 0 28px;
+  }
+  .lede code {
+    color: var(--amber);
+    background: #050505;
+    padding: 1px 6px;
+    border: 1px solid var(--rule);
+  }
+
+  /* ─── Per-theme card ─── */
+  .theme {
+    border-top: 1px solid var(--rule);
+    padding: 32px 0 8px;
+  }
+  .theme-head {
+    display: flex; align-items: baseline; gap: 18px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .theme-head h2 {
+    margin: 0; font-size: 18px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--amber);
+  }
+  .theme-head .id {
+    color: var(--fg-dim); font-size: 11px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+  }
+  .theme-head .id b { color: var(--amber); font-weight: 600; }
+  .theme-head .desc {
+    color: var(--fg-soft); font-size: 12px;
+    margin-left: auto; max-width: 50ch;
+    text-align: right;
+  }
+
+  .theme-body {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 24px;
+    margin-bottom: 28px;
+  }
+  @media (max-width: 1080px) { .theme-body { grid-template-columns: 1fr; } }
+
+  /* Swatch column */
+  .swatches {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0,1fr));
+    gap: 0;
+    border-top: 1px solid var(--rule);
+    border-left: 1px solid var(--rule);
+  }
+  .swatch {
+    border-right: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 10px 12px 12px;
+    display: flex; flex-direction: column; gap: 6px;
+    min-height: 90px;
+  }
+  .swatch .chip {
+    width: 100%; height: 32px;
+    border: 1px solid rgba(255,176,0,0.15);
+  }
+  .swatch .var {
+    color: var(--amber);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+  .swatch .hex {
+    color: var(--fg-soft);
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+  }
+  .swatch .role {
+    color: var(--fg-dim);
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: auto;
+  }
+
+  /* Live mini-mockup */
+  .preview {
+    background: var(--bg, #000);
+    color: var(--fg, #ffb000);
+    border: 1px solid var(--rule, #2a1d00);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    overflow: hidden;
+  }
+  .preview .pv-bar {
+    background: var(--bg, #000);
+    border-bottom: 1px solid var(--rule, #2a1d00);
+    padding: 6px 10px;
+    display: flex; gap: 18px; flex-wrap: wrap;
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+  }
+  .preview .pv-bar .lbl { color: var(--fg-mut, #b07a00); text-transform: uppercase; letter-spacing: 0.06em; }
+  .preview .pv-bar .num { color: var(--num, #ffffff); margin-left: 4px; }
+  .preview .pv-bar .pos { color: var(--pos, #50d870); }
+  .preview .pv-bar .neg { color: var(--neg, #ff5252); }
+  .preview .pv-body {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    background: var(--bg, #000);
+  }
+  .preview .pv-side {
+    background: var(--bg, #000);
+    border-right: 1px solid var(--rule, #2a1d00);
+    padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  .preview .pv-side .h {
+    color: var(--hdr, #e8d4a4);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+  .preview .pv-side .sub { color: var(--fg-mut, #b07a00); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .preview .pv-side .row {
+    display: flex; justify-content: space-between;
+    color: var(--fg-soft, #c98200);
+    font-size: 10.5px;
+  }
+  .preview .pv-side .row b { color: var(--num, #ffffff); font-weight: 500; }
+  .preview .pv-side .row.pos b { color: var(--pos, #50d870); }
+  .preview .pv-side .row.neg b { color: var(--neg, #ff5252); }
+  .preview .pv-side .row.warn b { color: var(--warn, #ffd24a); }
+  .preview .pv-main {
+    padding: 10px 12px;
+    background: var(--bg, #000);
+    color: var(--fg, #ffb000);
+  }
+  .preview .pv-main .h {
+    color: var(--hdr, #e8d4a4);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    border-bottom: 1px dashed var(--rule, #2a1d00);
+    padding-bottom: 6px;
+  }
+  .preview .pv-main .h b { color: var(--fg, #ffb000); }
+  .preview .pv-main .state {
+    color: var(--fg-soft, #c98200);
+    font-size: 10.5px;
+    margin-bottom: 12px;
+  }
+  .preview .pv-main .state b { color: var(--num, #ffffff); }
+  .preview .pv-main .state .pos { color: var(--pos, #50d870); }
+  .preview .pv-main .state .neg { color: var(--neg, #ff5252); }
+  .preview .pv-bars { display: flex; align-items: flex-end; height: 60px; gap: 3px; }
+  .preview .pv-bars .b {
+    flex: 1;
+    background: var(--fg, #ffb000);
+    min-height: 4px;
+  }
+  .preview .pv-bars .b.alt { background: var(--fg-soft, #c98200); }
+  .preview .pv-bars .b.warn { background: var(--warn, #ffd24a); }
+  .preview .pv-foot {
+    border-top: 1px solid var(--rule, #2a1d00);
+    padding: 6px 10px;
+    color: var(--fg-dim, #5a3e00);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    display: flex; justify-content: space-between;
+  }
+  .preview .pv-foot b { color: var(--fg-soft, #c98200); }
+  .preview .pv-foot .blink {
+    display: inline-block;
+    width: 6px; height: 10px;
+    background: var(--fg, #ffb000);
+    vertical-align: -1px;
+    animation: blink 1.05s steps(2,end) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* CSS snippet */
+  .snippet {
+    background: #050505;
+    border: 1px solid var(--rule);
+    padding: 14px 16px;
+    color: var(--fg-soft);
+    font-size: 11px;
+    line-height: 1.65;
+    overflow-x: auto;
+    white-space: pre;
+    margin-top: 8px;
+    position: relative;
+  }
+  .snippet .k { color: var(--amber); }
+  .snippet .v { color: #cfb27a; }
+  .snippet .c { color: var(--fg-dim); }
+  .snippet .copy {
+    position: absolute;
+    top: 6px; right: 6px;
+    background: #0a0a0a;
+    border: 1px solid var(--rule);
+    color: var(--fg-soft);
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+  .snippet .copy:hover { color: var(--amber); border-color: var(--amber); }
+  .snippet .copy.ok { color: #50d870; border-color: #50d870; }
+
+  footer.page {
+    margin-top: 36px;
+    padding-top: 16px;
+    border-top: 1px solid var(--rule);
+    color: var(--fg-dim);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: flex; justify-content: space-between;
+  }
+
+  /* ─── Per-theme custom-property scopes ──────────────────────────── */
+
+  /* AMBER (default) */
+  .theme-amber, .theme-amber .preview {
+    --bg:        #000000;
+    --bg-soft:   #0a0700;
+    --panel:     #050300;
+    --rule:      #2a1c00;
+    --rule-soft: #1a1000;
+    --rule-hot:  #4a3300;
+    --fg:        #ffb000;
+    --fg-soft:   #c98200;
+    --fg-mut:    #6b4400;
+    --fg-dim:    #3d2600;
+    --num:       #ffffff;
+    --hdr:       #e8d4a4;
+    --hdr-soft:  #a89270;
+    --pos:       #50d870;
+    --neg:       #ff5252;
+    --warn:      #ffd24a;
+    --sel:       #221700;
+    --focus:     #ffb000;
+  }
+  /* GREEN */
+  .theme-green, .theme-green .preview {
+    --bg:        #000000;
+    --bg-soft:   #02060300;
+    --panel:     #020603;
+    --rule:      #0e2113;
+    --rule-soft: #08160c;
+    --rule-hot:  #185030;
+    --fg:        #4ade80;
+    --fg-soft:   #2c8d4e;
+    --fg-mut:    #1d5a32;
+    --fg-dim:    #0f3119;
+    --num:       #ffffff;
+    --hdr:       #cfe4b3;
+    --hdr-soft:  #82a368;
+    --pos:       #4ade80;
+    --neg:       #ff5252;
+    --warn:      #f0d27c;
+    --sel:       #082011;
+    --focus:     #4ade80;
+  }
+  /* PAPER (light) */
+  .theme-paper, .theme-paper .preview {
+    --bg:        #f7f3e8;
+    --bg-soft:   #efe9d6;
+    --panel:     #f7f3e8;
+    --rule:      #d4cab2;
+    --rule-soft: #e3dac1;
+    --rule-hot:  #b29a6a;
+    --fg:        #6b4400;
+    --fg-soft:   #886215;
+    --fg-mut:    #b29a6a;
+    --fg-dim:    #d4c89e;
+    --num:       #1a1408;
+    --hdr:       #5a3f1f;
+    --hdr-soft:  #8a6a3a;
+    --pos:       #2c7a39;
+    --neg:       #b22a2a;
+    --warn:      #b27628;
+    --sel:       #efe6cb;
+    --focus:     #2c5b96;
+  }
+  /* PURPLE */
+  .theme-purple, .theme-purple .preview {
+    --bg:        #050009;
+    --bg-soft:   #0c0316;
+    --panel:     #03000a;
+    --rule:      #2c0858;
+    --rule-soft: #18043a;
+    --rule-hot:  #4e1090;
+    --fg:        #a674ff;
+    --fg-soft:   #7548c4;
+    --fg-mut:    #4a2a82;
+    --fg-dim:    #2a1850;
+    --num:       #ffffff;
+    --hdr:       #e0b8ff;
+    --hdr-soft:  #946dc8;
+    --pos:       #4ae3a5;
+    --neg:       #ff5099;
+    --warn:      #ffafef;
+    --sel:       #14063a;
+    --focus:     #a674ff;
+  }
+
+  /* Theme-specific tweaks on the preview */
+  .theme-paper .preview .pv-foot .blink { animation: none; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header class="page">
+  <h1>offshore · theme color schemes</h1>
+  <div class="meta">
+    <span>4 themes</span>
+    <span>20 css custom properties</span>
+    <span>copy-paste ready</span>
+  </div>
+</header>
+
+<p class="lede">
+  Every theme is the same set of 20 CSS variables prefixed <code>--t-</code> (terminal). Apply by setting <code>data-theme="…"</code> on the <code>.tm</code> root element. Variables not declared in a theme fall through to <code>:root</code> (amber). Each card below shows the full swatch grid, a live mini-mockup, and a copy-paste CSS block.
+</p>
+
+<!-- ===================================================== AMBER -->
+<section class="theme theme-amber">
+  <div class="theme-head">
+    <h2>Amber</h2>
+    <span class="id">data-theme=<b>"amber"</b> · default · base scheme</span>
+    <span class="desc">CRT terminal default. Cream headers, white numbers, green/red for pos/neg, yellow warn.</span>
+  </div>
+
+  <div class="theme-body">
+    <div class="swatches">
+      <div class="swatch"><div class="chip" style="background:#000000"></div><span class="var">--t-bg</span><span class="hex">#000000</span><span class="role">canvas</span></div>
+      <div class="swatch"><div class="chip" style="background:#0a0700"></div><span class="var">--t-bg-soft</span><span class="hex">#0a0700</span><span class="role">rail / soft pane</span></div>
+      <div class="swatch"><div class="chip" style="background:#050300"></div><span class="var">--t-panel</span><span class="hex">#050300</span><span class="role">inner panel</span></div>
+      <div class="swatch"><div class="chip" style="background:#221700"></div><span class="var">--t-sel</span><span class="hex">#221700</span><span class="role">selection / hover</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#2a1c00"></div><span class="var">--t-rule</span><span class="hex">#2a1c00</span><span class="role">divider</span></div>
+      <div class="swatch"><div class="chip" style="background:#1a1000"></div><span class="var">--t-rule-soft</span><span class="hex">#1a1000</span><span class="role">faint divider</span></div>
+      <div class="swatch"><div class="chip" style="background:#4a3300"></div><span class="var">--t-rule-hot</span><span class="hex">#4a3300</span><span class="role">active border</span></div>
+      <div class="swatch"><div class="chip" style="background:#ffb000"></div><span class="var">--t-focus</span><span class="hex">#ffb000</span><span class="role">focus ring</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#ffb000"></div><span class="var">--t-fg</span><span class="hex">#ffb000</span><span class="role">primary text</span></div>
+      <div class="swatch"><div class="chip" style="background:#c98200"></div><span class="var">--t-fg-soft</span><span class="hex">#c98200</span><span class="role">secondary text</span></div>
+      <div class="swatch"><div class="chip" style="background:#6b4400"></div><span class="var">--t-fg-mut</span><span class="hex">#6b4400</span><span class="role">muted text</span></div>
+      <div class="swatch"><div class="chip" style="background:#3d2600"></div><span class="var">--t-fg-dim</span><span class="hex">#3d2600</span><span class="role">tertiary / labels</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#ffffff"></div><span class="var">--t-num</span><span class="hex">#ffffff</span><span class="role">data numbers</span></div>
+      <div class="swatch"><div class="chip" style="background:#e8d4a4"></div><span class="var">--t-hdr</span><span class="hex">#e8d4a4</span><span class="role">section headers</span></div>
+      <div class="swatch"><div class="chip" style="background:#a89270"></div><span class="var">--t-hdr-soft</span><span class="hex">#a89270</span><span class="role">soft headers</span></div>
+      <div class="swatch"><div class="chip" style="background:#000;border:1px dashed #2a1c00"></div><span class="var">— spacer —</span><span class="hex">&nbsp;</span><span class="role">&nbsp;</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#50d870"></div><span class="var">--t-pos</span><span class="hex">#50d870</span><span class="role">positive / gain</span></div>
+      <div class="swatch"><div class="chip" style="background:#ff5252"></div><span class="var">--t-neg</span><span class="hex">#ff5252</span><span class="role">negative / loss</span></div>
+      <div class="swatch"><div class="chip" style="background:#ffd24a"></div><span class="var">--t-warn</span><span class="hex">#ffd24a</span><span class="role">warning</span></div>
+      <div class="swatch"><div class="chip" style="background:#000;border:1px dashed #2a1c00"></div><span class="var">— spacer —</span><span class="hex">&nbsp;</span><span class="role">&nbsp;</span></div>
+    </div>
+
+    <div class="preview">
+      <div class="pv-bar">
+        <span><span class="lbl">$dirty</span><span class="num">$0.0630</span> <span class="pos">▲0.41%</span></span>
+        <span><span class="lbl">op cost</span><span class="num">9.20 INF</span></span>
+        <span><span class="lbl">block</span><span class="num">15,951,153</span></span>
+        <span><span class="lbl">status</span> <span class="pos">● LIVE</span></span>
+      </div>
+      <div class="pv-body">
+        <div class="pv-side">
+          <div class="h">OFFSHORE</div>
+          <div class="sub">live counters</div>
+          <div class="row"><span>block</span><b>15,951,153</b></div>
+          <div class="row"><span>daw</span><b>1,117</b></div>
+          <div class="row pos"><span>$dirty</span><b>$0.0630</b></div>
+          <div class="row neg"><span>op cost</span><b>9.20</b></div>
+          <div class="row warn"><span>status</span><b>nominal</b></div>
+        </div>
+        <div class="pv-main">
+          <div class="h">EMISSIONS VS BURN · <b>hourly</b></div>
+          <div class="state">state · burn outpacing emission <b>1.54×</b> · net flow <span class="neg">–34.2k INF</span> · vault paid <span class="pos">739.6k USDm</span></div>
+          <div class="pv-bars">
+            <div class="b" style="height:35%"></div><div class="b alt" style="height:62%"></div>
+            <div class="b" style="height:48%"></div><div class="b warn" style="height:90%"></div>
+            <div class="b" style="height:30%"></div><div class="b alt" style="height:55%"></div>
+            <div class="b" style="height:70%"></div><div class="b" style="height:42%"></div>
+            <div class="b alt" style="height:88%"></div><div class="b" style="height:50%"></div>
+            <div class="b warn" style="height:65%"></div><div class="b" style="height:38%"></div>
+          </div>
+        </div>
+      </div>
+      <div class="pv-foot">
+        <span>q2 2013<span class="blink"></span></span>
+        <span><b>amber</b> · default</span>
+      </div>
+    </div>
+  </div>
+
+<div class="snippet"><button class="copy" data-copy="amber">copy</button><span class="c">/* Default — applies on :root */</span>
+<span class="k">:root</span> {
+  <span class="k">--t-bg</span>:        <span class="v">#000000</span>;
+  <span class="k">--t-bg-soft</span>:   <span class="v">#0a0700</span>;
+  <span class="k">--t-panel</span>:     <span class="v">#050300</span>;
+  <span class="k">--t-rule</span>:      <span class="v">#2a1c00</span>;
+  <span class="k">--t-rule-soft</span>: <span class="v">#1a1000</span>;
+  <span class="k">--t-rule-hot</span>:  <span class="v">#4a3300</span>;
+  <span class="k">--t-fg</span>:        <span class="v">#ffb000</span>; <span class="c">/* amber primary */</span>
+  <span class="k">--t-fg-soft</span>:   <span class="v">#c98200</span>;
+  <span class="k">--t-fg-mut</span>:    <span class="v">#6b4400</span>;
+  <span class="k">--t-fg-dim</span>:    <span class="v">#3d2600</span>;
+  <span class="k">--t-num</span>:       <span class="v">#ffffff</span>; <span class="c">/* data numbers */</span>
+  <span class="k">--t-hdr</span>:       <span class="v">#e8d4a4</span>; <span class="c">/* pale cream — region headers */</span>
+  <span class="k">--t-hdr-soft</span>:  <span class="v">#a89270</span>;
+  <span class="k">--t-pos</span>:       <span class="v">#50d870</span>;
+  <span class="k">--t-neg</span>:       <span class="v">#ff5252</span>;
+  <span class="k">--t-warn</span>:      <span class="v">#ffd24a</span>;
+  <span class="k">--t-sel</span>:       <span class="v">#221700</span>;
+  <span class="k">--t-focus</span>:     <span class="v">#ffb000</span>;
+}</div>
+</section>
+
+<!-- ===================================================== GREEN -->
+<section class="theme theme-green">
+  <div class="theme-head">
+    <h2>Green</h2>
+    <span class="id">data-theme=<b>"green"</b> · phosphor crt</span>
+    <span class="desc">Classic VT220 phosphor. Pos uses the same green as <code>--t-fg</code>; rely on bar fill / brightness for emphasis instead of hue.</span>
+  </div>
+
+  <div class="theme-body">
+    <div class="swatches">
+      <div class="swatch"><div class="chip" style="background:#000000"></div><span class="var">--t-bg</span><span class="hex">#000000</span><span class="role">canvas</span></div>
+      <div class="swatch"><div class="chip" style="background:#020603"></div><span class="var">--t-bg-soft</span><span class="hex">#020603</span><span class="role">rail / soft pane</span></div>
+      <div class="swatch"><div class="chip" style="background:#020603"></div><span class="var">--t-panel</span><span class="hex">#020603</span><span class="role">inner panel</span></div>
+      <div class="swatch"><div class="chip" style="background:#082011"></div><span class="var">--t-sel</span><span class="hex">#082011</span><span class="role">selection / hover</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#0e2113"></div><span class="var">--t-rule</span><span class="hex">#0e2113</span><span class="role">divider</span></div>
+      <div class="swatch"><div class="chip" style="background:#08160c"></div><span class="var">--t-rule-soft</span><span class="hex">#08160c</span><span class="role">faint divider</span></div>
+      <div class="swatch"><div class="chip" style="background:#185030"></div><span class="var">--t-rule-hot</span><span class="hex">#185030</span><span class="role">active border</span></div>
+      <div class="swatch"><div class="chip" style="background:#4ade80"></div><span class="var">--t-focus</span><span class="hex">#4ade80</span><span class="role">focus ring</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#4ade80"></div><span class="var">--t-fg</span><span class="hex">#4ade80</span><span class="role">primary text</span></div>
+      <div class="swatch"><div class="chip" style="background:#2c8d4e"></div><span class="var">--t-fg-soft</span><span class="hex">#2c8d4e</span><span class="role">secondary text</span></div>
+      <div class="swatch"><div class="chip" style="background:#1d5a32"></div><span class="var">--t-fg-mut</span><span class="hex">#1d5a32</span><span class="role">muted text</span></div>
+      <div class="swatch"><div class="chip" style="background:#0f3119"></div><span class="var">--t-fg-dim</span><span class="hex">#0f3119</span><span class="role">tertiary / labels</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#ffffff"></div><span class="var">--t-num</span><span class="hex">#ffffff</span><span class="role">data numbers</span></div>
+      <div class="swatch"><div class="chip" style="background:#cfe4b3"></div><span class="var">--t-hdr</span><span class="hex">#cfe4b3</span><span class="role">section headers</span></div>
+      <div class="swatch"><div class="chip" style="background:#82a368"></div><span class="var">--t-hdr-soft</span><span class="hex">#82a368</span><span class="role">soft headers</span></div>
+      <div class="swatch"><div class="chip" style="background:#000;border:1px dashed #0e2113"></div><span class="var">— spacer —</span><span class="hex">&nbsp;</span><span class="role">&nbsp;</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#4ade80"></div><span class="var">--t-pos</span><span class="hex">#4ade80</span><span class="role">positive / gain</span></div>
+      <div class="swatch"><div class="chip" style="background:#ff5252"></div><span class="var">--t-neg</span><span class="hex">#ff5252</span><span class="role">negative / loss</span></div>
+      <div class="swatch"><div class="chip" style="background:#f0d27c"></div><span class="var">--t-warn</span><span class="hex">#f0d27c</span><span class="role">warning</span></div>
+      <div class="swatch"><div class="chip" style="background:#000;border:1px dashed #0e2113"></div><span class="var">— spacer —</span><span class="hex">&nbsp;</span><span class="role">&nbsp;</span></div>
+    </div>
+
+    <div class="preview">
+      <div class="pv-bar">
+        <span><span class="lbl">$dirty</span><span class="num">$0.0630</span> <span class="pos">▲0.41%</span></span>
+        <span><span class="lbl">op cost</span><span class="num">9.20 INF</span></span>
+        <span><span class="lbl">block</span><span class="num">15,951,153</span></span>
+        <span><span class="lbl">status</span> <span class="pos">● LIVE</span></span>
+      </div>
+      <div class="pv-body">
+        <div class="pv-side">
+          <div class="h">OFFSHORE</div>
+          <div class="sub">live counters</div>
+          <div class="row"><span>block</span><b>15,951,153</b></div>
+          <div class="row"><span>daw</span><b>1,117</b></div>
+          <div class="row pos"><span>$dirty</span><b>$0.0630</b></div>
+          <div class="row neg"><span>op cost</span><b>9.20</b></div>
+          <div class="row warn"><span>status</span><b>nominal</b></div>
+        </div>
+        <div class="pv-main">
+          <div class="h">EMISSIONS VS BURN · <b>hourly</b></div>
+          <div class="state">state · burn outpacing emission <b>1.54×</b> · net flow <span class="neg">–34.2k INF</span> · vault paid <span class="pos">739.6k USDm</span></div>
+          <div class="pv-bars">
+            <div class="b" style="height:35%"></div><div class="b alt" style="height:62%"></div>
+            <div class="b" style="height:48%"></div><div class="b warn" style="height:90%"></div>
+            <div class="b" style="height:30%"></div><div class="b alt" style="height:55%"></div>
+            <div class="b" style="height:70%"></div><div class="b" style="height:42%"></div>
+            <div class="b alt" style="height:88%"></div><div class="b" style="height:50%"></div>
+            <div class="b warn" style="height:65%"></div><div class="b" style="height:38%"></div>
+          </div>
+        </div>
+      </div>
+      <div class="pv-foot">
+        <span>q2 2013<span class="blink"></span></span>
+        <span><b>green</b> · phosphor crt</span>
+      </div>
+    </div>
+  </div>
+
+<div class="snippet"><button class="copy" data-copy="green">copy</button><span class="c">/* Apply with [data-theme="green"] on .tm root */</span>
+<span class="k">.tm[data-theme="green"]</span> {
+  <span class="k">--t-bg</span>:        <span class="v">#000000</span>;
+  <span class="k">--t-bg-soft</span>:   <span class="v">#020603</span>;
+  <span class="k">--t-panel</span>:     <span class="v">#020603</span>;
+  <span class="k">--t-rule</span>:      <span class="v">#0e2113</span>;
+  <span class="k">--t-rule-soft</span>: <span class="v">#08160c</span>;
+  <span class="k">--t-rule-hot</span>:  <span class="v">#185030</span>;
+  <span class="k">--t-fg</span>:        <span class="v">#4ade80</span>;
+  <span class="k">--t-fg-soft</span>:   <span class="v">#2c8d4e</span>;
+  <span class="k">--t-fg-mut</span>:    <span class="v">#1d5a32</span>;
+  <span class="k">--t-fg-dim</span>:    <span class="v">#0f3119</span>;
+  <span class="k">--t-num</span>:       <span class="v">#ffffff</span>;
+  <span class="k">--t-hdr</span>:       <span class="v">#cfe4b3</span>;
+  <span class="k">--t-hdr-soft</span>:  <span class="v">#82a368</span>;
+  <span class="k">--t-pos</span>:       <span class="v">#4ade80</span>;
+  <span class="k">--t-neg</span>:       <span class="v">#ff5252</span>;
+  <span class="k">--t-warn</span>:      <span class="v">#f0d27c</span>;
+  <span class="k">--t-sel</span>:       <span class="v">#082011</span>;
+  <span class="k">--t-focus</span>:     <span class="v">#4ade80</span>;
+}</div>
+</section>
+
+<!-- ===================================================== PAPER -->
+<section class="theme theme-paper">
+  <div class="theme-head">
+    <h2>Paper</h2>
+    <span class="id">data-theme=<b>"paper"</b> · light · financial print</span>
+    <span class="desc">Light cream paper. Black numbers, dark tan headers, blue focus, red/green for delta. The blink should be disabled in this theme.</span>
+  </div>
+
+  <div class="theme-body">
+    <div class="swatches">
+      <div class="swatch"><div class="chip" style="background:#f7f3e8;border-color:#d4cab2"></div><span class="var">--t-bg</span><span class="hex">#f7f3e8</span><span class="role">canvas</span></div>
+      <div class="swatch"><div class="chip" style="background:#efe9d6;border-color:#d4cab2"></div><span class="var">--t-bg-soft</span><span class="hex">#efe9d6</span><span class="role">rail / soft pane</span></div>
+      <div class="swatch"><div class="chip" style="background:#f7f3e8;border-color:#d4cab2"></div><span class="var">--t-panel</span><span class="hex">#f7f3e8</span><span class="role">inner panel</span></div>
+      <div class="swatch"><div class="chip" style="background:#efe6cb;border-color:#d4cab2"></div><span class="var">--t-sel</span><span class="hex">#efe6cb</span><span class="role">selection / hover</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#d4cab2"></div><span class="var">--t-rule</span><span class="hex">#d4cab2</span><span class="role">divider</span></div>
+      <div class="swatch"><div class="chip" style="background:#e3dac1"></div><span class="var">--t-rule-soft</span><span class="hex">#e3dac1</span><span class="role">faint divider</span></div>
+      <div class="swatch"><div class="chip" style="background:#b29a6a"></div><span class="var">--t-rule-hot</span><span class="hex">#b29a6a</span><span class="role">active border</span></div>
+      <div class="swatch"><div class="chip" style="background:#2c5b96"></div><span class="var">--t-focus</span><span class="hex">#2c5b96</span><span class="role">focus ring</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#6b4400"></div><span class="var">--t-fg</span><span class="hex">#6b4400</span><span class="role">primary text</span></div>
+      <div class="swatch"><div class="chip" style="background:#886215"></div><span class="var">--t-fg-soft</span><span class="hex">#886215</span><span class="role">secondary text</span></div>
+      <div class="swatch"><div class="chip" style="background:#b29a6a"></div><span class="var">--t-fg-mut</span><span class="hex">#b29a6a</span><span class="role">muted text</span></div>
+      <div class="swatch"><div class="chip" style="background:#d4c89e"></div><span class="var">--t-fg-dim</span><span class="hex">#d4c89e</span><span class="role">tertiary / labels</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#1a1408"></div><span class="var">--t-num</span><span class="hex">#1a1408</span><span class="role">data numbers (black)</span></div>
+      <div class="swatch"><div class="chip" style="background:#5a3f1f"></div><span class="var">--t-hdr</span><span class="hex">#5a3f1f</span><span class="role">section headers</span></div>
+      <div class="swatch"><div class="chip" style="background:#8a6a3a"></div><span class="var">--t-hdr-soft</span><span class="hex">#8a6a3a</span><span class="role">soft headers</span></div>
+      <div class="swatch"><div class="chip" style="background:#f7f3e8;border:1px dashed #d4cab2"></div><span class="var">— spacer —</span><span class="hex">&nbsp;</span><span class="role">&nbsp;</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#2c7a39"></div><span class="var">--t-pos</span><span class="hex">#2c7a39</span><span class="role">positive / gain</span></div>
+      <div class="swatch"><div class="chip" style="background:#b22a2a"></div><span class="var">--t-neg</span><span class="hex">#b22a2a</span><span class="role">negative / loss</span></div>
+      <div class="swatch"><div class="chip" style="background:#b27628"></div><span class="var">--t-warn</span><span class="hex">#b27628</span><span class="role">warning</span></div>
+      <div class="swatch"><div class="chip" style="background:#f7f3e8;border:1px dashed #d4cab2"></div><span class="var">— spacer —</span><span class="hex">&nbsp;</span><span class="role">&nbsp;</span></div>
+    </div>
+
+    <div class="preview">
+      <div class="pv-bar">
+        <span><span class="lbl">$dirty</span><span class="num">$0.0630</span> <span class="pos">▲0.41%</span></span>
+        <span><span class="lbl">op cost</span><span class="num">9.20 INF</span></span>
+        <span><span class="lbl">block</span><span class="num">15,951,153</span></span>
+        <span><span class="lbl">status</span> <span class="pos">● LIVE</span></span>
+      </div>
+      <div class="pv-body">
+        <div class="pv-side">
+          <div class="h">OFFSHORE</div>
+          <div class="sub">live counters</div>
+          <div class="row"><span>block</span><b>15,951,153</b></div>
+          <div class="row"><span>daw</span><b>1,117</b></div>
+          <div class="row pos"><span>$dirty</span><b>$0.0630</b></div>
+          <div class="row neg"><span>op cost</span><b>9.20</b></div>
+          <div class="row warn"><span>status</span><b>nominal</b></div>
+        </div>
+        <div class="pv-main">
+          <div class="h">EMISSIONS VS BURN · <b>hourly</b></div>
+          <div class="state">state · burn outpacing emission <b>1.54×</b> · net flow <span class="neg">–34.2k INF</span> · vault paid <span class="pos">739.6k USDm</span></div>
+          <div class="pv-bars">
+            <div class="b" style="height:35%"></div><div class="b alt" style="height:62%"></div>
+            <div class="b" style="height:48%"></div><div class="b warn" style="height:90%"></div>
+            <div class="b" style="height:30%"></div><div class="b alt" style="height:55%"></div>
+            <div class="b" style="height:70%"></div><div class="b" style="height:42%"></div>
+            <div class="b alt" style="height:88%"></div><div class="b" style="height:50%"></div>
+            <div class="b warn" style="height:65%"></div><div class="b" style="height:38%"></div>
+          </div>
+        </div>
+      </div>
+      <div class="pv-foot">
+        <span>q2 2013<span class="blink"></span></span>
+        <span><b>paper</b> · financial print</span>
+      </div>
+    </div>
+  </div>
+
+<div class="snippet"><button class="copy" data-copy="paper">copy</button><span class="c">/* Apply with [data-theme="paper"]. Also kill the blink in this scheme. */</span>
+<span class="k">.tm[data-theme="paper"]</span> {
+  <span class="k">--t-bg</span>:        <span class="v">#f7f3e8</span>;
+  <span class="k">--t-bg-soft</span>:   <span class="v">#efe9d6</span>;
+  <span class="k">--t-panel</span>:     <span class="v">#f7f3e8</span>;
+  <span class="k">--t-rule</span>:      <span class="v">#d4cab2</span>;
+  <span class="k">--t-rule-soft</span>: <span class="v">#e3dac1</span>;
+  <span class="k">--t-rule-hot</span>:  <span class="v">#b29a6a</span>;
+  <span class="k">--t-fg</span>:        <span class="v">#6b4400</span>;
+  <span class="k">--t-fg-soft</span>:   <span class="v">#886215</span>;
+  <span class="k">--t-fg-mut</span>:    <span class="v">#b29a6a</span>;
+  <span class="k">--t-fg-dim</span>:    <span class="v">#d4c89e</span>;
+  <span class="k">--t-num</span>:       <span class="v">#1a1408</span>;
+  <span class="k">--t-hdr</span>:       <span class="v">#5a3f1f</span>;
+  <span class="k">--t-hdr-soft</span>:  <span class="v">#8a6a3a</span>;
+  <span class="k">--t-pos</span>:       <span class="v">#2c7a39</span>;
+  <span class="k">--t-neg</span>:       <span class="v">#b22a2a</span>;
+  <span class="k">--t-warn</span>:      <span class="v">#b27628</span>;
+  <span class="k">--t-sel</span>:       <span class="v">#efe6cb</span>;
+  <span class="k">--t-focus</span>:     <span class="v">#2c5b96</span>;
+}
+<span class="k">.tm[data-theme="paper"] .tm-blink</span> { <span class="k">animation</span>: <span class="v">none</span>; }</div>
+</section>
+
+<!-- ===================================================== PURPLE -->
+<section class="theme theme-purple">
+  <div class="theme-head">
+    <h2>Purple</h2>
+    <span class="id">data-theme=<b>"purple"</b> · synthwave</span>
+    <span class="desc">Deep violet base, lavender primary, hot-pink negative, mint positive. Most chromatic theme — use sparingly.</span>
+  </div>
+
+  <div class="theme-body">
+    <div class="swatches">
+      <div class="swatch"><div class="chip" style="background:#050009"></div><span class="var">--t-bg</span><span class="hex">#050009</span><span class="role">canvas</span></div>
+      <div class="swatch"><div class="chip" style="background:#0c0316"></div><span class="var">--t-bg-soft</span><span class="hex">#0c0316</span><span class="role">rail / soft pane</span></div>
+      <div class="swatch"><div class="chip" style="background:#03000a"></div><span class="var">--t-panel</span><span class="hex">#03000a</span><span class="role">inner panel</span></div>
+      <div class="swatch"><div class="chip" style="background:#14063a"></div><span class="var">--t-sel</span><span class="hex">#14063a</span><span class="role">selection / hover</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#2c0858"></div><span class="var">--t-rule</span><span class="hex">#2c0858</span><span class="role">divider</span></div>
+      <div class="swatch"><div class="chip" style="background:#18043a"></div><span class="var">--t-rule-soft</span><span class="hex">#18043a</span><span class="role">faint divider</span></div>
+      <div class="swatch"><div class="chip" style="background:#4e1090"></div><span class="var">--t-rule-hot</span><span class="hex">#4e1090</span><span class="role">active border</span></div>
+      <div class="swatch"><div class="chip" style="background:#a674ff"></div><span class="var">--t-focus</span><span class="hex">#a674ff</span><span class="role">focus ring</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#a674ff"></div><span class="var">--t-fg</span><span class="hex">#a674ff</span><span class="role">primary text</span></div>
+      <div class="swatch"><div class="chip" style="background:#7548c4"></div><span class="var">--t-fg-soft</span><span class="hex">#7548c4</span><span class="role">secondary text</span></div>
+      <div class="swatch"><div class="chip" style="background:#4a2a82"></div><span class="var">--t-fg-mut</span><span class="hex">#4a2a82</span><span class="role">muted text</span></div>
+      <div class="swatch"><div class="chip" style="background:#2a1850"></div><span class="var">--t-fg-dim</span><span class="hex">#2a1850</span><span class="role">tertiary / labels</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#ffffff"></div><span class="var">--t-num</span><span class="hex">#ffffff</span><span class="role">data numbers</span></div>
+      <div class="swatch"><div class="chip" style="background:#e0b8ff"></div><span class="var">--t-hdr</span><span class="hex">#e0b8ff</span><span class="role">section headers</span></div>
+      <div class="swatch"><div class="chip" style="background:#946dc8"></div><span class="var">--t-hdr-soft</span><span class="hex">#946dc8</span><span class="role">soft headers</span></div>
+      <div class="swatch"><div class="chip" style="background:#050009;border:1px dashed #2c0858"></div><span class="var">— spacer —</span><span class="hex">&nbsp;</span><span class="role">&nbsp;</span></div>
+
+      <div class="swatch"><div class="chip" style="background:#4ae3a5"></div><span class="var">--t-pos</span><span class="hex">#4ae3a5</span><span class="role">positive / gain</span></div>
+      <div class="swatch"><div class="chip" style="background:#ff5099"></div><span class="var">--t-neg</span><span class="hex">#ff5099</span><span class="role">negative / loss</span></div>
+      <div class="swatch"><div class="chip" style="background:#ffafef"></div><span class="var">--t-warn</span><span class="hex">#ffafef</span><span class="role">warning</span></div>
+      <div class="swatch"><div class="chip" style="background:#050009;border:1px dashed #2c0858"></div><span class="var">— spacer —</span><span class="hex">&nbsp;</span><span class="role">&nbsp;</span></div>
+    </div>
+
+    <div class="preview">
+      <div class="pv-bar">
+        <span><span class="lbl">$dirty</span><span class="num">$0.0630</span> <span class="pos">▲0.41%</span></span>
+        <span><span class="lbl">op cost</span><span class="num">9.20 INF</span></span>
+        <span><span class="lbl">block</span><span class="num">15,951,153</span></span>
+        <span><span class="lbl">status</span> <span class="pos">● LIVE</span></span>
+      </div>
+      <div class="pv-body">
+        <div class="pv-side">
+          <div class="h">OFFSHORE</div>
+          <div class="sub">live counters</div>
+          <div class="row"><span>block</span><b>15,951,153</b></div>
+          <div class="row"><span>daw</span><b>1,117</b></div>
+          <div class="row pos"><span>$dirty</span><b>$0.0630</b></div>
+          <div class="row neg"><span>op cost</span><b>9.20</b></div>
+          <div class="row warn"><span>status</span><b>nominal</b></div>
+        </div>
+        <div class="pv-main">
+          <div class="h">EMISSIONS VS BURN · <b>hourly</b></div>
+          <div class="state">state · burn outpacing emission <b>1.54×</b> · net flow <span class="neg">–34.2k INF</span> · vault paid <span class="pos">739.6k USDm</span></div>
+          <div class="pv-bars">
+            <div class="b" style="height:35%"></div><div class="b alt" style="height:62%"></div>
+            <div class="b" style="height:48%"></div><div class="b warn" style="height:90%"></div>
+            <div class="b" style="height:30%"></div><div class="b alt" style="height:55%"></div>
+            <div class="b" style="height:70%"></div><div class="b" style="height:42%"></div>
+            <div class="b alt" style="height:88%"></div><div class="b" style="height:50%"></div>
+            <div class="b warn" style="height:65%"></div><div class="b" style="height:38%"></div>
+          </div>
+        </div>
+      </div>
+      <div class="pv-foot">
+        <span>q2 2013<span class="blink"></span></span>
+        <span><b>purple</b> · synthwave</span>
+      </div>
+    </div>
+  </div>
+
+<div class="snippet"><button class="copy" data-copy="purple">copy</button><span class="c">/* Apply with [data-theme="purple"] on .tm root */</span>
+<span class="k">.tm[data-theme="purple"]</span> {
+  <span class="k">--t-bg</span>:        <span class="v">#050009</span>;
+  <span class="k">--t-bg-soft</span>:   <span class="v">#0c0316</span>;
+  <span class="k">--t-panel</span>:     <span class="v">#03000a</span>;
+  <span class="k">--t-rule</span>:      <span class="v">#2c0858</span>;
+  <span class="k">--t-rule-soft</span>: <span class="v">#18043a</span>;
+  <span class="k">--t-rule-hot</span>:  <span class="v">#4e1090</span>;
+  <span class="k">--t-fg</span>:        <span class="v">#a674ff</span>;
+  <span class="k">--t-fg-soft</span>:   <span class="v">#7548c4</span>;
+  <span class="k">--t-fg-mut</span>:    <span class="v">#4a2a82</span>;
+  <span class="k">--t-fg-dim</span>:    <span class="v">#2a1850</span>;
+  <span class="k">--t-num</span>:       <span class="v">#ffffff</span>;
+  <span class="k">--t-hdr</span>:       <span class="v">#e0b8ff</span>;
+  <span class="k">--t-hdr-soft</span>:  <span class="v">#946dc8</span>;
+  <span class="k">--t-pos</span>:       <span class="v">#4ae3a5</span>;
+  <span class="k">--t-neg</span>:       <span class="v">#ff5099</span>;
+  <span class="k">--t-warn</span>:      <span class="v">#ffafef</span>;
+  <span class="k">--t-sel</span>:       <span class="v">#14063a</span>;
+  <span class="k">--t-focus</span>:     <span class="v">#a674ff</span>;
+}</div>
+</section>
+
+<footer class="page">
+  <div>20 variables · 4 themes · drop into terminal.css</div>
+  <div>q2 2013 · offshore</div>
+</footer>
+
+</div>
+
+<!-- ============================================================ -->
+<!--  Snippets — copy-to-clipboard payloads (raw text, no markup) -->
+<!-- ============================================================ -->
+<script>
+const SNIPPETS = {
+  amber: `:root {
+  --t-bg:        #000000;
+  --t-bg-soft:   #0a0700;
+  --t-panel:     #050300;
+  --t-rule:      #2a1c00;
+  --t-rule-soft: #1a1000;
+  --t-rule-hot:  #4a3300;
+  --t-fg:        #ffb000;
+  --t-fg-soft:   #c98200;
+  --t-fg-mut:    #6b4400;
+  --t-fg-dim:    #3d2600;
+  --t-num:       #ffffff;
+  --t-hdr:       #e8d4a4;
+  --t-hdr-soft:  #a89270;
+  --t-pos:       #50d870;
+  --t-neg:       #ff5252;
+  --t-warn:      #ffd24a;
+  --t-sel:       #221700;
+  --t-focus:     #ffb000;
+}`,
+  green: `.tm[data-theme="green"] {
+  --t-bg:        #000000;
+  --t-bg-soft:   #020603;
+  --t-panel:     #020603;
+  --t-rule:      #0e2113;
+  --t-rule-soft: #08160c;
+  --t-rule-hot:  #185030;
+  --t-fg:        #4ade80;
+  --t-fg-soft:   #2c8d4e;
+  --t-fg-mut:    #1d5a32;
+  --t-fg-dim:    #0f3119;
+  --t-num:       #ffffff;
+  --t-hdr:       #cfe4b3;
+  --t-hdr-soft:  #82a368;
+  --t-pos:       #4ade80;
+  --t-neg:       #ff5252;
+  --t-warn:      #f0d27c;
+  --t-sel:       #082011;
+  --t-focus:     #4ade80;
+}`,
+  paper: `.tm[data-theme="paper"] {
+  --t-bg:        #f7f3e8;
+  --t-bg-soft:   #efe9d6;
+  --t-panel:     #f7f3e8;
+  --t-rule:      #d4cab2;
+  --t-rule-soft: #e3dac1;
+  --t-rule-hot:  #b29a6a;
+  --t-fg:        #6b4400;
+  --t-fg-soft:   #886215;
+  --t-fg-mut:    #b29a6a;
+  --t-fg-dim:    #d4c89e;
+  --t-num:       #1a1408;
+  --t-hdr:       #5a3f1f;
+  --t-hdr-soft:  #8a6a3a;
+  --t-pos:       #2c7a39;
+  --t-neg:       #b22a2a;
+  --t-warn:      #b27628;
+  --t-sel:       #efe6cb;
+  --t-focus:     #2c5b96;
+}
+.tm[data-theme="paper"] .tm-blink { animation: none; }`,
+  purple: `.tm[data-theme="purple"] {
+  --t-bg:        #050009;
+  --t-bg-soft:   #0c0316;
+  --t-panel:     #03000a;
+  --t-rule:      #2c0858;
+  --t-rule-soft: #18043a;
+  --t-rule-hot:  #4e1090;
+  --t-fg:        #a674ff;
+  --t-fg-soft:   #7548c4;
+  --t-fg-mut:    #4a2a82;
+  --t-fg-dim:    #2a1850;
+  --t-num:       #ffffff;
+  --t-hdr:       #e0b8ff;
+  --t-hdr-soft:  #946dc8;
+  --t-pos:       #4ae3a5;
+  --t-neg:       #ff5099;
+  --t-warn:      #ffafef;
+  --t-sel:       #14063a;
+  --t-focus:     #a674ff;
+}`
+};
+for (const btn of document.querySelectorAll('.copy')) {
+  btn.addEventListener('click', async () => {
+    const key = btn.getAttribute('data-copy');
+    try {
+      await navigator.clipboard.writeText(SNIPPETS[key]);
+      const orig = btn.textContent;
+      btn.textContent = '✓ copied';
+      btn.classList.add('ok');
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove('ok'); }, 1400);
+    } catch (e) {
+      btn.textContent = 'select & copy';
+    }
+  });
+}
+</script>
+
+</body>
+</html>

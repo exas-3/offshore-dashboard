@@ -1,142 +1,63 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
-import { fetchDashboard, fetchWhales, getVaultCycle } from '../src/api';
-import StatCard from '../src/components/StatCard';
-import VaultCycle from '../src/components/VaultCycle';
-import EmissionChart from '../src/components/EmissionChart';
-import TransactionFeed from '../src/components/TransactionFeed';
-import TopEarners from '../src/components/TopEarners';
-import WhaleLeaderboard from '../src/components/WhaleLeaderboard';
-import BurnChart from '../src/components/BurnChart';
-import FlowChart from '../src/components/FlowChart';
-import SupplyChart from '../src/components/SupplyChart';
-import InfluenceChart from '../src/components/InfluenceChart';
-import ParticipantsChart from '../src/components/ParticipantsChart';
-import ActiveWalletsChart from '../src/components/ActiveWalletsChart';
+import { useState, useEffect } from 'react';
+import { OffshoreDashboard } from './_components/offshore.jsx';
 
-const REFRESH_MS = 15_000;
+const THEME_FAVICON = {
+  amber:  { fg: '#ffb000', bg: '#000000' },
+  purple: { fg: '#a674ff', bg: '#050009' },
+  green:  { fg: '#4ade80', bg: '#020603' },
+  paper:  { fg: '#6b4400', bg: '#f7f3e8' },
+};
 
-export default function DashboardPage() {
-  const [data, setData]         = useState(null);
-  const [whaleData, setWhales]  = useState(null);
-  const [cycle, setCycle]       = useState(getVaultCycle());
-  const [loading, setLoading]   = useState(true);
-  const [wLoading, setWLoading] = useState(true);
-  const [error, setError]       = useState(null);
-  const [lastUpdate, setLastUpdate] = useState(null);
+function setFavicon(theme) {
+  const { fg, bg } = THEME_FAVICON[theme] || THEME_FAVICON.purple;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="${bg}"/><circle cx="32" cy="32" r="24" fill="none" stroke="${fg}" stroke-width="2.5"/><line x1="8" y1="32" x2="56" y2="32" stroke="${fg}" stroke-width="2.5"/><ellipse cx="32" cy="32" rx="9" ry="24" fill="none" stroke="${fg}" stroke-width="2.5"/><circle cx="44" cy="22" r="5" fill="${fg}"/></svg>`;
+  const url = 'data:image/svg+xml,' + encodeURIComponent(svg);
+  // Remove all existing icon links so the browser is forced to adopt the new one
+  document.querySelectorAll("link[rel~='icon']").forEach(el => el.parentNode.removeChild(el));
+  const link = document.createElement('link');
+  link.rel = 'icon';
+  link.type = 'image/svg+xml';
+  link.href = url;
+  document.head.appendChild(link);
+}
 
-  const load = useCallback(async () => {
-    try {
-      const d = await fetchDashboard();
-      setData(d);
-      setError(null);
-      setLastUpdate(Date.now());
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+export default function Page() {
+  const [data, setData] = useState(null);
+  const [theme, setTheme] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('offshore-theme') || 'purple';
     }
-  }, []);
+    return 'purple';
+  });
 
-  const loadWhales = useCallback(async () => {
-    try {
-      const d = await fetchWhales();
-      setWhales(d);
-    } catch { /* non-critical */ }
-    finally { setWLoading(false); }
-  }, []);
+  useEffect(() => { setFavicon(theme); }, [theme]);
 
-  useEffect(() => {
-    const t = setInterval(() => setCycle(getVaultCycle()), 1000);
-    return () => clearInterval(t);
-  }, []);
+  function handleThemeChange(t) {
+    setTheme(t);
+    localStorage.setItem('offshore-theme', t);
+    setFavicon(t);
+  }
 
   useEffect(() => {
-    load();
-    const t = setInterval(load, REFRESH_MS);
-    return () => clearInterval(t);
-  }, [load]);
+    fetch('/api/offshore-data', { cache: 'no-cache' })
+      .then(r => r.json())
+      .then(setData)
+      .catch(console.error);
+  }, []);
 
-  useEffect(() => {
-    loadWhales();
-    const t = setInterval(loadWhales, 5 * 60_000);
-    return () => clearInterval(t);
-  }, [loadWhales]);
-
-  return (
-    <>
-      {error && (
-        <div className="error-banner">
-          Backend error: {error}
-        </div>
-      )}
-
-      <div className="stats-row">
-        <StatCard
-          label="$DIRTY SUPPLY"
-          value={data?.supply != null ? data.supply.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}
-          sub="total circulating"
-          accent="gold"
-          loading={loading && !data}
-        />
-        <StatCard
-          label="BURNED / SUPPLY"
-          value={data?.supply ? (data.dirtySpentTotal / data.supply).toFixed(2) : '—'}
-          sub={data ? `${(data.dirtySpentTotal / 1_000_000).toFixed(2)}M burned all time` : 'loading...'}
-          accent="red"
-          loading={loading && !data}
-        />
-        <StatCard
-          label="TOTAL OPS"
-          value={data ? data.opsTotal.toLocaleString() : '—'}
-          sub={data ? `${(data.dirtyMintedTotal / 1_000_000).toFixed(2)}M $DIRTY emitted` : 'loading...'}
-          accent="green"
-          loading={loading && !data}
-        />
-        <StatCard
-          label="TOKEN HOLDERS"
-          value={data?.holders ?? '—'}
-          sub={data ? `${data.uniqueAddrs.toLocaleString()} unique wallets` : 'loading...'}
-          accent="amber"
-          loading={loading && !data}
-        />
+  if (!data) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100vh', background: '#000', color: '#ffb000',
+        fontFamily: "'IBM Plex Mono', monospace", fontSize: 13,
+        letterSpacing: '0.04em',
+      }}>
+        <span style={{ opacity: 0.7 }}>loading offshore data…</span>
       </div>
+    );
+  }
 
-      <div className="main-grid">
-        <VaultCycle cycle={cycle} opBreakdown={data?.opBreakdown} />
-        <div className="charts-stack">
-          <EmissionChart  dailyBuckets={data?.dailyBuckets ?? []}  hourlyBuckets={data?.hourlyBuckets ?? []} />
-          <BurnChart      dailyBurnBuckets={data?.dailyBurnBuckets ?? []}  hourlyBurnBuckets={data?.hourlyBurnBuckets ?? []} />
-          <FlowChart      dailyFlowBuckets={data?.dailyFlowBuckets ?? []}  hourlyFlowBuckets={data?.hourlyFlowBuckets ?? []} />
-          <SupplyChart    dailySupply={data?.dailySupply ?? []}    hourlySupply={data?.hourlySupply ?? []} />
-          <InfluenceChart dailyInfluence={data?.dailyInfluence ?? []} hourlyInfluence={data?.hourlyInfluence ?? []} influenceStats={data?.influenceStats} />
-          <ParticipantsChart  dailyParticipants={data?.dailyParticipants ?? []}  hourlyParticipants={data?.hourlyParticipants ?? []} />
-          <ActiveWalletsChart dailyActiveWallets={data?.dailyActiveWallets ?? []} hourlyActiveWallets={data?.hourlyActiveWallets ?? []} />
-        </div>
-      </div>
-
-      <div className="bottom-grid">
-        <TransactionFeed transfers={data?.transfers ?? []} loading={loading && !data} />
-        <TopEarners earners={data?.earners ?? []} loading={loading && !data} onRefresh={load} />
-      </div>
-
-      <div className="section-divider">
-        <span className="section-label">WHALE INTELLIGENCE</span>
-      </div>
-
-      <WhaleLeaderboard
-        whales={whaleData?.whales}
-        supply={whaleData?.supply}
-        knownContracts={whaleData?.knownContracts ?? {}}
-        loading={wLoading}
-      />
-
-      <footer style={{ textAlign: 'center', padding: '24px 0 16px', fontSize: 11, color: 'var(--text-2)', letterSpacing: '0.04em' }}>
-        made with love by{' '}
-        <a href="https://x.com/s_exas" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-2)', textDecoration: 'underline' }}>s_exas</a>
-        {' '}and{' '}
-        <span style={{ color: 'var(--text-2)' }}>dragonslayer42069.mega</span>
-      </footer>
-    </>
-  );
+  return <OffshoreDashboard D={data} theme={theme} onThemeChange={handleThemeChange} />;
 }

@@ -78,8 +78,8 @@ export default function App() {
   return (
     <div className="app">
       <div style={{
-        background: '#1a1200', borderBottom: '1px solid #3a2a00',
-        padding: '6px 16px', fontSize: 11, color: '#a07830',
+        background: '#120e20', borderBottom: '1px solid #2a1f4a',
+        padding: '6px 16px', fontSize: 11, color: '#a78bfa',
         textAlign: 'center', letterSpacing: '0.02em',
       }}>
         Data may be incomplete or inaccurate. Not financial advice — do not make financial decisions based on this site.

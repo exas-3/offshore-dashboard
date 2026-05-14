@@ -44,6 +44,7 @@ export async function fetchDashboard() {
     hourlyActiveWallets: emissionsRes.hourlyActiveWallets,
     dailyOpBreakdown:    emissionsRes.dailyOpBreakdown,
     hourlyOpBreakdown:   emissionsRes.hourlyOpBreakdown,
+    missionStats:        emissionsRes.missionStats,
     earners:          earnersRes.earners,
   };
 }
