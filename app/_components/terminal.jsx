@@ -909,7 +909,7 @@ export function Spark({ data, w = 80, h = 20, color = 'var(--t-fg)' }) {
   });
   return (
     <svg className="tm-spark" width={w} height={h} aria-hidden="true">
-      <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth="1.25" />
+      <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }

@@ -340,6 +340,10 @@
 .tm-grid-12 > .c-11 { grid-column: span 11; }
 .tm-grid-12 > .c-12 { grid-column: span 12; }
 
+@media (max-width: 900px) {
+  .tm-grid-12 > .tm-cell { grid-column: span 12 !important; }
+}
+
 .tm-stack { display: flex; flex-direction: column; gap: 14px; }
 
 /* ─── Region (the central container) ────────────────────────────────────── */
@@ -792,8 +796,8 @@
 .tm-tab-group {
   font-size: var(--t-fs-xs);
   color: var(--t-fg-mut);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
 }
 .tm-tab-group td {
   padding-top: 8px !important;
@@ -813,6 +817,39 @@
 
 .tm-tab tr.underwater td { background: rgba(255, 82, 82, 0.06); }
 .tm-tab tr.underwater:hover td { background: rgba(255, 82, 82, 0.10); }
+
+/* ─── Bloomberg-style table modifier (.tm-tab-bl) ───────────────────────── */
+.tm-tab-bl {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.tm-tab-bl th {
+  font-size: var(--t-fs-sm);
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  color: var(--t-hdr-soft);
+  border-bottom: none;
+  box-shadow: inset 0 -1px 0 var(--t-rule);
+  font-weight: 400;
+}
+.tm-tab-bl td {
+  border-top: none;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.tm-tab-bl tbody tr:first-child td { border-top: none; }
+.tm-tab-bl tbody tr:hover td { background: var(--t-sel); }
+.tm-tab-bl tbody tr.underwater td { background: rgba(255, 82, 82, 0.06); }
+.tm-tab-bl tbody tr.underwater:hover td { background: rgba(255, 82, 82, 0.10); }
+
+/* ─── Square thin scrollbars for bloomberg scroll containers ─────────────── */
+.tm-scroll-bl {
+  scrollbar-width: thin;
+  scrollbar-color: var(--t-rule-hot) transparent;
+}
+.tm-scroll-bl::-webkit-scrollbar { width: 6px; height: 6px; }
+.tm-scroll-bl::-webkit-scrollbar-track { background: transparent; }
+.tm-scroll-bl::-webkit-scrollbar-thumb { background: var(--t-rule-hot); border-radius: 0; }
 .tm-rail-h {
   font-size: var(--t-fs-sm);
   color: var(--t-hdr);

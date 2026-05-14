@@ -134,7 +134,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   // ── Live ops feed ────────────────────────────────────────────────────
   const [ops, setOps] = useStateO(() =>
     (D.recentOps && D.recentOps.length > 0)
-      ? D.recentOps.slice(0, 12).map(o => ({ ...o, time: nowHMS() }))
+      ? D.recentOps.slice(0, 250).map(o => ({ ...o, time: nowHMS() }))
       : []
   );
   const lastOpTsRef = useRefO(
@@ -223,7 +223,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
         if (d.newOps && d.newOps.length > 0) {
           const ts = nowHMS();
           lastOpTsRef.current = d.newOps[d.newOps.length - 1]._ts;
-          setOps((prev) => [...d.newOps.map(o => ({ ...o, time: ts })).reverse(), ...prev].slice(0, 12));
+          setOps((prev) => [...d.newOps.map(o => ({ ...o, time: ts })).reverse(), ...prev].slice(0, 250));
         }
         if (d.latestEvent && d.latestEvent._ts > lastEventTs) {
           lastEventTs = d.latestEvent._ts;
@@ -414,7 +414,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
           </Region>
         </GridCell>
         <GridCell id="supply" span={spans['supply']} height={heights['supply']} onResize={(r) => resizeCell('supply', r)}>
-          <Region title="$dirty market cap" sub="hourly · USDm" fkey="F2">
+          <Region title="$dirty valuation" sub="hourly · USDm" fkey="F2">
             <LineChart
               data={localDates(D.marketCapChart || [], true)}
               color="warn"
@@ -541,54 +541,58 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
         <section id="sec-trades" className="tm-grid-12">
         <GridCell id="trades" span={spans['trades']} height={heights['trades']} onResize={(r) => resizeCell('trades', r)}>
           <Region
-            title="live on-chain trades"
+            title="ongoing crimes"
             sub={`${tradesFiltered.length} co · grouped · sortable`}
             fkey="F5"
             focus={focusPane === 'trades'}
             actions={<Seg value={trxRange} options={['all','active','auto']} onChange={setTrxRange} />}
           >
-            <table className="tm-tab">
-              <thead>
-                <tr>
-                  <th><Sortable label="company" k="id"       sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
-                  <th><Sortable label="auto"    k="auto"     sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
-                  <th><Sortable label="ends"    k="endsIn"   sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
-                  <th className="num"><Sortable label="liq px"  k="liqPrice" sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
-                  <th className="num"><Sortable label="buffer" k="buffer"   sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
-                  <th>history</th>
-                  <th className="num">entry</th>
-                </tr>
-              </thead>
-              <tbody>
-                {renderTradeRows(tradesFiltered, trxRange)}
-              </tbody>
-            </table>
+            <div className="tm-scroll-bl" style={{ maxHeight: 264, overflowY: 'auto', overflowX: 'hidden' }}>
+              <table className="tm-tab tm-tab-bl">
+                <thead style={{ position: 'sticky', top: 0, background: 'var(--t-bg)', zIndex: 1 }}>
+                  <tr>
+                    <th><Sortable label="company" k="id"       sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
+                    <th><Sortable label="auto"    k="auto"     sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
+                    <th><Sortable label="ends"    k="endsIn"   sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
+                    <th className="num"><Sortable label="liq px"  k="liqPrice" sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
+                    <th className="num"><Sortable label="buffer" k="buffer"   sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
+                    <th>history</th>
+                    <th className="num">entry</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {renderTradeRows(tradesFiltered, trxRange)}
+                </tbody>
+              </table>
+            </div>
           </Region>
         </GridCell>
         <GridCell id="ops" span={spans['ops']} height={heights['ops']} onResize={(r) => resizeCell('ops', r)}>
-          <Region title="ops feed" sub="live · last 12" fkey="F6" focus={focusPane === 'ops'}>
-            <table className="tm-tab">
-              <thead>
-                <tr>
-                  <th>t</th>
-                  <th>wallet</th>
-                  <th>op</th>
-                  <th>res</th>
-                  <th className="num">$dirty</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ops.map((o, i) => (
-                  <tr key={i}>
-                    <td className="dim">{o.time}</td>
-                    <td><span className="tm-num">{o.wallet}</span></td>
-                    <td>{o.op}</td>
-                    <td className={o.result === 'completed' || o.result === 'ok' ? 'pos' : o.result === 'busted' || o.result === 'fail' ? 'neg' : 'dim'}>{o.result}</td>
-                    <td className={`num ${o.dirty > 0 ? 'pos' : o.dirty < 0 ? 'neg' : ''}`}>{fmt.signed(o.dirty)}</td>
+          <Region title="live criminal activity" sub="live · last 250" fkey="F6" focus={focusPane === 'ops'}>
+            <div className="tm-scroll-bl" style={{ maxHeight: 264, overflowY: 'auto' }}>
+              <table className="tm-tab tm-tab-bl">
+                <thead style={{ position: 'sticky', top: 0, background: 'var(--t-bg)', zIndex: 1 }}>
+                  <tr>
+                    <th>t</th>
+                    <th>wallet</th>
+                    <th>op</th>
+                    <th>res</th>
+                    <th className="num">$dirty</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {ops.map((o, i) => (
+                    <tr key={i}>
+                      <td className="dim">{o.time}</td>
+                      <td><span className="tm-num">{o.wallet}</span></td>
+                      <td>{o.op}</td>
+                      <td className={o.result === 'completed' || o.result === 'ok' ? 'pos' : o.result === 'busted' || o.result === 'fail' ? 'neg' : 'dim'}>{o.result}</td>
+                      <td className={`num ${o.dirty > 0 ? 'pos' : o.dirty < 0 ? 'neg' : ''}`}>{fmt.signed(o.dirty)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Region>
         </GridCell>
 
@@ -843,7 +847,7 @@ function renderTradeRows(rows, range) {
           <td className={r.active ? 'warn' : 'dim'}>{r.endsIn}</td>
           <td className="num">{r.liqPrice.toLocaleString()}</td>
           <td className={`num ${r.buffer >= 0 ? 'pos' : 'neg'}`}>{r.buffer >= 0 ? '+' : ''}{r.buffer.toFixed(2)}</td>
-          <td><Spark data={history} w={70} h={16} color={`var(--t-${r.buffer >= 0 ? 'pos' : 'neg'})`} /></td>
+          <td><Spark data={history} w={60} h={16} color={`var(--t-${r.buffer >= 0 ? 'pos' : 'neg'})`} /></td>
           <td className="num dim">{r.entry != null ? `$${r.entry.toFixed(2)}` : '—'}</td>
         </tr>
       );
