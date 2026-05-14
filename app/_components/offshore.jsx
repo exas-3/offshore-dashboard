@@ -93,6 +93,8 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     'participants':      'heatmap',
     'supply':            'company-state',
     'company-state':     'supply',
+    'staking-chart':     'staking-table',
+    'staking-table':     'staking-chart',
   };
   const [spans, setSpans] = useStateO({
     'emissions':          7,
@@ -107,6 +109,8 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     'ops':                5,
     'leaderboard':       12,
     'company-state':      5,
+    'staking-chart':      7,
+    'staking-table':      5,
   });
   const [heights, setHeights] = useStateO({ supply: 360, 'influence-daily': 200 });
 
@@ -130,6 +134,15 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   const [sortKey, setSortKey] = useStateO('endsIn');
   const [sortDir, setSortDir] = useStateO('asc');
   const [focusPane, setFocusPane] = useStateO('trades');
+  const [stakingData, setStakingData] = useStateO(null);
+
+  useEffectO(() => {
+    fetch('/api/staking').then(r => r.json()).then(setStakingData).catch(() => {});
+    const t = setInterval(() => {
+      fetch('/api/staking').then(r => r.json()).then(setStakingData).catch(() => {});
+    }, 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   // ── Live ops feed ────────────────────────────────────────────────────
   const [ops, setOps] = useStateO(() =>
@@ -176,6 +189,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     { id: 'token',       label: 'token',       fkey: 'F2' },
     { id: 'players',     label: 'players',     fkey: 'F3' },
     { id: 'vault',       label: 'vault',       fkey: 'F4' },
+    { id: 'staking',     label: 'staking',     fkey: 'F6' },
     { id: 'trades',      label: 'trades',      fkey: 'F5' },
     { id: 'leaderboard', label: 'leaderboard', fkey: 'F7' },
   ];
@@ -263,7 +277,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     { k: 'F3', label: 'players' },
     { k: 'F4', label: 'vault' },
     { k: 'F5', label: 'trades' },
-    { k: 'F6', label: 'ops' },
+    { k: 'F6', label: 'staking' },
     { k: 'F7', label: 'leaderboard' },
     { k: 'F8', label: 'wallet' },
     { k: '/',  label: 'search' },
@@ -535,6 +549,60 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
           </Region>
         </GridCell>
 
+        </section>
+
+        <section id="sec-staking" className="tm-grid-12">
+        <GridCell id="staking-chart" span={spans['staking-chart']} onResize={(r) => resizeCell('staking-chart', r)}>
+          <Region
+            title="faction staking"
+            sub={stakingData
+              ? `${(stakingData.stats.totalStaked / 1e3).toFixed(1)}k $dirty staked · ${stakingData.stats.uniqueStakers} stakers · rotation ${stakingData.stats.currentRotation}`
+              : 'loading…'}
+            fkey="F6"
+          >
+            {stakingData?.dailyChart?.length > 0 ? (
+              <AsciiBarChart
+                data={stakingData.dailyChart.map(d => ({ label: d.label, dirty: d.total }))}
+                series={[{ key: 'dirty', color: 'pos' }]}
+                height={14}
+                valueFmt={(v) => v >= 1000 ? Math.round(v / 1000) + 'k' : String(Math.round(v))}
+              />
+            ) : (
+              <span className="dim">no data</span>
+            )}
+          </Region>
+        </GridCell>
+        <GridCell id="staking-table" span={spans['staking-table']} onResize={(r) => resizeCell('staking-table', r)}>
+          <Region title="recent deposits" sub="last 50">
+            <div className="tm-scroll-bl" style={{ maxHeight: 264, overflowY: 'auto' }}>
+              <table className="tm-tab tm-tab-bl">
+                <thead style={{ position: 'sticky', top: 0, background: 'var(--t-bg)', zIndex: 1 }}>
+                  <tr>
+                    <th>time</th>
+                    <th>wallet</th>
+                    <th>rot</th>
+                    <th className="num">$dirty</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(stakingData?.recent || []).map((r, i) => {
+                    const d = new Date(r.ts * 1000);
+                    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    return (
+                      <tr key={i}>
+                        <td className="dim">{date} {time}</td>
+                        <td><span className="tm-num">{r.user.slice(0, 6)}…{r.user.slice(-4)}</span></td>
+                        <td className="dim">{r.rotationId}</td>
+                        <td className="num pos">{r.amount >= 1000 ? (r.amount / 1000).toFixed(1) + 'k' : r.amount.toFixed(0)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Region>
+        </GridCell>
         </section>
 
         <section id="sec-trades" className="tm-grid-12">

@@ -83,7 +83,7 @@ Usage: `const db = getDb(); const rows = await db\`SELECT ...\``.
 
 `lib/idx-queries.js` — queries over `idx_logs` / `idx_contracts` written by the offshore-indexer service. PostgreSQL only (no SQLite stub). Views: `v_dex_swaps`, `v_vault_cycles`, `v_company_trades`, `v_v3_swaps`.
 
-Key tables: `transfers`, `vault_payouts`, `influence_transfers`, `supply_snapshots`, `eth_price_snapshots`, `influence_supply_snapshots`, `token_holders`, `companies`, `meta`, `idx_logs`, `idx_contracts`.
+Key tables: `transfers`, `vault_payouts`, `influence_transfers`, `supply_snapshots`, `eth_price_snapshots`, `influence_supply_snapshots`, `token_holders`, `companies`, `staking_deposits`, `meta`, `idx_logs`, `idx_contracts`.
 
 ### On-chain constants (`server/etherscan.js`)
 
@@ -97,6 +97,9 @@ USDM:            0xFAfDdBb3FC7688494971A79cC65dca3EF82079E7  — stablecoin
 VAULT:           0x955a4adDC17114c36726C12AF9C73E23E497C2BD  — distribution vault
 FACTORY:         0x619814A203cA441611cEE02aBF31986Ca265dd35  — company factory
 BATCH_RESOLVER:  0x6E43F31b2c160A3672C681114696667Ef219D4C3  — batch state reader
+STAKING:         0x3620bbEDED3BcF1b3409098Dc152b0EEcf66eA8e  — FactionStaking (ERC1967Proxy, impl 0x5787Da81ab8e0be376029302e3950076e5c772c2)
+  Staked(address indexed user, uint256 indexed rotationId, uint256 amount)
+  topic0: 0x1449c6dd7851abc30abf37f57715f492010519147cc2652fbc38202c18a6ee90
 
 DEX pools:
   0xf9f676066eb7baeeed93e859bc26a41663f277a8  main pool

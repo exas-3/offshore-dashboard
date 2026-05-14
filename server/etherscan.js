@@ -178,21 +178,23 @@ export async function getCompanyTradeTypes(addrs, blockMap = new Map()) {
       return { method: 'eth_call', params: [{ to: a, data: SEL_TRADE_TYPE }, blockTag], id: j };
     });
     const results = await rpcBatch(reqs).catch(() => []);
-    for (let j = 0; j < chunk.length; j++) {
-      const res = results[j]?.result;
+    for (const r of (Array.isArray(results) ? results : [])) {
+      const res = r?.result;
       const t = (res && res !== '0x') ? Number(BigInt(res)) : 0;
-      if (t > 0) _companyTypeCache.set(chunk[j], t);
+      if (t > 0 && r.id != null) _companyTypeCache.set(chunk[r.id], t);
     }
     if (i + CHUNK < needed.length) await new Promise(r => setTimeout(r, 150));
   }
 }
 
 // Fetch factory DirtyPaid + FullCompletion + TradeExited + OpResult events for a block range.
-// Returns { companyMap: Map<txHash, companyAddr>, fullTxs: Set<txHash>,
+// Returns { companyMap: Map<"txHash:dirtyLogIndex", companyAddr>, fullTxs: Set<txHash>,
 //           companyBlockMap: Map<companyAddr, completionBlockNum>,
 //           d47Map: Map<"txHash:logIndex", opType> }
+// companyMap key uses dirtyLogIndex = payoutLogIndex - 1 (E_PAYOUT always immediately follows DIRTY ERC20).
+// This correctly handles batch txs where multiple companies complete in the same tx.
 // d47Map key is the d47 event's own log index. Callers look up:
-//   completed ops:  d47Map.get(txHash + ':' + (erc20LogIndex - 3))
+//   completed ops:  d47Map.get(txHash + ':' + (erc20LogIndex - 2))
 //   busted ops:     d47Map.get(txHash + ':' + (exitedLogIndex + 1))
 export async function fetchFactoryTradeContext(fromBlock, toBlock) {
   const fromHex = '0x' + fromBlock.toString(16);
@@ -203,22 +205,25 @@ export async function fetchFactoryTradeContext(fromBlock, toBlock) {
     rpcPost('eth_getLogs', [{ address: FACTORY_ADDR, topics: [E_EXITED],    fromBlock: fromHex, toBlock: toHex }]),
     rpcPost('eth_getLogs', [{ address: FACTORY_ADDR, topics: [E_D47],       fromBlock: fromHex, toBlock: toHex }]),
   ]);
-  const companyMap      = new Map(); // txHash → companyAddr
+  const companyMap      = new Map(); // "txHash:dirtyLogIndex" → companyAddr
   const companyBlockMap = new Map(); // companyAddr → completionBlockNum
+  const payoutTxs       = new Set(); // txHashes that have E_PAYOUT (for filtering E_EXITED)
   for (const l of payoutLogs ?? []) {
-    const txHash  = l.transactionHash.toLowerCase();
-    const company = ('0x' + l.topics[1].slice(26)).toLowerCase();
-    companyMap.set(txHash, company);
-    if (!companyBlockMap.has(company)) companyBlockMap.set(company, parseInt(l.blockNumber, 16));
+    const txHash      = l.transactionHash.toLowerCase();
+    const company     = ('0x' + l.topics[1].slice(26)).toLowerCase();
+    const dirtyLogIdx = parseInt(l.logIndex, 16) - 1; // DIRTY ERC20 is always at payoutLogIndex - 1
+    companyMap.set(txHash + ':' + dirtyLogIdx, company);
+    payoutTxs.add(txHash);
+    const bn = parseInt(l.blockNumber, 16);
+    if (bn > (companyBlockMap.get(company) ?? 0)) companyBlockMap.set(company, bn);
   }
-  // For busted ops (E_EXITED without E_PAYOUT) fill in the missing company addresses.
-  const payoutTxs = new Set([...companyMap.keys()]);
+  // For busted ops (E_EXITED without E_PAYOUT): add to companyBlockMap for getCompanyTradeTypes.
   for (const l of exitedLogs ?? []) {
     const txHash = l.transactionHash.toLowerCase();
     if (!payoutTxs.has(txHash)) {
       const company = ('0x' + l.topics[1].slice(26)).toLowerCase();
-      if (!companyMap.has(txHash)) companyMap.set(txHash, company);
-      if (!companyBlockMap.has(company)) companyBlockMap.set(company, parseInt(l.blockNumber, 16));
+      const bn = parseInt(l.blockNumber, 16);
+      if (bn > (companyBlockMap.get(company) ?? 0)) companyBlockMap.set(company, bn);
     }
   }
   const fullTxs = new Set((completeLogs ?? []).map(l => l.transactionHash.toLowerCase()));
@@ -491,6 +496,28 @@ export async function fetchLatestInfCost() {
   // Most recent log is last; return its amount in INF (18 decimals)
   const last = logs[logs.length - 1];
   return fromWei(BigInt(last.data).toString());
+}
+
+// ─── FactionStaking deposits ─────────────────────────────────────────────────
+const STAKING_ADDR = '0x3620bbeded3bcf1b3409098dc152b0eecf66ea8e';
+const E_STAKED     = '0x1449c6dd7851abc30abf37f57715f492010519147cc2652fbc38202c18a6ee90';
+
+export async function fetchStakingEvents(fromBlock, toBlock) {
+  const logs = await rpcPost('eth_getLogs', [{
+    address:   STAKING_ADDR,
+    topics:    [E_STAKED],
+    fromBlock: '0x' + fromBlock.toString(16),
+    toBlock:   '0x' + toBlock.toString(16),
+  }]);
+  return (logs || []).map(l => ({
+    hash:       l.transactionHash,
+    logIndex:   parseInt(l.logIndex, 16),
+    blockNum:   parseInt(l.blockNumber, 16),
+    timestamp:  parseInt(l.blockNumber, 16) + GENESIS,
+    userAddr:   ('0x' + l.topics[1].slice(26)).toLowerCase(),
+    rotationId: parseInt(l.topics[2], 16),
+    amount:     Number(BigInt(l.data)) / 1e18,
+  }));
 }
 
 // ─── ETH price — Kumbaya WETH/USDm pool (chain 4326) ────────────────────────

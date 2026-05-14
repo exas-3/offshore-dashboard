@@ -7,6 +7,7 @@ import {
   getUserCompaniesBatch, getTradeStates,
   fetchLiquidationEvents,
   fetchFactoryTradeContext, getCompanyTradeTypes, _companyTypeCache,
+  fetchStakingEvents,
 } from './etherscan.js';
 import {
   getDb,
@@ -20,6 +21,7 @@ import {
   getAllPlayerAddresses, upsertCompanies,
   getDistinctMintHashes, batchUpdateMintOpTypes,
   getLastLiqBlock, setLastLiqBlock, syncLiquidationsFromIdx,
+  upsertStakingDeposits, getLastStakingBlock, setLastStakingBlock,
   reconcileStatus,
 } from '../lib/db.js';
 
@@ -32,6 +34,7 @@ const DIRTY_START     = 15_190_000;
 const INFLUENCE_START = 15_194_000;
 const VAULT_START     = 15_194_000;
 const BATCH           = 20_000;
+const VAULT_BATCH     = 2_000;
 
 // ─── transfer sync ────────────────────────────────────────────────────────────
 
@@ -62,23 +65,24 @@ async function syncTransfers() {
               fetchTxInputs(mintHashes).catch(() => new Map()),
               fetchFactoryTradeContext(start, end).catch(() => ({ companyMap: new Map(), fullTxs: new Set(), companyBlockMap: new Map(), d47Map: new Map() })),
             ]);
-            // Pre-fetch trade types for companies using the E_COMPLETE protocol (no d47 event).
+            // Pre-fetch trade types for all companies seen in this block range.
             // Uses blockNum-1 eth_call; works for recent ops on non-archive RPC.
-            const companyAddrs = [...new Set([...tradeCtx.companyMap.values()])];
+            const companyAddrs = [...new Set([...tradeCtx.companyBlockMap.keys()])];
             if (companyAddrs.length > 0) {
               await getCompanyTradeTypes(companyAddrs, tradeCtx.companyBlockMap).catch(() => {});
             }
             const rows = logs.map(t => {
               const classified = { ...t, rawValue: t.amount.toString(), ...classifyTransfer(t.fromAddr, t.toAddr, t.amount, txInputs.get(t.hash.toLowerCase())) };
-              // Resolve PARTIAL: d47 OpResult event (newer protocol, offset -2 from DIRTY ERC20)
-              // takes priority; fall back to company type cache for E_COMPLETE protocol ops.
+              // Resolve PARTIAL: d47 OpResult event (offset -2 from DIRTY ERC20) takes priority;
+              // fall back to company type cache. companyMap is keyed by "txHash:dirtyLogIndex"
+              // so multi-company batch txs correctly resolve each mint to its own company.
               if (classified.kind === 'MINT' && classified.opType === 'PARTIAL') {
                 const txh = t.hash.toLowerCase();
                 const d47OpType = tradeCtx.d47Map?.get(txh + ':' + (t.logIndex - 2));
                 if (d47OpType) {
                   classified.opType = d47OpType;
                 } else {
-                  const company = tradeCtx.companyMap.get(txh);
+                  const company = tradeCtx.companyMap.get(txh + ':' + t.logIndex);
                   if (company) {
                     const compType = _companyTypeCache.get(company) ?? 0;
                     if (compType === 1) classified.opType = 'DRUG_DEAL';
@@ -243,8 +247,8 @@ async function syncVault() {
     if (fromBlock > latestBlock) return;
 
     let total = 0;
-    for (let start = fromBlock; start <= latestBlock; start += BATCH) {
-      const end = Math.min(start + BATCH - 1, latestBlock);
+    for (let start = fromBlock; start <= latestBlock; start += VAULT_BATCH) {
+      const end = Math.min(start + VAULT_BATCH - 1, latestBlock);
       let attempt = 0;
       while (attempt < 4) {
         try {
@@ -524,11 +528,55 @@ export async function reconcileDirtyTransfers() {
   }
 }
 
+// ─── staking sync ─────────────────────────────────────────────────────────────
+
+const STAKING_START = 15_800_000; // approximate deployment block
+
+let stakingSyncing = false;
+
+async function syncStaking() {
+  if (stakingSyncing) return;
+  stakingSyncing = true;
+  try {
+    const fromBlock   = Math.max(await getLastStakingBlock() + 1, STAKING_START);
+    const latestBlock = await getLatestBlock();
+    if (fromBlock > latestBlock) return;
+
+    let total = 0;
+    for (let start = fromBlock; start <= latestBlock; start += BATCH) {
+      const end = Math.min(start + BATCH - 1, latestBlock);
+      let attempt = 0;
+      while (attempt < 4) {
+        try {
+          const events = await fetchStakingEvents(start, end);
+          if (events.length > 0) {
+            await upsertStakingDeposits(events);
+            total += events.length;
+          }
+          break;
+        } catch (err) {
+          attempt++;
+          if (attempt >= 4) throw err;
+          await new Promise(r => setTimeout(r, 2000 * attempt));
+        }
+      }
+      await new Promise(r => setTimeout(r, 1200));
+    }
+
+    await setLastStakingBlock(latestBlock);
+    if (total > 0) console.log(`[poller] staking +${total} deposits | block ${latestBlock}`);
+  } catch (err) {
+    console.error('[poller] staking sync error:', err.message);
+  } finally {
+    stakingSyncing = false;
+  }
+}
+
 // ─── start ────────────────────────────────────────────────────────────────────
 
 export async function startPoller() {
   console.log('[poller] starting...');
-  await Promise.all([syncTransfers(), syncInfluence(), syncVault(), syncLiquidations()]);
+  await Promise.all([syncTransfers(), syncInfluence(), syncVault(), syncLiquidations(), syncStaking()]);
   await backfillSupplyHistory().catch(err => console.error('[poller] backfill error:', err.message));
   syncSnapshots();
   syncHolders();
@@ -537,6 +585,7 @@ export async function startPoller() {
   setInterval(syncTransfers,    TX_INTERVAL_MS);
   setInterval(syncVault,        TX_INTERVAL_MS);
   setInterval(syncLiquidations, LIQ_INTERVAL_MS);
+  setInterval(syncStaking,      TX_INTERVAL_MS);
   setInterval(syncSnapshots,    SNAPSHOT_INTERVAL_MS);
   setInterval(syncHolders,      HOLDERS_INTERVAL_MS);
   setInterval(syncCompanies,    COMPANIES_INTERVAL_MS);
