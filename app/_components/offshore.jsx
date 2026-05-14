@@ -271,7 +271,6 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
 
   const sideFoot = [
     { k: 'rpc',   v: 'live', cls: 'pos' },
-    { k: 'net',   v: 'mainnet' },
     { k: 'block', v: counters.block.toLocaleString() },
     { k: 'gas',   v: counters.gas.toFixed(4) },
     { k: 'tps',   v: counters.tps > 0 ? counters.tps.toLocaleString() : '—' },
@@ -600,7 +599,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
 
         <section id="sec-leaderboard" className="tm-grid-12">
         <GridCell id="leaderboard" span={spans['leaderboard']} height={heights['leaderboard']} onResize={(r) => resizeCell('leaderboard', r)}>
-          <Region title="top earners" sub="all time · rank Δ vs yesterday" fkey="F7">
+          <Region title="top criminals" sub="all time · rank Δ vs yesterday" fkey="F7">
             <table className="tm-tab">
               <thead>
                 <tr>
@@ -669,8 +668,6 @@ function LiveSidebar({ D, counters, ops }) {
         <Counter k="ops/hour"   v={Math.round(counters.opsMin * 60).toLocaleString()}               tickKey={counters._bump} />
         <Counter k="$dirty"     v={`$${counters.dirty.toFixed(4)}`} cls="warn"   tickKey={counters._bump} />
         <Counter k="op cost"    v={`${counters.opCost.toFixed(2)} INF`}          tickKey={counters._bump} />
-        <Counter k="gas / gwei" v={counters.gas.toFixed(4)}                     />
-        <Counter k="status"     v="● nominal" cls="pos" />
       </div>
 
       <div className="tm-live-panel">
