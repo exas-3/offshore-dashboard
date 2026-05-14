@@ -69,16 +69,17 @@ async function syncTransfers() {
             }
             const rows = logs.map(t => {
               const classified = { ...t, rawValue: t.amount.toString(), ...classifyTransfer(t.fromAddr, t.toAddr, t.amount, txInputs.get(t.hash.toLowerCase())) };
-              // Override PARTIAL classification using factory event context
+              // Override PARTIAL classification using factory event context.
+              // Classify by company type regardless of completion — outcome is
+              // inferred from amount at query time (100/115/130 = Completed, else Busted).
               if (classified.kind === 'MINT' && classified.opType === 'PARTIAL') {
                 const txh = t.hash.toLowerCase();
                 const company = tradeCtx.companyMap.get(txh);
                 if (company) {
-                  const isFull = tradeCtx.fullTxs.has(txh);
-                  if (isFull) {
-                    const compType = _companyTypeCache.get(company) ?? 0;
-                    classified.opType = compType === 1 ? 'DRUG_DEAL' : compType === 2 ? 'ARMS_DEAL' : 'PARTIAL';
-                  } // else: stays PARTIAL (early collection)
+                  const compType = _companyTypeCache.get(company) ?? 0;
+                  if (compType === 1) classified.opType = 'DRUG_DEAL';
+                  else if (compType === 2) classified.opType = 'ARMS_DEAL';
+                  else if (compType === 3) classified.opType = 'EXTORTION';
                 }
               }
               return classified;

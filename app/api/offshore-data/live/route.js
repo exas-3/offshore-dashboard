@@ -14,13 +14,14 @@ function shortAddr(addr) {
 function mapOpType(opType) {
   const m = {
     DRUG_DEAL: 'drug-deal', ARMS_DEAL: 'arms-deal', EXTORTION: 'extortion',
-    PARTIAL: 'partial', SCRAP: 'scrap', BUY_ASSET: 'buy-asset',
+    PARTIAL: 'op', SCRAP: 'scrap', BUY_ASSET: 'buy-asset',
     LEVEL_UP: 'level-up', THIRD_ENTERPRISE: 'buy-asset',
   };
   return m[opType] ?? opType.toLowerCase().replace(/_/g, '-');
 }
 
-const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION']);
+const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL']);
+const COMPLETE_AMOUNTS = new Set([100, 115, 130]);
 
 export async function GET(request) {
   try {
@@ -86,7 +87,9 @@ export async function GET(request) {
     const latestOp = op ? {
       wallet: shortAddr(op.to_addr),
       op:     mapOpType(op.op_type),
-      result: op.op_type === 'FAIL' ? 'busted' : EARN_OPS.has(op.op_type) ? 'completed' : 'ok',
+      result: EARN_OPS.has(op.op_type)
+        ? (COMPLETE_AMOUNTS.has(Math.round(Number(op.amount))) ? 'completed' : 'busted')
+        : 'ok',
       dirty:  Math.round(Number(op.amount) * 100) / 100,
       inf:    typeof infCost === 'number' ? infCost : 12.41,
     } : null;
@@ -95,7 +98,9 @@ export async function GET(request) {
     const newOps = (newOpsRows || []).map(r => ({
       wallet: shortAddr(r.kind === 'MINT' ? r.addr : r.from_addr2),
       op:     mapOpType(r.op_type),
-      result: EARN_OPS.has(r.op_type) ? 'completed' : 'ok',
+      result: EARN_OPS.has(r.op_type)
+        ? (COMPLETE_AMOUNTS.has(Math.round(Number(r.amount))) ? 'completed' : 'busted')
+        : 'ok',
       dirty:  r.kind === 'MINT'
         ? Math.round(Number(r.amount) * 100) / 100
         : -Math.round(Number(r.amount) * 100) / 100,
@@ -104,7 +109,7 @@ export async function GET(request) {
     }));
 
     const tickerKind  = { DEX_SELL:'sell', DEX_BUY:'buy', DRUG_DEAL:'op', ARMS_DEAL:'op', EXTORTION:'op', PARTIAL:'op', SCRAP:'op', BUY_ASSET:'op', LEVEL_UP:'op', THIRD_ENTERPRISE:'op' };
-    const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', PARTIAL:'PARTIAL', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE' };
+    const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', PARTIAL:'OP', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE' };
 
     const ev = latestEventRow[0];
     const latestEvent = ev ? {

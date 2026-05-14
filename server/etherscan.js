@@ -98,7 +98,7 @@ export function classifyTransfer(from, to, amount, txInput = null) {
       if (knownOp) return { kind: 'MINT', opType: knownOp };
     }
     if (amount > 0) return { kind: 'MINT', opType: 'PARTIAL' };  // overridden by factory context in poller
-    return               { kind: 'MINT', opType: 'FAIL'     };
+    return               { kind: 'MINT', opType: 'EXTORTION' }; // amount=0 = busted extortion
   }
   // DEX pool transfers take priority over amount-based spend rules.
   if (DEX_POOLS.has(t)) return { kind: 'TRANSFER', opType: 'DEX_SELL' };

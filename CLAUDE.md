@@ -1,19 +1,19 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
 ## Commands
 
 ```bash
-npm run build        # compile Next.js (required before every change takes effect)
+npm run build        # compile Next.js
 npm start            # serve production build on :3000
-npm run dev          # dev server (hot-reload) — NOT used in production
+npm run dev          # dev server with hot-reload
 npm run poller       # start the on-chain indexer: node --env-file=.env server/poller-main.js
 
 # Kill old server and restart after a build
 fuser -k 3000/tcp && npm start >> /tmp/offshore-server.log 2>&1 &
 
-# Query the DB directly (for diagnosis)
+# Query the DB directly
 node --env-file=.env --input-type=module <<'EOF'
 import { getDb } from './lib/db.js';
 const db = getDb();
@@ -23,72 +23,115 @@ process.exit(0);
 EOF
 ```
 
-**Important**: The server runs in production mode — `next dev` is not used. Every code change requires `npm run build` followed by a server restart to take effect. There is no hot-reload.
+Production runs on a Hetzner VPS. `fly.toml`, `fly-poller.toml`, `vercel.json`, and `Dockerfile` are leftovers from earlier deployment experiments — ignore them.
+
+Two always-on processes run side by side:
+- **Next.js** (`npm start`) — web server + API routes
+- **Poller** (`npm run poller`) — on-chain indexer
+
+`server/index.js` is a legacy Express server from before the Next.js migration. It is not used — do not edit it.
 
 ## Architecture
 
-### Two UI layers (legacy vs. active)
+### Active vs. legacy code
 
-- `src/` — the original Vite/React dashboard. Still deployed at `/companies`, `/players`, `/vault`, `/whales` pages (thin wrappers re-exporting from `src/views/`). Uses Recharts.
-- `app/_components/offshore.jsx` + `app/_components/terminal.jsx` — the active terminal-style dashboard on `/`. This is where all new work goes.
-
-### Terminal UI system
-
-`design/megaethDashboards/lib/terminal.css` is the CSS design token library — a Bloomberg-style monospace terminal widget vocabulary. It defines CSS custom properties (`--t-fg`, `--t-bg`, `--t-pos`, `--t-neg`, etc.) and layout primitives (`.tm`, `.tm-grid-12`, `.tm-region`, `.tm-kv`, etc.).
-
-`app/_components/terminal.jsx` exports all UI components: `TerminalShell`, `Region`, `KV`, `KVSep`, `BarRow`, `BarRow2`, `StackedBarRow`, `AsciiBarChart`, `Heatmap`, `Toasts`, `Seg`, `Sortable`, `GridCell`, `LineChart`, `fmt`.
-
-`app/_components/offshore.jsx` is the single large dashboard component that assembles all sections using terminal components. It receives the entire `D` data object from the API.
+- `app/` — active. All new work goes here.
+- `src/` — legacy Vite/React views. Dead weight; don't touch it.
+- `server/poller.js` + `server/etherscan.js` + `server/poller-main.js` — active poller code.
+- `server/index.js` + `server/db.js` — legacy Express server. Unused.
 
 ### Data flow
 
 ```
-MegaETH RPC → server/poller.js → PostgreSQL (Supabase) → app/api/offshore-data/route.js → page.jsx → OffshoreDashboard
+MegaETH RPC
+  └─ server/poller.js (15s intervals)
+       ├─ transfers, influence_transfers, vault_payouts
+       ├─ supply_snapshots, eth_price_snapshots, price_snapshots
+       ├─ token_holders (every 15min)
+       └─ companies (every 2min)
+
+offshore-indexer (separate repo, runs locally)
+  └─ idx_logs, idx_contracts → views: v_dex_swaps, v_vault_cycles, v_company_trades
+
+PostgreSQL (localhost:5432/offshore_dashboard)
+  └─ app/api/offshore-data/route.js (30s in-memory cache)
+       └─ app/page.jsx
+            ├─ fetches /api/offshore-data once on load
+            └─ polls /api/offshore-data/live every 2.2s (block, prices, recent ops)
 ```
 
-- The **poller** (`server/poller.js`, entry: `server/poller-main.js`) runs as a separate always-on process. It indexes ERC-20 transfer logs, vault payout events, influence transfers, and company state. Deployed to Fly.io via `fly-poller.toml`.
-- The **main API** (`app/api/offshore-data/route.js`) fetches everything in one request, assembles a large JSON blob, and caches it for 30 seconds in-memory. The frontend calls this once on load.
-- **Live updates** (`app/api/offshore-data/live/route.js`) are polled every 2.2s by the frontend for real-time block/price/ops counters.
+### Terminal UI
 
-### Database
+`design/megaethDashboards/lib/terminal.css` — Bloomberg-style CSS design tokens (`--t-fg`, `--t-bg`, `--t-pos`, `--t-neg`, etc.) and layout primitives (`.tm`, `.tm-grid-12`, `.tm-region`, `.tm-kv`).
 
-`lib/db.js` — PostgreSQL via `postgres.js`. **`getDb()` is the export, not `db`**. Usage: `const db = getDb(); const rows = await db\`SELECT ...\``.
+`app/_components/terminal.jsx` — component library: `TerminalShell`, `Region`, `KV`, `KVSep`, `BarRow`, `BarRow2`, `StackedBarRow`, `AsciiBarChart`, `Heatmap`, `Toasts`, `Seg`, `Sortable`, `GridCell`, `LineChart`, `fmt`.
 
-`lib/db-sqlite.js` — SQLite fallback (development without `DATABASE_URL`).
-
-`lib/index.js` — single import point that switches between PostgreSQL and SQLite based on `DATABASE_URL`. All API routes import from here.
-
-`lib/idx-queries.js` — queries over `idx_logs` / `idx_contracts`, the raw event index populated by the offshore-indexer service. Uses views: `v_dex_swaps`, `v_vault_cycles`, `v_company_trades`.
-
-Key tables: `transfers`, `vault_payouts`, `influence_transfers`, `supply_snapshots`, `token_holders`, `companies`, `idx_logs`, `meta`.
-
-### On-chain constants (all in `server/etherscan.js`)
-
-- RPC: `https://mainnet.megaeth.com/rpc`
-- `DIRTY` = `0xC2f34f8849a8607FD73E06D6849bDA07C2b7DE38` — main game token
-- `INFLUENCE` = `0x403De0893f0Bc66139592ba2FD254672f2dB933a` — influence token
-- `USDM` = `0xFAfDdBb3FC7688494971A79cC65dca3EF82079E7` — stablecoin
-- `VAULT` = `0x955a4adDC17114c36726C12AF9C73E23E497C2BD` — distribution vault
-- `GENESIS` = `1_762_797_011` — MegaETH genesis Unix timestamp; `timestamp = block_number + GENESIS` (1 sec/block)
-
-### Transfer classification
-
-Transfers are classified on index into `kind` + `op_type`:
-- `MINT` (from zero address) — earning ops: `DRUG_DEAL`, `ARMS_DEAL`, `EXTORTION`, `PARTIAL`, `FAIL`, `SCRAP_ITEM`
-- `SPEND` / `BURN` (from user wallet) — spending: `BUY_ASSET`, `LEVEL_UP`, `THIRD_ENTERPRISE`
-- `TRANSFER` — DEX activity: `DEX_BUY`, `DEX_SELL`
+`app/_components/offshore.jsx` — single large component that assembles all dashboard sections. Receives the full `D` data object from the API.
 
 ### Grid layout
 
-The dashboard uses a 12-column CSS grid (`.tm-grid-12`). `GridCell` components have draggable resize handles via `setPointerCapture`. **Paired cells** resize as complements (span + partner = 12) via the `cellPairs` map in `offshore.jsx`. When adding a new cell pair, add both directions to `cellPairs`.
+12-column CSS grid (`.tm-grid-12`). `GridCell` has draggable resize handles via `setPointerCapture`. Paired cells resize as complements (span + partner = 12) via the `cellPairs` map in `offshore.jsx`. When adding a new cell pair, register both directions in `cellPairs`.
+
+### Database
+
+`lib/db.js` — PostgreSQL via `postgres.js`. **Export is `getDb()`, not `db`**.  
+Usage: `const db = getDb(); const rows = await db\`SELECT ...\``.
+
+`lib/db-sqlite.js` — SQLite fallback when `DATABASE_URL` is not set.
+
+`lib/index.js` — switches between the two based on `DATABASE_URL`. All API routes import from here.
+
+`lib/idx-queries.js` — queries over `idx_logs` / `idx_contracts` written by the offshore-indexer service. PostgreSQL only (no SQLite stub). Views: `v_dex_swaps`, `v_vault_cycles`, `v_company_trades`, `v_v3_swaps`.
+
+Key tables: `transfers`, `vault_payouts`, `influence_transfers`, `supply_snapshots`, `eth_price_snapshots`, `influence_supply_snapshots`, `token_holders`, `companies`, `meta`, `idx_logs`, `idx_contracts`.
+
+### On-chain constants (`server/etherscan.js`)
+
+```
+RPC:             https://mainnet.megaeth.com/rpc  (1 sec/block)
+GENESIS:         1_762_797_011   (Unix ts of block 0; timestamp = block_number + GENESIS)
+
+DIRTY:           0xC2f34f8849a8607FD73E06D6849bDA07C2b7DE38  — main game token
+INFLUENCE:       0x403De0893f0Bc66139592ba2FD254672f2dB933a  — influence token
+USDM:            0xFAfDdBb3FC7688494971A79cC65dca3EF82079E7  — stablecoin
+VAULT:           0x955a4adDC17114c36726C12AF9C73E23E497C2BD  — distribution vault
+FACTORY:         0x619814A203cA441611cEE02aBF31986Ca265dd35  — company factory
+BATCH_RESOLVER:  0x6E43F31b2c160A3672C681114696667Ef219D4C3  — batch state reader
+
+DEX pools:
+  0xf9f676066eb7baeeed93e859bc26a41663f277a8  main pool
+  0x6bd9eef21c2419feffafbf4850153a3b3a74a5e1  legacy V3 pool
+```
+
+Price feeds come from the Kumbaya exchange API, not on-chain reads.
+
+### Transfer classification
+
+Classified at index time into `kind` + `op_type`:
+
+| kind | from | op_types |
+|------|------|----------|
+| `MINT` | zero address | `DRUG_DEAL`, `ARMS_DEAL`, `EXTORTION`, `PARTIAL`, `FAIL`, `SCRAP_ITEM` |
+| `SPEND` / `BURN` | player wallet | `BUY_ASSET`, `LEVEL_UP`, `THIRD_ENTERPRISE` |
+| `TRANSFER` | player wallet | `DEX_BUY`, `DEX_SELL` |
+
+Classification uses tx input function selectors + factory `TradeCompleted` events for PARTIAL → DRUG_DEAL/ARMS_DEAL resolution.
 
 ### Vault cycle data
 
-`vault_payouts` stores individual USDm payout claims (one row per claim, each user claims separately). For cycle-level aggregation, fetch raw rows and group in JavaScript using `getCycleStart(ts)` — **never use raw SQL time buckets** as they break on weekends. Cycle rules: weekdays (Mon 09:30 → Sat 09:30 UTC) have 3 cycles/day at 01:30, 09:30, 17:30 UTC (8h each); weekends have 1 cycle/day at 09:30 UTC (24h). The `getCycleStart` function is defined in `app/api/offshore-data/route.js` and `app/api/vault/route.js`.
+`vault_payouts` stores individual claims (one row per user claim). For cycle-level aggregation, group in JavaScript using `getCycleStart(ts)` — **never use raw SQL time buckets**, they break on weekends.
+
+Cycle rules:
+- **Weekdays** (Mon 09:30 → Sat 09:30 UTC): 3 cycles/day, 8h each, starting at 01:30 / 09:30 / 17:30 UTC
+- **Weekends** (Sat 09:30 → Mon 09:30 UTC): 1 cycle/day, 24h
+
+`getCycleStart` is defined in `app/api/offshore-data/route.js` and `app/api/vault/route.js`.
 
 ### Environment
 
 ```
-DATABASE_URL=postgresql://...  # Supabase connection string (transaction pooler port 6543 for Vercel)
-ETHERSCAN_KEY=...               # used by poller for Etherscan-compatible RPC calls
+DATABASE_URL=postgres://sir:sir_local@localhost:5432/offshore_dashboard
+ETHERSCAN_KEY=...      # MegaETH RPC key (used by poller)
+TG_BOT_TOKEN=...       # Telegram bot (feedback)
+TG_CHAT_ID=...         # Telegram chat ID
 ```

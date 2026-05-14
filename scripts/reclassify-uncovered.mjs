@@ -82,13 +82,11 @@ for (const row of uncovered) {
   const company = companyMap.get(txh);
   if (!company) continue;  // no factory event found, leave as-is
   const isFull = fullTxs.has(txh);
-  let newOp;
-  if (!isFull) {
-    newOp = 'PARTIAL';
-  } else {
-    const compType = _companyTypeCache.get(company) ?? 0;
-    newOp = compType === 1 ? 'DRUG_DEAL' : compType === 2 ? 'ARMS_DEAL' : 'PARTIAL';
-  }
+  const compType = _companyTypeCache.get(company) ?? 0;
+  const newOp = compType === 1 ? 'DRUG_DEAL'
+              : compType === 2 ? 'ARMS_DEAL'
+              : compType === 3 ? 'EXTORTION'
+              : 'PARTIAL';
   if (newOp !== row.op_type) {
     if (!updates[newOp]) updates[newOp] = [];
     updates[newOp].push(row.hash);

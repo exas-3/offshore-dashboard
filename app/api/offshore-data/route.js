@@ -113,7 +113,7 @@ function fmtCountdown(endTime) {
 function mapOpType(opType) {
   const m = {
     DRUG_DEAL: 'drug-deal', ARMS_DEAL: 'arms-deal', EXTORTION: 'extortion',
-    PARTIAL: 'partial', SCRAP: 'scrap', BUY_ASSET: 'buy-asset',
+    PARTIAL: 'op', SCRAP: 'scrap', BUY_ASSET: 'buy-asset',
     LEVEL_UP: 'level-up', THIRD_ENTERPRISE: 'buy-asset',
   };
   return m[opType] ?? opType.toLowerCase().replace(/_/g, '-');
@@ -437,7 +437,7 @@ export async function GET() {
     `.catch(() => []) : [];
 
     const tickerKind  = { DEX_SELL:'sell', DEX_BUY:'buy', DRUG_DEAL:'op', ARMS_DEAL:'op', EXTORTION:'op', PARTIAL:'op', SCRAP:'op', BUY_ASSET:'op', LEVEL_UP:'op', THIRD_ENTERPRISE:'op' };
-    const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', PARTIAL:'PARTIAL', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE' };
+    const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', PARTIAL:'OP', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE' };
 
     const liveTradeTicker = rawTicker.map(e => ({
       kind:   tickerKind[e.etype]  || 'op',
@@ -449,39 +449,25 @@ export async function GET() {
     }));
 
     // ── ops seed for the animated feed ────────────────────────────────────────
-    const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION']);
-    const failAddrs = [...new Set(
-      recentTransfers
-        .filter(t => t.kind === 'MINT' && t.op_type === 'FAIL')
-        .map(t => t.to_addr.toLowerCase())
-    )];
-    if (failAddrs.length > 0) await getCompanyTradeTypes(failAddrs).catch(() => {});
+    const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL']);
+    const COMPLETE_AMOUNTS = new Set([100, 115, 130]);
 
     const recentOps = recentTransfers
       .filter(t => (t.kind === 'MINT' && t.op_type && t.op_type !== '') ||
                    (t.kind === 'SPEND' && ['BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE'].includes(t.op_type)))
       .slice(0, 20)
-      .map(t => {
-        let op, result;
-        if (t.op_type === 'FAIL') {
-          const compType = _companyTypeCache.get(t.to_addr.toLowerCase()) ?? 0;
-          op     = compType === 1 ? 'drug-deal' : compType === 2 ? 'arms-deal' : 'unknown';
-          result = 'busted';
-        } else {
-          op     = mapOpType(t.op_type);
-          result = EARN_OPS.has(t.op_type) ? 'completed' : 'ok';
-        }
-        return {
-          wallet: shortAddr(t.kind === 'MINT' ? t.to_addr : t.from_addr),
-          op,
-          result,
-          dirty:  t.kind === 'MINT'
-            ? Math.round(Number(t.amount) * 100) / 100
-            : -Math.round(Number(t.amount) * 100) / 100,
-          inf:    infCost,
-          _ts:    Number(t.timestamp),
-        };
-      });
+      .map(t => ({
+        wallet: shortAddr(t.kind === 'MINT' ? t.to_addr : t.from_addr),
+        op:     mapOpType(t.op_type),
+        result: EARN_OPS.has(t.op_type)
+          ? (COMPLETE_AMOUNTS.has(Math.round(Number(t.amount))) ? 'completed' : 'busted')
+          : 'ok',
+        dirty:  t.kind === 'MINT'
+          ? Math.round(Number(t.amount) * 100) / 100
+          : -Math.round(Number(t.amount) * 100) / 100,
+        inf:    infCost,
+        _ts:    Number(t.timestamp),
+      }));
 
     // ── live counter seed ─────────────────────────────────────────────────────
     const counterInit = {
@@ -512,8 +498,8 @@ export async function GET() {
     const wEarned = ws.dirty_earned || 0;
     const wSpent  = ws.dirty_spent  || 0;
 
-    const opLabelMap  = { DRUG_DEAL: 'Drug Deal', ARMS_DEAL: 'Arms Deal', PARTIAL: 'Partial', SCRAP: 'Scrap Item', EXTORTION: 'Extortion', FAIL: 'Failed' };
-    const opColorMap  = { DRUG_DEAL: 'green', ARMS_DEAL: 'green', PARTIAL: 'orange', EXTORTION: 'green', SCRAP: 'orange', FAIL: 'red' };
+    const opLabelMap  = { DRUG_DEAL: 'Drug Deal', ARMS_DEAL: 'Arms Deal', PARTIAL: 'Op', SCRAP: 'Scrap Item', EXTORTION: 'Extortion' };
+    const opColorMap  = { DRUG_DEAL: 'green', ARMS_DEAL: 'green', PARTIAL: 'dim', EXTORTION: 'green', SCRAP: 'orange' };
     const spnLabelMap = { BUY_ASSET: 'Buy Asset', LEVEL_UP: 'Level Up', THIRD_ENTERPRISE: 'Third Enterprise' };
     const spnColorMap = { BUY_ASSET: 'orange', LEVEL_UP: 'magenta', THIRD_ENTERPRISE: 'red' };
 
