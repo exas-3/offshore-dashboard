@@ -112,8 +112,8 @@ function fmtCountdown(endTime) {
 
 function mapOpType(opType) {
   const m = {
-    DRUG_DEAL: 'drug-deal', ARMS_DEAL: 'arms-deal', EXTORTION: 'extortion',
-    PARTIAL: 'op', SCRAP: 'scrap', BUY_ASSET: 'buy-asset',
+    DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion',
+    PARTIAL: 'op', FAIL: 'op', SCRAP: 'scrap', BUY_ASSET: 'buy-asset',
     LEVEL_UP: 'level-up', THIRD_ENTERPRISE: 'buy-asset',
   };
   return m[opType] ?? opType.toLowerCase().replace(/_/g, '-');
@@ -160,7 +160,7 @@ export async function GET() {
       getCompanyStats(), getCompanies('all', 50),
       getSupplyHistoryForChart(86400).catch(() => []),
       getDexRecentSwaps(20).catch(() => []),
-      getRecentTransfers(50).catch(() => []),
+      getRecentTransfers(250).catch(() => []),
       getLatestEthPrice().catch(() => null),
       fetchDirtyPrice().catch(() => null),
       fetchLatestInfCost().catch(() => null),
@@ -426,7 +426,7 @@ export async function GET() {
       UNION ALL
       (SELECT op_type AS etype, to_addr, amount, timestamp
         FROM transfers WHERE kind='MINT'
-          AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','SCRAP')
+          AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP')
         ORDER BY timestamp DESC LIMIT 20)
       UNION ALL
       (SELECT op_type AS etype, from_addr, amount, timestamp
@@ -436,8 +436,8 @@ export async function GET() {
       ORDER BY timestamp DESC LIMIT 60
     `.catch(() => []) : [];
 
-    const tickerKind  = { DEX_SELL:'sell', DEX_BUY:'buy', DRUG_DEAL:'op', ARMS_DEAL:'op', EXTORTION:'op', PARTIAL:'op', SCRAP:'op', BUY_ASSET:'op', LEVEL_UP:'op', THIRD_ENTERPRISE:'op' };
-    const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', PARTIAL:'OP', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE' };
+    const tickerKind  = { DEX_SELL:'sell', DEX_BUY:'buy', DRUG_DEAL:'op', ARMS_DEAL:'op', EXTORTION:'op', PARTIAL:'op', FAIL:'op', SCRAP:'op', BUY_ASSET:'op', LEVEL_UP:'op', THIRD_ENTERPRISE:'op' };
+    const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', PARTIAL:'OP', FAIL:'OP', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE' };
 
     const liveTradeTicker = rawTicker.map(e => ({
       kind:   tickerKind[e.etype]  || 'op',
@@ -449,13 +449,13 @@ export async function GET() {
     }));
 
     // ── ops seed for the animated feed ────────────────────────────────────────
-    const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL']);
+    const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL', 'FAIL']);
     const COMPLETE_AMOUNTS = new Set([100, 115, 130]);
 
     const recentOps = recentTransfers
       .filter(t => (t.kind === 'MINT' && t.op_type && t.op_type !== '') ||
                    (t.kind === 'SPEND' && ['BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE'].includes(t.op_type)))
-      .slice(0, 20)
+      .slice(0, 250)
       .map(t => ({
         wallet: shortAddr(t.kind === 'MINT' ? t.to_addr : t.from_addr),
         op:     mapOpType(t.op_type),

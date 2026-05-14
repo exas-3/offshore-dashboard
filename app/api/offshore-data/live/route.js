@@ -13,14 +13,14 @@ function shortAddr(addr) {
 
 function mapOpType(opType) {
   const m = {
-    DRUG_DEAL: 'drug-deal', ARMS_DEAL: 'arms-deal', EXTORTION: 'extortion',
-    PARTIAL: 'op', SCRAP: 'scrap', BUY_ASSET: 'buy-asset',
+    DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion',
+    PARTIAL: 'op', FAIL: 'op', SCRAP: 'scrap', BUY_ASSET: 'buy-asset',
     LEVEL_UP: 'level-up', THIRD_ENTERPRISE: 'buy-asset',
   };
   return m[opType] ?? opType.toLowerCase().replace(/_/g, '-');
 }
 
-const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL']);
+const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL', 'FAIL']);
 const COMPLETE_AMOUNTS = new Set([100, 115, 130]);
 
 export async function GET(request) {
@@ -52,7 +52,7 @@ export async function GET(request) {
       db && since > 0 ? db`
         (SELECT to_addr AS addr, NULL AS from_addr2, op_type, amount::float AS amount, timestamp, 'MINT' AS kind
           FROM transfers WHERE kind='MINT' AND timestamp > ${since}
-            AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','SCRAP')
+            AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP')
           ORDER BY timestamp ASC LIMIT 20)
         UNION ALL
         (SELECT NULL, from_addr, op_type, amount::float, timestamp, 'SPEND'
@@ -72,7 +72,7 @@ export async function GET(request) {
         UNION ALL
         (SELECT op_type, to_addr, amount, timestamp
           FROM transfers WHERE kind='MINT'
-            AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','SCRAP')
+            AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP')
           ORDER BY timestamp DESC LIMIT 1)
         UNION ALL
         (SELECT op_type, from_addr, amount, timestamp
@@ -108,8 +108,8 @@ export async function GET(request) {
       _ts:    Number(r.timestamp),
     }));
 
-    const tickerKind  = { DEX_SELL:'sell', DEX_BUY:'buy', DRUG_DEAL:'op', ARMS_DEAL:'op', EXTORTION:'op', PARTIAL:'op', SCRAP:'op', BUY_ASSET:'op', LEVEL_UP:'op', THIRD_ENTERPRISE:'op' };
-    const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', PARTIAL:'OP', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE' };
+    const tickerKind  = { DEX_SELL:'sell', DEX_BUY:'buy', DRUG_DEAL:'op', ARMS_DEAL:'op', EXTORTION:'op', PARTIAL:'op', FAIL:'op', SCRAP:'op', BUY_ASSET:'op', LEVEL_UP:'op', THIRD_ENTERPRISE:'op' };
+    const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', PARTIAL:'OP', FAIL:'OP', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE' };
 
     const ev = latestEventRow[0];
     const latestEvent = ev ? {
