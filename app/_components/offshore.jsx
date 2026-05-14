@@ -140,7 +140,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     fetch('/api/staking').then(r => r.json()).then(setStakingData).catch(() => {});
     const t = setInterval(() => {
       fetch('/api/staking').then(r => r.json()).then(setStakingData).catch(() => {});
-    }, 30_000);
+    }, 60_000);
     return () => clearInterval(t);
   }, []);
 
@@ -561,11 +561,11 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
             fkey="F6"
           >
             {stakingData?.dailyChart?.length > 0 ? (
-              <AsciiBarChart
-                data={stakingData.dailyChart.map(d => ({ label: d.label, dirty: d.total }))}
-                series={[{ key: 'dirty', color: 'pos' }]}
-                height={14}
-                valueFmt={(v) => v >= 1000 ? Math.round(v / 1000) + 'k' : String(Math.round(v))}
+              <LineChart
+                data={stakingData.dailyChart.map(d => ({ x: d.label, v: d.total }))}
+                color="pos"
+                fill
+                valueFmt={(v) => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(Math.round(v))}
               />
             ) : (
               <span className="dim">no data</span>

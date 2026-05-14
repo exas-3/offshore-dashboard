@@ -20,6 +20,10 @@ export async function GET() {
         deposits: Number(r.deposits),
         stakers:  Number(r.stakers),
       }));
+      const todayLabel = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+      if (dailyChart.length === 0 || dailyChart[dailyChart.length - 1].label !== todayLabel) {
+        dailyChart.push({ label: todayLabel, total: 0, deposits: 0, stakers: 0 });
+      }
 
       const recentRows = recent.map(r => ({
         hash:       r.hash,
