@@ -560,7 +560,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
               : 'loading…'}
             fkey="F6"
           >
-            {stakingData?.dailyChart?.length > 0 ? (
+            {stakingData?.minuteChart?.length > 0 ? (
               <LineChart
                 data={stakingData.dailyChart.map(d => ({ x: d.label, v: d.total }))}
                 color="pos"
@@ -592,7 +592,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
                     return (
                       <tr key={i}>
                         <td className="dim">{date} {time}</td>
-                        <td><span className="tm-num">{r.user.slice(0, 6)}…{r.user.slice(-4)}</span></td>
+                        <td><a href={`https://mega.etherscan.io/address/${r.user}`} target="_blank" rel="noopener noreferrer" className="tm-num" style={{ textDecoration: 'none', color: 'inherit' }}>{r.user.slice(0, 6)}…{r.user.slice(-4)}</a></td>
                         <td className="dim">{r.rotationId}</td>
                         <td className="num pos">{r.amount >= 1000 ? (r.amount / 1000).toFixed(1) + 'k' : r.amount.toFixed(0)}</td>
                       </tr>
