@@ -435,17 +435,14 @@ async function syncLiquidations() {
         }
 
         const rows = liqs.map(l => {
-          // d47 event is always at E_EXITED logIndex+1; use it as primary source.
-          const d47OpType = tradeCtx.d47Map?.get(l.hash + ':' + (l.logIndex + 1));
-          let opType;
-          if (d47OpType) {
-            opType = d47OpType;
-          } else {
-            const compType = _companyTypeCache.get(l.companyAddr) ?? 0;
-            opType = compType === 1 ? 'DRUG_DEAL'
-                   : compType === 2 ? 'ARMS_DEAL'
-                   : l.dirtyAmount > 0 ? 'PARTIAL' : 'EXTORTION';
-          }
+          // tradeType() at blockNum-1 (pre-fetched into _companyTypeCache) is the
+          // authoritative source — it reads the startTrade(uint8 mode) state directly.
+          // d47 at exitedLogIndex+1 encodes a bust status code, not the trade type.
+          const compType = _companyTypeCache.get(l.companyAddr) ?? 0;
+          const opType = compType === 1 ? 'DRUG_DEAL'
+                       : compType === 2 ? 'ARMS_DEAL'
+                       : compType === 3 ? 'EXTORTION'
+                       : l.dirtyAmount > 0 ? 'PARTIAL' : 'EXTORTION';
           const toAddr = l.playerAddr ?? ownerMap.get(l.companyAddr) ?? l.companyAddr;
           return {
             hash: l.hash, logIndex: l.logIndex, blockNum: l.blockNum,
