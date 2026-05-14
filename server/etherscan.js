@@ -153,6 +153,8 @@ const E_EXITED = '0xf20fbbc5dd518513b4b0381c1904c0751ca7493753ec53a73e651e8b79ee
 const E_PAYOUT = '0xa082f97b8bead66307ae367bd14b2366e03c2e963493a9f269501d884cd1a502';
 // FullCompletion — present only on full 8h cycle completion (not partial collects)
 const E_COMPLETE = '0x55458b8d3210ff0a2d3612a4b3639021fd38d66d563562a98ca8b7d5e7930f70';
+// OpResult — emitted after every op; data word0 encodes op type: 80=EXTORTION, 250=ARMS_DEAL, 750=DRUG_DEAL
+const E_D47 = '0xd47648dbe74844d41eea0e3e6bf1d3f6f03cd31691e10e6edc7376d52b934dbd';
 // Company view function: tradeType() — returns 0=inactive, 1=DRUG_DEAL, 2=ARMS_DEAL
 const SEL_TRADE_TYPE = '0x6fd47b44';
 
@@ -160,46 +162,81 @@ const SEL_TRADE_TYPE = '0x6fd47b44';
 export const _companyTypeCache = new Map();
 
 // Batch-fetch trade types for company addresses not yet in cache.
-// Uses a small in-flight dedup so concurrent calls for same addr don't duplicate.
+// blockMap: optional Map<addr, completionBlockNum> — if provided, calls at blockNum-1
+// so the company is still in its active trade mode (not yet reset to 0 after completion).
+// Only caches non-zero values so stale zero results don't mask future lookups.
 const _inflight = new Map();
-export async function getCompanyTradeTypes(addrs) {
-  const needed = addrs.filter(a => !_companyTypeCache.has(a));
+export async function getCompanyTradeTypes(addrs, blockMap = new Map()) {
+  const needed = addrs.filter(a => !_companyTypeCache.get(a));
   if (needed.length === 0) return;
   const CHUNK = 50;
   for (let i = 0; i < needed.length; i += CHUNK) {
     const chunk = needed.slice(i, i + CHUNK);
-    const reqs = chunk.map((a, j) => ({ method: 'eth_call', params: [{ to: a, data: SEL_TRADE_TYPE }, 'latest'], id: j }));
+    const reqs = chunk.map((a, j) => {
+      const bn = blockMap.get(a);
+      const blockTag = bn ? '0x' + (bn - 1).toString(16) : 'latest';
+      return { method: 'eth_call', params: [{ to: a, data: SEL_TRADE_TYPE }, blockTag], id: j };
+    });
     const results = await rpcBatch(reqs).catch(() => []);
     for (let j = 0; j < chunk.length; j++) {
       const res = results[j]?.result;
       const t = (res && res !== '0x') ? Number(BigInt(res)) : 0;
-      _companyTypeCache.set(chunk[j], t);
+      if (t > 0) _companyTypeCache.set(chunk[j], t);
     }
     if (i + CHUNK < needed.length) await new Promise(r => setTimeout(r, 150));
   }
 }
 
-// Fetch factory DirtyPaid + FullCompletion events for a block range.
-// Returns { companyMap: Map<txHash, companyAddr>, fullTxs: Set<txHash> }
+// Fetch factory DirtyPaid + FullCompletion + TradeExited + OpResult events for a block range.
+// Returns { companyMap: Map<txHash, companyAddr>, fullTxs: Set<txHash>,
+//           companyBlockMap: Map<companyAddr, completionBlockNum>,
+//           d47Map: Map<"txHash:logIndex", opType> }
+// d47Map key is the d47 event's own log index. Callers look up:
+//   completed ops:  d47Map.get(txHash + ':' + (erc20LogIndex - 3))
+//   busted ops:     d47Map.get(txHash + ':' + (exitedLogIndex + 1))
 export async function fetchFactoryTradeContext(fromBlock, toBlock) {
   const fromHex = '0x' + fromBlock.toString(16);
   const toHex   = '0x' + toBlock.toString(16);
-  const [payoutLogs, completeLogs] = await Promise.all([
-    rpcPost('eth_getLogs', [{ address: FACTORY_ADDR, topics: [E_PAYOUT], fromBlock: fromHex, toBlock: toHex }]),
-    rpcPost('eth_getLogs', [{ address: FACTORY_ADDR, topics: [E_COMPLETE], fromBlock: fromHex, toBlock: toHex }]),
+  const [payoutLogs, completeLogs, exitedLogs, d47Logs] = await Promise.all([
+    rpcPost('eth_getLogs', [{ address: FACTORY_ADDR, topics: [E_PAYOUT],    fromBlock: fromHex, toBlock: toHex }]),
+    rpcPost('eth_getLogs', [{ address: FACTORY_ADDR, topics: [E_COMPLETE],  fromBlock: fromHex, toBlock: toHex }]),
+    rpcPost('eth_getLogs', [{ address: FACTORY_ADDR, topics: [E_EXITED],    fromBlock: fromHex, toBlock: toHex }]),
+    rpcPost('eth_getLogs', [{ address: FACTORY_ADDR, topics: [E_D47],       fromBlock: fromHex, toBlock: toHex }]),
   ]);
-  const companyMap = new Map();
+  const companyMap      = new Map(); // txHash → companyAddr
+  const companyBlockMap = new Map(); // companyAddr → completionBlockNum
   for (const l of payoutLogs ?? []) {
-    const txHash = l.transactionHash.toLowerCase();
+    const txHash  = l.transactionHash.toLowerCase();
     const company = ('0x' + l.topics[1].slice(26)).toLowerCase();
     companyMap.set(txHash, company);
+    if (!companyBlockMap.has(company)) companyBlockMap.set(company, parseInt(l.blockNumber, 16));
+  }
+  // For busted ops (E_EXITED without E_PAYOUT) fill in the missing company addresses.
+  const payoutTxs = new Set([...companyMap.keys()]);
+  for (const l of exitedLogs ?? []) {
+    const txHash = l.transactionHash.toLowerCase();
+    if (!payoutTxs.has(txHash)) {
+      const company = ('0x' + l.topics[1].slice(26)).toLowerCase();
+      if (!companyMap.has(txHash)) companyMap.set(txHash, company);
+      if (!companyBlockMap.has(company)) companyBlockMap.set(company, parseInt(l.blockNumber, 16));
+    }
   }
   const fullTxs = new Set((completeLogs ?? []).map(l => l.transactionHash.toLowerCase()));
-  return { companyMap, fullTxs };
+  // Build d47Map: "txHash:ownLogIndex" → opType string
+  const d47Map = new Map();
+  for (const l of d47Logs ?? []) {
+    const raw   = l.data.slice(2); // strip 0x, first 32-byte word
+    const word0 = parseInt(raw.slice(60, 64), 16); // last 2 bytes encode the op type
+    const opType = word0 === 750 ? 'DRUG_DEAL' : word0 === 250 ? 'ARMS_DEAL' : word0 === 80 ? 'EXTORTION' : null;
+    if (opType) d47Map.set(l.transactionHash.toLowerCase() + ':' + parseInt(l.logIndex, 16), opType);
+  }
+  return { companyMap, fullTxs, companyBlockMap, d47Map };
 }
 
-// Fetches liquidated trade events from the factory contract for a block range.
-// Returns [{hash, logIndex, blockNum, timestamp, companyAddr}] — only trades with no DIRTY payout.
+// Fetches exited trade events from the factory for a block range, excluding full successes (E_PAYOUT).
+// Covers early exits and busted ops. E_EXITED structure:
+//   topic1 = company address, topic2 = player address, data = DIRTY amount in wei
+// Returns [{hash, logIndex, blockNum, timestamp, companyAddr, playerAddr, dirtyAmount}]
 export async function fetchLiquidationEvents(fromBlock, toBlock) {
   const [exitedLogs, payoutLogs] = await Promise.all([
     rpcPost('eth_getLogs', [{
@@ -224,6 +261,8 @@ export async function fetchLiquidationEvents(fromBlock, toBlock) {
       blockNum:    parseInt(l.blockNumber, 16),
       timestamp:   parseInt(l.blockNumber, 16) + GENESIS,
       companyAddr: ('0x' + l.topics[1].slice(26)).toLowerCase(),
+      playerAddr:  l.topics[2] ? ('0x' + l.topics[2].slice(26)).toLowerCase() : null,
+      dirtyAmount: l.data && l.data !== '0x' ? fromWei(BigInt(l.data).toString()) : 0,
     }));
 }
 

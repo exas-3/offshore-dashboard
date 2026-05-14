@@ -45,37 +45,64 @@ console.log(`  Beyond idx head   : ${beyond.length} (will stay PARTIAL until ind
 
 if (inIdx.length === 0) { console.log('No indexed-block PARTIALs to fix.'); process.exit(0); }
 
-// ── 2. Resolve company addresses from idx_logs ────────────────────────────────
+// ── 2. Resolve company addresses + block numbers from idx_logs ────────────────
 const hashes = inIdx.map(r => r.hash.toLowerCase());
-const companyMap = new Map(); // tx_hash → company_addr
+const companyMap  = new Map(); // tx_hash → company_addr
+const blockNumMap = new Map(); // tx_hash → block_num (for blockNum-1 eth_call)
 
+const E_EXITED = '0xf20fbbc5dd518513b4b0381c1904c0751ca7493753ec53a73e651e8b79ee61ff';
 const HASH_CHUNK = 2_000;
 process.stdout.write('Looking up company addresses from idx_logs...\n');
 for (let i = 0; i < hashes.length; i += HASH_CHUNK) {
   const chunk = hashes.slice(i, i + HASH_CHUNK);
-  const rows = await db`
-    SELECT tx_hash, '0x' || RIGHT(topic1, 40) AS company
+  // DirtyPaid → successful completions
+  const payoutRows = await db`
+    SELECT tx_hash, '0x' || RIGHT(topic1, 40) AS company, block_num
     FROM idx_logs
     WHERE address = ${FACTORY}
       AND topic0  = ${E_PAYOUT}
       AND tx_hash = ANY(${chunk})
   `;
-  for (const r of rows) companyMap.set(r.tx_hash.toLowerCase(), r.company.toLowerCase());
+  for (const r of payoutRows) {
+    companyMap.set(r.tx_hash.toLowerCase(), r.company.toLowerCase());
+    blockNumMap.set(r.tx_hash.toLowerCase(), Number(r.block_num));
+  }
+  // TradeExited → busted ops (no DirtyPaid)
+  const exitedRows = await db`
+    SELECT tx_hash, '0x' || RIGHT(topic1, 40) AS company, block_num
+    FROM idx_logs
+    WHERE address = ${FACTORY}
+      AND topic0  = ${E_EXITED}
+      AND tx_hash = ANY(${chunk})
+  `;
+  for (const r of exitedRows) {
+    const txh = r.tx_hash.toLowerCase();
+    if (!companyMap.has(txh)) {
+      companyMap.set(txh, r.company.toLowerCase());
+      blockNumMap.set(txh, Number(r.block_num));
+    }
+  }
   process.stdout.write(`\r  ${Math.min(i + HASH_CHUNK, hashes.length)} / ${hashes.length}   `);
 }
 console.log(`\n  Found company addresses: ${companyMap.size} of ${hashes.length} hashes`);
 
-// ── 3. Fetch trade types for unique companies ─────────────────────────────────
+// ── 3. Fetch trade types at blockNum-1 so company is still in active mode ─────
+// Build company → blockNum map from the tx-level lookups
+const companyBlockMap = new Map();
+for (const [txh, company] of companyMap) {
+  const bn = blockNumMap.get(txh);
+  if (bn && !companyBlockMap.has(company)) companyBlockMap.set(company, bn);
+}
 const uniqueCompanies = [...new Set(companyMap.values())];
 console.log(`\nUnique company addresses: ${uniqueCompanies.length}`);
-console.log('Fetching trade types via RPC (0x6fd47b44)...');
-await getCompanyTradeTypes(uniqueCompanies);
+console.log('Fetching trade types via RPC at blockNum-1 (0x6fd47b44)...');
+await getCompanyTradeTypes(uniqueCompanies, companyBlockMap);
 
 const typeCount = { 1: 0, 2: 0, 0: 0 };
 for (const addr of uniqueCompanies) typeCount[_companyTypeCache.get(addr) ?? 0]++;
 console.log(`  type 1 (DRUG_DEAL) : ${typeCount[1]} companies`);
 console.log(`  type 2 (ARMS_DEAL) : ${typeCount[2]} companies`);
-console.log(`  type 0 (destroyed) : ${typeCount[0]} companies`);
+console.log(`  type 0 (unknown)   : ${typeCount[0]} companies`);
 
 // ── 4. Build update buckets ───────────────────────────────────────────────────
 const updates = { DRUG_DEAL: [], ARMS_DEAL: [] };

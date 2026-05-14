@@ -60,26 +60,31 @@ async function syncTransfers() {
             )];
             const [txInputs, tradeCtx] = await Promise.all([
               fetchTxInputs(mintHashes).catch(() => new Map()),
-              fetchFactoryTradeContext(start, end).catch(() => ({ companyMap: new Map(), fullTxs: new Set() })),
+              fetchFactoryTradeContext(start, end).catch(() => ({ companyMap: new Map(), fullTxs: new Set(), companyBlockMap: new Map(), d47Map: new Map() })),
             ]);
-            // Pre-fetch trade types for companies seen in this batch
+            // Pre-fetch trade types for companies using the E_COMPLETE protocol (no d47 event).
+            // Uses blockNum-1 eth_call; works for recent ops on non-archive RPC.
             const companyAddrs = [...new Set([...tradeCtx.companyMap.values()])];
             if (companyAddrs.length > 0) {
-              await getCompanyTradeTypes(companyAddrs).catch(() => {});
+              await getCompanyTradeTypes(companyAddrs, tradeCtx.companyBlockMap).catch(() => {});
             }
             const rows = logs.map(t => {
               const classified = { ...t, rawValue: t.amount.toString(), ...classifyTransfer(t.fromAddr, t.toAddr, t.amount, txInputs.get(t.hash.toLowerCase())) };
-              // Override PARTIAL classification using factory event context.
-              // Classify by company type regardless of completion — outcome is
-              // inferred from amount at query time (100/115/130 = Completed, else Busted).
+              // Resolve PARTIAL: d47 OpResult event (newer protocol, offset -2 from DIRTY ERC20)
+              // takes priority; fall back to company type cache for E_COMPLETE protocol ops.
               if (classified.kind === 'MINT' && classified.opType === 'PARTIAL') {
                 const txh = t.hash.toLowerCase();
-                const company = tradeCtx.companyMap.get(txh);
-                if (company) {
-                  const compType = _companyTypeCache.get(company) ?? 0;
-                  if (compType === 1) classified.opType = 'DRUG_DEAL';
-                  else if (compType === 2) classified.opType = 'ARMS_DEAL';
-                  else if (compType === 3) classified.opType = 'EXTORTION';
+                const d47OpType = tradeCtx.d47Map?.get(txh + ':' + (t.logIndex - 2));
+                if (d47OpType) {
+                  classified.opType = d47OpType;
+                } else {
+                  const company = tradeCtx.companyMap.get(txh);
+                  if (company) {
+                    const compType = _companyTypeCache.get(company) ?? 0;
+                    if (compType === 1) classified.opType = 'DRUG_DEAL';
+                    else if (compType === 2) classified.opType = 'ARMS_DEAL';
+                    else if (compType === 3) classified.opType = 'EXTORTION';
+                  }
                 }
               }
               return classified;
@@ -407,17 +412,48 @@ async function syncLiquidations() {
     const latestBlock = await getLatestBlock();
     if (fromBlock > latestBlock) return;
 
+    const db = getDb();
     let total = 0;
     for (let start = fromBlock; start <= latestBlock; start += BATCH) {
       const end  = Math.min(start + BATCH - 1, latestBlock);
-      const liqs = await fetchLiquidationEvents(start, end).catch(() => []);
+      const [liqs, tradeCtx] = await Promise.all([
+        fetchLiquidationEvents(start, end).catch(() => []),
+        fetchFactoryTradeContext(start, end).catch(() => ({ companyMap: new Map(), fullTxs: new Set(), companyBlockMap: new Map(), d47Map: new Map() })),
+      ]);
       if (liqs.length > 0) {
-        const rows = liqs.map(l => ({
-          hash: l.hash, logIndex: l.logIndex, blockNum: l.blockNum,
-          timestamp: l.timestamp, fromAddr: '0x0000000000000000000000000000000000000000',
-          toAddr: l.companyAddr, rawValue: '0', amount: 0,
-          kind: 'MINT', opType: 'FAIL',
-        }));
+        // Pre-fetch company trade types for E_COMPLETE-protocol ops without d47.
+        const liqCompanyAddrs = [...new Set(liqs.map(l => l.companyAddr))];
+        if (liqCompanyAddrs.length > 0) {
+          await getCompanyTradeTypes(liqCompanyAddrs, tradeCtx.companyBlockMap).catch(() => {});
+        }
+        // Look up player addresses from companies table for events missing topic2.
+        const missingPlayer = liqs.filter(l => !l.playerAddr).map(l => l.companyAddr);
+        let ownerMap = new Map();
+        if (db && missingPlayer.length > 0) {
+          const rows = await db`SELECT address, owner FROM companies WHERE address = ANY(${missingPlayer})`.catch(() => []);
+          for (const r of rows) ownerMap.set(r.address.toLowerCase(), r.owner.toLowerCase());
+        }
+
+        const rows = liqs.map(l => {
+          // d47 event is always at E_EXITED logIndex+1; use it as primary source.
+          const d47OpType = tradeCtx.d47Map?.get(l.hash + ':' + (l.logIndex + 1));
+          let opType;
+          if (d47OpType) {
+            opType = d47OpType;
+          } else {
+            const compType = _companyTypeCache.get(l.companyAddr) ?? 0;
+            opType = compType === 1 ? 'DRUG_DEAL'
+                   : compType === 2 ? 'ARMS_DEAL'
+                   : l.dirtyAmount > 0 ? 'PARTIAL' : 'EXTORTION';
+          }
+          const toAddr = l.playerAddr ?? ownerMap.get(l.companyAddr) ?? l.companyAddr;
+          return {
+            hash: l.hash, logIndex: l.logIndex, blockNum: l.blockNum,
+            timestamp: l.timestamp, fromAddr: '0x0000000000000000000000000000000000000000',
+            toAddr, rawValue: String(l.dirtyAmount), amount: l.dirtyAmount,
+            kind: 'MINT', opType,
+          };
+        });
         await upsertTransfers(rows);
         total += rows.length;
       }
