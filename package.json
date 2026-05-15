@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "poller": "node --env-file=.env server/poller-main.js",
+    "aliases": "bash scripts/run-aliases.sh",
     "start:prod": "next start"
   },
   "dependencies": {

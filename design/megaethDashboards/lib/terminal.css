@@ -264,6 +264,7 @@
 }
 .tm-rail-body::-webkit-scrollbar { width: 8px; background: var(--t-bg-soft); }
 .tm-rail-body::-webkit-scrollbar-thumb { background: var(--t-rule); border: 2px solid var(--t-bg-soft); }
+.tm-rail-body > .tm-region { flex-shrink: 0; }
 
 .tm-rail-toggle {
   width: 28px;

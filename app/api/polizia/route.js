@@ -57,17 +57,18 @@ async function fetchPool() {
 
 function buildList(pool, ethPrice) {
   const now = Math.floor(Date.now() / 1000);
-  return pool
+  const eligible = pool
     .map(c => ({
-      id:       shortAddr(c.owner || c.address),
+      id:       shortAddr(c.address),
+      address:  c.address,
       wallet:   c.owner || c.address,
       liqPrice: liqPriceUsd(c.liq_price),
       endTime:  c.active ? Number(c.end_time) : null,
     }))
     .map(c => ({ ...c, buffer: Math.round((ethPrice - c.liqPrice) * 100) / 100 }))
     .filter(c => c.buffer >= 0 && c.buffer < 5 && !(c.endTime > 0 && c.endTime <= now))
-    .sort((a, b) => a.buffer - b.buffer)
-    .slice(0, 5);
+    .sort((a, b) => a.buffer - b.buffer);
+  return { list: eligible.slice(0, 5), total: eligible.length };
 }
 
 function diff(prev, next) {
@@ -82,8 +83,8 @@ function diff(prev, next) {
 
 export async function GET() {
   const [ethPrice, pool] = await Promise.all([fetchEthPrice(), fetchPool()]);
-  const next = buildList(pool, ethPrice);
+  const { list: next, total } = buildList(pool, ethPrice);
   const events = diff(_list, next);
   _list = next;
-  return NextResponse.json({ list: next, events, ethPrice });
+  return NextResponse.json({ list: next, events, ethPrice, total });
 }
