@@ -151,7 +151,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   );
   const [supplyGran, setSupplyGran] = useStateO('daily');
   const [infGran, setInfGran]    = useStateO('daily');
-  const [notifs, setNotifs] = useStateO({ 'buys & sells': true, 'operations': true, 'staking': true });
+  const [notifs, setNotifs] = useStateO({ 'buys & sells': true, 'operations': true, 'staking': true, 'liquidations': true });
   const [burnRange, setBurnRange] = useStateO('all');
   const [trxRange, setTrxRange] = useStateO('all');
   const [sortKey, setSortKey] = useStateO('endsIn');
@@ -190,9 +190,10 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
       ? D.recentOps.slice(0, 250).map(o => ({ ...o, time: nowHMS() }))
       : []
   );
-  const lastOpTsRef = useRefO(
+  const lastOpTsRef  = useRefO(
     (D.recentOps && D.recentOps.length > 0) ? (D.recentOps[0]._ts || 0) : 0
   );
+  const lastLiqTsRef = useRefO(0);
 
   // ── Filter / sort trades ──────────────────────────────────────────────
   const tradesFiltered = useMemoO(() => {
@@ -267,6 +268,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     if ((item.kind === 'buy' || item.kind === 'sell') && !notifs['buys & sells']) return false;
     if (item.kind === 'op' && !notifs['operations']) return false;
     if (item.kind === 'stake' && !notifs['staking']) return false;
+    if (item.kind === 'liquidation' && !notifs['liquidations']) return false;
     return true;
   }), [liveTicker, notifs]);
   useEffectO(() => {
@@ -302,6 +304,22 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
         if (d.latestEvent && d.latestEvent._ts > lastEventTs) {
           lastEventTs = d.latestEvent._ts;
           setLiveTicker((prev) => [d.latestEvent, ...prev].slice(0, 60));
+        }
+        if (d.newLiqs && d.newLiqs.length > 0) {
+          const fresh = d.newLiqs.filter(l => l._ts > lastLiqTsRef.current);
+          if (fresh.length > 0) {
+            lastLiqTsRef.current = fresh[fresh.length - 1]._ts;
+            const toasts = fresh.map(l => ({
+              kind:    'liquidation',
+              label:   'LIQUIDATED',
+              amount:  `$${l.liqPrice.toFixed(0)}`,
+              token:   'ETH',
+              addr:    l.addr,
+              addrFull: l.addrFull,
+              _ts:     l._ts,
+            }));
+            setLiveTicker((prev) => [...toasts.reverse(), ...prev].slice(0, 60));
+          }
         }
       } catch {
         setCounters((c) => ({

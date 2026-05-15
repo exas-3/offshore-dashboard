@@ -29,7 +29,7 @@ export async function GET(request) {
     const now   = Math.floor(Date.now() / 1000);
     const db    = getDb();
 
-    const [dirtyPrice, infCost, latestBlock, tps, ethFromDb, dawRow, opsRow, latestOpRow, newOpsRows, latestEventRow, companiesRow, activeOpsRow] = await Promise.all([
+    const [dirtyPrice, infCost, latestBlock, tps, ethFromDb, dawRow, opsRow, latestOpRow, newOpsRows, latestEventRow, companiesRow, activeOpsRow, newLiqsRows] = await Promise.all([
       fetchDirtyPrice().catch(() => null),
       fetchLatestInfCost().catch(() => null),
       getLatestBlock().catch(() => null),
@@ -92,6 +92,13 @@ export async function GET(request) {
         ORDER BY CAST(liq_price AS NUMERIC) DESC LIMIT 50
       `.catch(() => []) : Promise.resolve([]),
       db ? db`SELECT COUNT(*)::int AS cnt FROM companies WHERE active = TRUE`.catch(() => []) : Promise.resolve([]),
+      // Newly-liquidated positions since last poll
+      db && since > 0 ? db`
+        SELECT owner AS addr, liq_price, deactivated_at AS timestamp
+        FROM companies
+        WHERE deactivated_at > ${since}
+        ORDER BY deactivated_at ASC LIMIT 10
+      `.catch(() => []) : Promise.resolve([]),
     ]);
 
     const ethPrice = typeof ethFromDb === 'number' ? ethFromDb : 0;
@@ -153,6 +160,15 @@ export async function GET(request) {
       _ts:      Number(ev.timestamp),
     } : null;
 
+    const newLiqs = (newLiqsRows || []).map(r => ({
+      kind:     'liquidation',
+      label:    'LIQUIDATED',
+      addr:     shortAddr(r.addr),
+      addrFull: r.addr,
+      liqPrice: liqPriceUsd(r.liq_price),
+      _ts:      Number(r.timestamp),
+    }));
+
     return new NextResponse(JSON.stringify({
       block:       latestBlock ?? null,
       tps:         tps ?? null,
@@ -166,6 +182,7 @@ export async function GET(request) {
       liveTrades,
       latestOp,
       newOps,
+      newLiqs,
       latestEvent,
     }), { headers: { 'Content-Type': 'application/json', ...CORS } });
   } catch (err) {
