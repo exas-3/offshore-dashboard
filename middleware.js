@@ -1,13 +1,28 @@
 import { NextResponse } from 'next/server';
 
-const BLOCKED = /^\/(players|api\/players)(\/|$)/;
+const BLOCKED_UI   = /^\/(players)(\/|$)/;
+const RESTRICTED   = /^\/(api\/players|api\/monitor)(\/|$)/;
 
 export function middleware(request) {
-  if (BLOCKED.test(request.nextUrl.pathname)) {
+  const { pathname } = request.nextUrl;
+
+  if (BLOCKED_UI.test(pathname)) {
     return new NextResponse(null, { status: 404 });
+  }
+
+  if (RESTRICTED.test(pathname)) {
+    const referer = request.headers.get('referer') ?? '';
+    const host    = request.headers.get('host')    ?? '';
+    if (!referer || !referer.includes(host)) {
+      return new NextResponse(null, { status: 403 });
+    }
   }
 }
 
 export const config = {
-  matcher: ['/players', '/players/:path*', '/api/players', '/api/players/:path*'],
+  matcher: [
+    '/players', '/players/:path*',
+    '/api/players', '/api/players/:path*',
+    '/api/monitor',
+  ],
 };
