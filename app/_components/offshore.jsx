@@ -733,20 +733,22 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
                     <th>t</th>
                     <th>criminal</th>
                     <th>operation</th>
-                    <th>res</th>
                     <th className="num">$dirty</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {ops.map((o, i) => (
+                  {ops.map((o, i) => {
+                    const success = o.result === 'completed' || o.result === 'ok';
+                    const fail    = o.result === 'busted'    || o.result === 'fail';
+                    return (
                     <tr key={i}>
                       <td className="dim">{o.time}</td>
                       <td><span className="tm-num" style={{ cursor: 'pointer', color: 'var(--t-hdr)' }} onClick={() => openWallet(o.walletFull || o.wallet)}>{aliases[o.walletFull] || o.wallet}</span></td>
-                      <td>{o.op}</td>
-                      <td className={o.result === 'completed' || o.result === 'ok' ? 'pos' : o.result === 'busted' || o.result === 'fail' ? 'neg' : 'dim'}>{o.result === 'ok' ? 'completed' : o.result}</td>
+                      <td className={success ? 'pos' : fail ? 'neg' : ''}>{o.op}</td>
                       <td className={`num ${o.dirty > 0 ? 'pos' : o.dirty < 0 ? 'neg' : ''}`}>{fmt.signed(o.dirty)}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
