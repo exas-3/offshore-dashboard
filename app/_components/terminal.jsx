@@ -120,7 +120,7 @@ function TweaksPanel({ theme, onThemeChange, notifPrefs, onNotifChange, onClose,
   );
 }
 
-export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, activeTab, onTabChange, search, onSearch, fkeys, sideFooter, children, rail, clock, theme = 'purple', density = 'regular', mode = 'standalone', nav, brand, sideContent, railLabel = 'wallet', onThemeChange, notifPrefs, onNotifChange, openRailRef }) {
+export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, activeTab, onTabChange, search, onSearch, fkeys, sideFooter, children, rail, clock, theme = 'purple', density = 'regular', mode = 'standalone', nav, brand, sideContent, railLabel = 'criminal', onThemeChange, notifPrefs, onNotifChange, openRailRef }) {
   const [now, setNow] = useStateT(clock || nowUTC());
   const [activeSection, setActiveSection] = useStateT(nav && nav[0] ? nav[0].id : null);
   const [railOpen, setRailOpen] = useStateT(false);

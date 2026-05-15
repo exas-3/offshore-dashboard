@@ -335,7 +335,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     { k: 'F4', label: 'vault' },
     { k: 'F5', label: 'trades' },
     { k: 'F6', label: 'ops' },
-    { k: 'F8', label: 'wallet' },
+    { k: 'F8', label: 'criminal' },
     { k: '/',  label: 'search' },
   ];
 
@@ -407,7 +407,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
       sideFooter={sideFoot}
       rail={rail}
       sideContent={<LiveSidebar D={D} counters={counters} ops={ops} watch={watch} trades={liveTicker} onWallet={openWallet} />}
-      railLabel="wallet"
+      railLabel="criminal"
       theme={theme}
       onThemeChange={onThemeChange}
       notifPrefs={notifs}
@@ -660,7 +660,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--t-bg)', zIndex: 1 }}>
                   <tr>
                     <th>t</th>
-                    <th>wallet</th>
+                    <th>criminal</th>
                     <th>operation</th>
                     <th>res</th>
                     <th className="num">$dirty</th>
@@ -960,7 +960,7 @@ function WalletRail({ address, onAddressChange }) {
 
   if (!address) return (
     <>
-      <div className="tm-rail-h">wallet</div>
+      <div className="tm-rail-h">criminal</div>
       {addrRow}
     </>
   );
@@ -969,7 +969,7 @@ function WalletRail({ address, onAddressChange }) {
 
   return (
     <>
-      <div className="tm-rail-h">wallet <em>· {loading ? 'loading…' : isFullAddr ? 'inspected' : 'enter full address'}</em></div>
+      <div className="tm-rail-h">criminal <em>· {loading ? 'loading…' : isFullAddr ? 'inspected' : 'enter full address'}</em></div>
       {addrRow}
 
       {!isFullAddr && (
