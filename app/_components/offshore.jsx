@@ -1008,14 +1008,46 @@ function WalletRail({ address, onAddressChange, ethPrice = 0 }) {
   const [liveData, setLiveData] = useStateO(null);
   const [loading,  setLoading]  = useStateO(false);
   const [tick,     setTick]     = useStateO(0);
+  const [alarmOn,  setAlarmOn]  = useStateO(false);
+  const prevCompRef = useRefO({});
+
   useEffectO(() => {
     const t = setInterval(() => setTick(n => n + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
+  function playAlarm(which) {
+    try { new Audio(`/sounds/${which}.mp3`).play(); } catch {}
+  }
+
+  function checkTransitions(companies) {
+    const prev = prevCompRef.current;
+    for (const c of companies) {
+      const p = prev[c.company];
+      if (!p) continue;
+      if (!p.completable && c.completable) {
+        playAlarm('success');
+        if (typeof document !== 'undefined' && document.hidden &&
+            typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          new Notification('Op completed', { body: `${c.company.slice(0, 10)}…`, silent: true });
+        }
+      } else if (p.active && !c.active && !c.completable && !p.completable) {
+        playAlarm('partial');
+        if (typeof document !== 'undefined' && document.hidden &&
+            typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          new Notification('Op partial / bust', { body: `${c.company.slice(0, 10)}…`, silent: true });
+        }
+      }
+    }
+    prevCompRef.current = Object.fromEntries(
+      companies.map(c => [c.company, { active: c.active, completable: c.completable }])
+    );
+  }
+
   useEffectO(() => {
     if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) {
       setDbData(null); setLiveData(null);
+      prevCompRef.current = {};
       return;
     }
     setLoading(true);
@@ -1025,10 +1057,39 @@ function WalletRail({ address, onAddressChange, ethPrice = 0 }) {
       fetch(`/api/monitor?wallet=${addr}`).then(r => r.json()).catch(() => null),
     ]).then(([db, live]) => {
       setDbData(db?.error ? null : db);
-      setLiveData(live?.error ? null : live);
+      if (live && !live.error) {
+        // Seed baseline state — no transitions on first load
+        prevCompRef.current = Object.fromEntries(
+          (live.companies ?? []).map(c => [c.company, { active: c.active, completable: c.completable }])
+        );
+        setLiveData(live);
+      }
       setLoading(false);
     });
   }, [address]);
+
+  // Alarm poll — 10s interval when alarm is enabled
+  useEffectO(() => {
+    const isFullAddr = /^0x[0-9a-fA-F]{40}$/.test(address);
+    if (!alarmOn || !isFullAddr) return;
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+    const addr = address.toLowerCase();
+    const poll = () => {
+      fetch(`/api/monitor?wallet=${addr}`)
+        .then(r => r.json())
+        .then(live => {
+          if (!live?.error) {
+            checkTransitions(live.companies ?? []);
+            setLiveData(live);
+          }
+        })
+        .catch(() => {});
+    };
+    const t = setInterval(poll, 10_000);
+    return () => clearInterval(t);
+  }, [alarmOn, address]);
 
   const addrRow = (
     <div className="tm-rail-addr" style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
@@ -1037,6 +1098,16 @@ function WalletRail({ address, onAddressChange, ethPrice = 0 }) {
     </div>
   );
 
+  const isFullAddr = /^0x[0-9a-fA-F]{40}$/.test(address);
+
+  const alarmBtn = isFullAddr ? (
+    <span
+      title={alarmOn ? 'disable alarm' : 'enable alarm'}
+      onClick={() => setAlarmOn(v => !v)}
+      style={{ marginLeft: 'auto', cursor: 'pointer', color: alarmOn ? 'var(--t-warn)' : 'var(--t-fg-mut)', fontSize: 'var(--t-fs-xs)', userSelect: 'none' }}
+    >{alarmOn ? '⟨ alarm on ⟩' : '⟨ alarm ⟩'}</span>
+  ) : null;
+
   if (!address) return (
     <>
       <div className="tm-rail-h">criminal</div>
@@ -1044,11 +1115,12 @@ function WalletRail({ address, onAddressChange, ethPrice = 0 }) {
     </>
   );
 
-  const isFullAddr = /^0x[0-9a-fA-F]{40}$/.test(address);
-
   return (
     <>
-      <div className="tm-rail-h">criminal <em>· {loading ? 'loading…' : isFullAddr ? 'inspected' : 'enter full address'}</em></div>
+      <div className="tm-rail-h" style={{ display: 'flex', alignItems: 'center' }}>
+        <span>criminal <em>· {loading ? 'loading…' : isFullAddr ? 'inspected' : 'enter full address'}</em></span>
+        {alarmBtn}
+      </div>
       {addrRow}
 
       {!isFullAddr && (
