@@ -157,7 +157,7 @@ export async function GET() {
       getParticipantBuckets(86400).catch(() => []),
       getActiveWalletBuckets(86400).catch(() => []),
       getInfluenceStats(), getVaultStats(),
-      getCompanyStats(), getCompanies('all', 50),
+      getCompanyStats(), getCompanies('active', 200),
       getSupplyHistoryForChart(86400).catch(() => []),
       getDexRecentSwaps(20).catch(() => []),
       getRecentTransfers(250).catch(() => []),

@@ -162,6 +162,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   const [stakingData, setStakingData] = useStateO(null);
   const [aliases, setAliases] = useStateO({});
   const [watchRaw, setWatchRaw] = useStateO(() => D.liveTrades || []);
+  const [liveTradesData, setLiveTradesData] = useStateO(() => D.liveTrades || []);
   const [walletAddr, setWalletAddr] = useStateO('');
   const openRailRef = useRefO(null);
 
@@ -199,7 +200,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
 
   // ── Filter / sort trades ──────────────────────────────────────────────
   const tradesFiltered = useMemoO(() => {
-    let arr = D.liveTrades;
+    let arr = liveTradesData;
     if (search) arr = arr.filter((r) => r.id.toLowerCase().includes(search.toLowerCase()));
     arr = [...arr];
     arr.sort((a, b) => {
@@ -208,9 +209,9 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
       return sortDir === 'asc' ? x : -x;
     });
     return arr;
-  }, [search, sortKey, sortDir, D]);
+  }, [search, sortKey, sortDir, liveTradesData]);
 
-  const underwaterCount = D.liveTrades.filter((r) => r.buffer < 0).length;
+  const underwaterCount = liveTradesData.filter((r) => r.buffer < 0).length;
 
   const participantsChart = useMemoO(() => {
     const players = D.totalPlayersChart || [];
@@ -304,6 +305,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
         }
         if (d.liveTrades && d.liveTrades.length > 0) {
           setWatchRaw(d.liveTrades);
+          setLiveTradesData(d.liveTrades);
         }
         if (d.latestEvent && d.latestEvent._ts > lastEventTs) {
           lastEventTs = d.latestEvent._ts;
@@ -1263,13 +1265,12 @@ function renderTradeRows(rows, range, ethPrice = 0, _tick = 0, onWallet, aliases
 
   return groups.flatMap((g, gi) => [
     <tr className="tm-tab-group" key={`g-${gi}`}>
-      <td colSpan={7}>
+      <td colSpan={5}>
         <span className="label">─ {g.label}</span> <span className="count">({g.rows.length})</span>
         <span className="rule" />
       </td>
     </tr>,
     ...g.rows.slice(0, 10).map((r) => {
-      const history = bufferHistory(r);
       const liveBuffer = ethPrice > 0 ? Math.round((ethPrice - r.liqPrice) * 100) / 100 : r.buffer;
       const liveEndsIn = fmtCountdownLocal(r.endTime);
       const underwater = liveBuffer < 0;
@@ -1280,8 +1281,6 @@ function renderTradeRows(rows, range, ethPrice = 0, _tick = 0, onWallet, aliases
           <td className={r.active ? 'warn' : 'dim'}>{liveEndsIn}</td>
           <td className="num">{r.liqPrice.toLocaleString()}</td>
           <td className={`num ${liveBuffer >= 0 ? 'pos' : 'neg'}`}>{liveBuffer >= 0 ? '+' : ''}{liveBuffer.toFixed(2)}</td>
-          <td><Spark data={history} w={60} h={16} color={`var(--t-${liveBuffer >= 0 ? 'pos' : 'neg'})`} /></td>
-          <td className="num dim">{r.entry != null ? `$${r.entry.toFixed(2)}` : '—'}</td>
         </tr>
       );
     }),

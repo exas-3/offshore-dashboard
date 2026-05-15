@@ -86,10 +86,10 @@ export async function GET(request) {
         ORDER BY timestamp DESC LIMIT 1
       `.catch(() => []) : Promise.resolve([]),
       db ? db`
-        SELECT address, liq_price, end_time, active, auto_trade
+        SELECT address, owner, liq_price, end_time, active, auto_trade
         FROM companies
         WHERE active = TRUE
-        ORDER BY CAST(liq_price AS NUMERIC) DESC LIMIT 50
+        ORDER BY end_time ASC NULLS LAST LIMIT 200
       `.catch(() => []) : Promise.resolve([]),
       db ? db`SELECT COUNT(*)::int AS cnt FROM companies WHERE active = TRUE`.catch(() => []) : Promise.resolve([]),
       // Newly-liquidated positions since last poll
@@ -110,6 +110,7 @@ export async function GET(request) {
       const liq = liqPriceUsd(c.liq_price);
       return {
         id:       shortAddr(c.address),
+        owner:    c.owner,
         auto:     c.auto_trade,
         active:   c.active,
         endTime:  c.active ? Number(c.end_time) : null,
