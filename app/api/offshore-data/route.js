@@ -174,7 +174,7 @@ export async function GET() {
     // Raw DB queries that need the connection directly
     const [heatmapRows, cycleRows, todayActiveRow, recentOpsRow,
            walletStats, walletEarnedByOp, walletSpentByOp,
-           walletFarmedEarned, walletFarmedSpent, infHistRows] = db ? await Promise.all([
+           walletFarmedEarned, walletFarmedSpent, infHistRows, opsMatrixRows] = db ? await Promise.all([
       db`
         SELECT
           FLOOR((timestamp - ${heatmapStart}) / 86400)::int AS day_idx,
@@ -245,7 +245,20 @@ export async function GET() {
         WHERE inf_cost IS NOT NULL
         ORDER BY timestamp ASC
       `.catch(() => []),
-    ]) : [[], [], [{ cnt: 0 }], [{ cnt: 0 }], [{}], [], [], [], [], []];
+      // ops matrix seed
+      db`
+        SELECT op_type,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 60})   AS m1,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 300})  AS m5,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 900})  AS m15,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 1800}) AS m30,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 3600}) AS m60
+        FROM transfers
+        WHERE kind = 'MINT' AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION')
+          AND timestamp::bigint >= ${now - 3600}
+        GROUP BY op_type
+      `.catch(() => []),
+    ]) : [[], [], [{ cnt: 0 }], [{ cnt: 0 }], [{}], [], [], [], [], [], []];
 
     // ── Resolve prices ───────────────────────────────────────────────────────
     const dirtyPrice = dirtyPriceResult ?? 0;
@@ -391,12 +404,13 @@ export async function GET() {
     };
 
     // ── liveTrades ────────────────────────────────────────────────────────────
-    const liveTrades = companies.slice(0, 20).map(c => {
+    const liveTrades = companies.slice(0, 50).map(c => {
       const liq = liqPriceUsd(c.liq_price);
       return {
         id:       shortAddr(c.address),
         auto:     c.auto_trade,
         active:   c.active,
+        endTime:  c.active ? Number(c.end_time) : null,
         endsIn:   c.active ? fmtCountdown(c.end_time) : '—',
         liqPrice: liq,
         ethPrice,
@@ -440,12 +454,14 @@ export async function GET() {
     const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', PARTIAL:'OP', FAIL:'OP', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE' };
 
     const liveTradeTicker = rawTicker.map(e => ({
-      kind:   tickerKind[e.etype]  || 'op',
-      label:  tickerLabel[e.etype] || e.etype,
-      amount: fmtM(Number(e.amount)),
-      token:  '$DIRTY',
-      addr:   shortAddr(e.addr),
-      _ts:    Number(e.timestamp),
+      kind:     tickerKind[e.etype]  || 'op',
+      label:    tickerLabel[e.etype] || e.etype,
+      amount:   fmtM(Number(e.amount)),
+      _amount:  Number(e.amount),
+      token:    '$DIRTY',
+      addr:     shortAddr(e.addr),
+      addrFull: e.addr,
+      _ts:      Number(e.timestamp),
     }));
 
     // ── ops seed for the animated feed ────────────────────────────────────────
@@ -458,6 +474,7 @@ export async function GET() {
       .slice(0, 250)
       .map(t => ({
         wallet: shortAddr(t.kind === 'MINT' ? t.to_addr : t.from_addr),
+        walletFull: (t.kind === 'MINT' ? t.to_addr : t.from_addr),
         op:     mapOpType(t.op_type),
         result: EARN_OPS.has(t.op_type)
           ? (COMPLETE_AMOUNTS.has(Math.round(Number(t.amount))) ? 'completed' : 'busted')
@@ -603,6 +620,16 @@ export async function GET() {
       leaderboard,
       priceBase25h,
       infCostHistory: (infHistRows || []).map(r => ({ v: Number(r.v), t: Number(r.t) })),
+      opsMatrix: (() => {
+        const keyMap = { DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion' };
+        const windows = ['m1', 'm5', 'm15', 'm30', 'm60'];
+        const result = { drugs: {m1:0,m5:0,m15:0,m30:0,m60:0}, arms: {m1:0,m5:0,m15:0,m30:0,m60:0}, extortion: {m1:0,m5:0,m15:0,m30:0,m60:0} };
+        for (const row of (opsMatrixRows || [])) {
+          const key = keyMap[row.op_type];
+          if (key) for (const w of windows) result[key][w] = Number(row[w] ?? 0);
+        }
+        return result;
+      })(),
     };
 
     _cache = result; _cacheTs = Date.now();

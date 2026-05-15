@@ -120,10 +120,11 @@ function TweaksPanel({ theme, onThemeChange, notifPrefs, onNotifChange, onClose,
   );
 }
 
-export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, activeTab, onTabChange, search, onSearch, fkeys, sideFooter, children, rail, clock, theme = 'purple', density = 'regular', mode = 'standalone', nav, brand, sideContent, railLabel = 'wallet', onThemeChange, notifPrefs, onNotifChange }) {
+export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, activeTab, onTabChange, search, onSearch, fkeys, sideFooter, children, rail, clock, theme = 'purple', density = 'regular', mode = 'standalone', nav, brand, sideContent, railLabel = 'wallet', onThemeChange, notifPrefs, onNotifChange, openRailRef }) {
   const [now, setNow] = useStateT(clock || nowUTC());
   const [activeSection, setActiveSection] = useStateT(nav && nav[0] ? nav[0].id : null);
   const [railOpen, setRailOpen] = useStateT(false);
+  useEffectT(() => { if (openRailRef) openRailRef.current = () => setRailOpen(true); }, [openRailRef]);
   const [sideOpen, setSideOpen] = useStateT(true);
   const [settingsOpen, setSettingsOpen] = useStateT(false);
   const [tickerTooltip, setTickerTooltip] = useStateT(null);
@@ -187,8 +188,8 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
               title="tweaks"
               style={{
                 background: settingsOpen ? 'var(--t-fg)' : 'none',
-                color: settingsOpen ? 'var(--t-bg)' : 'var(--t-fg-mut)',
-                border: '1px solid var(--t-rule)',
+                color: settingsOpen ? 'var(--t-bg)' : 'var(--t-fg)',
+                border: settingsOpen ? '1px solid var(--t-fg)' : '1px solid var(--t-fg-mut)',
                 fontFamily: 'var(--t-font)', fontSize: 11,
                 padding: '0 9px', cursor: 'pointer',
                 letterSpacing: '0.06em', height: 18,

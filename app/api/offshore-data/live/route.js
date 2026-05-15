@@ -29,7 +29,7 @@ export async function GET(request) {
     const now   = Math.floor(Date.now() / 1000);
     const db    = getDb();
 
-    const [dirtyPrice, infCost, latestBlock, tps, ethFromDb, dawRow, opsRow, latestOpRow, newOpsRows, latestEventRow] = await Promise.all([
+    const [dirtyPrice, infCost, latestBlock, tps, ethFromDb, dawRow, opsRow, latestOpRow, newOpsRows, latestEventRow, companiesRow, activeOpsRow] = await Promise.all([
       fetchDirtyPrice().catch(() => null),
       fetchLatestInfCost().catch(() => null),
       getLatestBlock().catch(() => null),
@@ -81,7 +81,32 @@ export async function GET(request) {
           ORDER BY timestamp DESC LIMIT 1)
         ORDER BY timestamp DESC LIMIT 1
       `.catch(() => []) : Promise.resolve([]),
+      db ? db`
+        SELECT address, liq_price, end_time, active, auto_trade
+        FROM companies
+        WHERE active = TRUE
+        ORDER BY CAST(liq_price AS NUMERIC) DESC LIMIT 50
+      `.catch(() => []) : Promise.resolve([]),
+      db ? db`SELECT COUNT(*)::int AS cnt FROM companies WHERE active = TRUE`.catch(() => []) : Promise.resolve([]),
     ]);
+
+    const ethPrice = typeof ethFromDb === 'number' ? ethFromDb : 0;
+    function liqPriceUsd(raw) {
+      if (!raw || raw === '0') return 0;
+      try { return Number(BigInt(raw) / 10n ** 12n) / 1e6; } catch { return 0; }
+    }
+    const liveTrades = (companiesRow || []).map(c => {
+      const liq = liqPriceUsd(c.liq_price);
+      return {
+        id:       shortAddr(c.address),
+        auto:     c.auto_trade,
+        active:   c.active,
+        endTime:  c.active ? Number(c.end_time) : null,
+        liqPrice: liq,
+        ethPrice,
+        buffer:   Math.round((ethPrice - liq) * 100) / 100,
+      };
+    });
 
     const op = latestOpRow[0];
     const latestOp = op ? {
@@ -97,6 +122,7 @@ export async function GET(request) {
     const ic = typeof infCost === 'number' ? infCost : 12.41;
     const newOps = (newOpsRows || []).map(r => ({
       wallet: shortAddr(r.kind === 'MINT' ? r.addr : r.from_addr2),
+      walletFull: (r.kind === 'MINT' ? r.addr : r.from_addr2),
       op:     mapOpType(r.op_type),
       result: EARN_OPS.has(r.op_type)
         ? (COMPLETE_AMOUNTS.has(Math.round(Number(r.amount))) ? 'completed' : 'busted')
@@ -113,12 +139,14 @@ export async function GET(request) {
 
     const ev = latestEventRow[0];
     const latestEvent = ev ? {
-      kind:   tickerKind[ev.etype]  || 'op',
-      label:  tickerLabel[ev.etype] || ev.etype,
-      amount: (Math.abs(Number(ev.amount)) >= 1e6 ? (Number(ev.amount)/1e6).toFixed(2)+'M' : Math.abs(Number(ev.amount)) >= 1e3 ? (Number(ev.amount)/1e3).toFixed(1)+'k' : String(Math.round(Number(ev.amount)))),
-      token:  '$DIRTY',
-      addr:   shortAddr(ev.addr),
-      _ts:    Number(ev.timestamp),
+      kind:     tickerKind[ev.etype]  || 'op',
+      label:    tickerLabel[ev.etype] || ev.etype,
+      amount:   (Math.abs(Number(ev.amount)) >= 1e6 ? (Number(ev.amount)/1e6).toFixed(2)+'M' : Math.abs(Number(ev.amount)) >= 1e3 ? (Number(ev.amount)/1e3).toFixed(1)+'k' : String(Math.round(Number(ev.amount)))),
+      _amount:  Number(ev.amount),
+      token:    '$DIRTY',
+      addr:     shortAddr(ev.addr),
+      addrFull: ev.addr,
+      _ts:      Number(ev.timestamp),
     } : null;
 
     return new NextResponse(JSON.stringify({
@@ -130,6 +158,8 @@ export async function GET(request) {
       gas:         0.001,
       daw:         Number(dawRow[0]?.cnt ?? 0),
       opsMin:      Number(opsRow[0]?.cnt ?? 0),
+      activeOps:   Number(activeOpsRow[0]?.cnt ?? 0),
+      liveTrades,
       latestOp,
       newOps,
       latestEvent,

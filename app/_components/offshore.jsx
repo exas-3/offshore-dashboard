@@ -76,6 +76,30 @@ function InfTooltip({ data, current, trend }) {
   );
 }
 
+function fmtCountdownLocal(endTime) {
+  if (!endTime) return '—';
+  const diff = endTime - Math.floor(Date.now() / 1000);
+  if (diff <= 0) return '—';
+  if (diff < 60) return `${diff}s`;
+  const m = Math.floor(diff / 60), s = diff % 60;
+  if (diff < 3600) return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  return `${Math.floor(diff / 3600)}h ${String(m % 60).padStart(2, '0')}m`;
+}
+
+function computeWatch(raw, ethPrice) {
+  const now = Math.floor(Date.now() / 1000);
+  return raw
+    .filter(c => c.active)
+    .map(c => ({
+      ...c,
+      endsIn: fmtCountdownLocal(c.endTime),
+      buffer: ethPrice > 0 ? Math.round((ethPrice - c.liqPrice) * 100) / 100 : c.buffer,
+    }))
+    .filter(c => c.buffer >= 0 && !(c.endTime > 0 && c.endTime <= now))
+    .sort((a, b) => a.buffer - b.buffer)
+    .slice(0, 5);
+}
+
 export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme = 'purple', density = 'regular', onThemeChange }) {
   // ── State ──────────────────────────────────────────────────────────────
   const [activeApp, setActiveApp] = useStateO('offshore');
@@ -93,8 +117,6 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     'participants':      'heatmap',
     'supply':            'company-state',
     'company-state':     'supply',
-    'staking-chart':     'staking-table',
-    'staking-table':     'staking-chart',
   };
   const [spans, setSpans] = useStateO({
     'emissions':          7,
@@ -107,10 +129,8 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     'vault':             12,
     'trades':             7,
     'ops':                5,
-    'leaderboard':       12,
     'company-state':      5,
-    'staking-chart':      7,
-    'staking-table':      5,
+    'staking-chart':     12,
   });
   const [heights, setHeights] = useStateO({ supply: 360, 'influence-daily': 200 });
 
@@ -135,6 +155,14 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   const [sortDir, setSortDir] = useStateO('asc');
   const [focusPane, setFocusPane] = useStateO('trades');
   const [stakingData, setStakingData] = useStateO(null);
+  const [watchRaw, setWatchRaw] = useStateO(() => D.liveTrades || []);
+  const [walletAddr, setWalletAddr] = useStateO('');
+  const openRailRef = useRefO(null);
+
+  function openWallet(fullAddr) {
+    setWalletAddr(fullAddr);
+    if (openRailRef.current) openRailRef.current();
+  }
 
   useEffectO(() => {
     fetch('/api/staking').then(r => r.json()).then(setStakingData).catch(() => {});
@@ -189,24 +217,39 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     { id: 'token',       label: 'token',       fkey: 'F2' },
     { id: 'players',     label: 'players',     fkey: 'F3' },
     { id: 'vault',       label: 'vault',       fkey: 'F4' },
-    { id: 'staking',     label: 'staking',     fkey: 'F6' },
     { id: 'trades',      label: 'trades',      fkey: 'F5' },
-    { id: 'leaderboard', label: 'leaderboard', fkey: 'F7' },
   ];
 
   // ── Live counters + event ticker ─────────────────────────────────────
   const ci = D.counterInit || {};
   const [counters, setCounters] = useStateO(() => ({
     block:  ci.block  || 4128907,
-    daw:    ci.daw    || 930,
-    opsMin: ci.opsMin || 4.2,
-    dirty:  ci.dirty  || 0.0706,
-    opCost: ci.opCost || 12.41,
-    gas:    ci.gas    || 0.001,
-    eth:    D.liveTrades[0]?.ethPrice ?? 0,
+    daw:        ci.daw    || 930,
+    opsMin:     ci.opsMin || 4.2,
+    dirty:      ci.dirty  || 0.0706,
+    opCost:     ci.opCost || 12.41,
+    gas:        ci.gas    || 0.001,
+    eth:        D.liveTrades[0]?.ethPrice ?? 0,
+    activeOps:  D.activeCompanies ?? 0,
     tps:    0,
     _bump: 0,
   }));
+  useEffectO(() => {
+    let live = true;
+    const fetchEth = async () => {
+      try {
+        const res = await fetch('/api/eth-price', { cache: 'no-cache' });
+        if (res.ok) {
+          const { price } = await res.json();
+          if (isFinite(price) && price > 0) setCounters(c => ({ ...c, eth: price }));
+        }
+      } catch {}
+      if (live) setTimeout(fetchEth, 1000);
+    };
+    fetchEth();
+    return () => { live = false; };
+  }, []);
+
   const [liveTicker, setLiveTicker] = useStateO(() => D.liveTradeTicker || []);
   const filteredTicker = useMemoO(() => liveTicker.filter(item => {
     if ((item.kind === 'buy' || item.kind === 'sell') && !notifs['buys & sells']) return false;
@@ -230,7 +273,8 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
           dirty:  d.dirty  ?? Math.max(0.001, c.dirty  + (Math.random() - 0.5) * 0.0008),
           opCost: d.opCost ?? Math.max(0, c.opCost + (Math.random() - 0.5) * 0.04),
           gas:    d.gas    ?? Math.max(0, c.gas    + (Math.random() - 0.5) * 0.0002),
-          eth:    d.eth    ?? c.eth,
+          eth:       c.eth,
+          activeOps: d.activeOps ?? c.activeOps,
           tps:    d.tps    ?? c.tps,
           _bump:  c._bump + 1,
         }));
@@ -238,6 +282,9 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
           const ts = nowHMS();
           lastOpTsRef.current = d.newOps[d.newOps.length - 1]._ts;
           setOps((prev) => [...d.newOps.map(o => ({ ...o, time: ts })).reverse(), ...prev].slice(0, 250));
+        }
+        if (d.liveTrades && d.liveTrades.length > 0) {
+          setWatchRaw(d.liveTrades);
         }
         if (d.latestEvent && d.latestEvent._ts > lastEventTs) {
           lastEventTs = d.latestEvent._ts;
@@ -255,9 +302,19 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
         }));
       }
     };
-    const t = setInterval(tick, 2200);
+    const t = setInterval(tick, 800);
     return () => { live = false; clearInterval(t); };
   }, []);
+
+  // ── 1s tick for live countdown / buffer columns ──────────────────────────
+  const [tick, setTick] = useStateO(0);
+  useEffectO(() => {
+    const t = setInterval(() => setTick(n => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // ── Watch: recompute on every eth price tick or new trade data ───────────
+  const watch = useMemoO(() => computeWatch(watchRaw, counters.eth), [watchRaw, counters.eth]);
 
   // ── Ticker / fkeys / sidebar config ───────────────────────────────────
   const base = D.priceBase25h || {};
@@ -277,8 +334,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     { k: 'F3', label: 'players' },
     { k: 'F4', label: 'vault' },
     { k: 'F5', label: 'trades' },
-    { k: 'F6', label: 'staking' },
-    { k: 'F7', label: 'leaderboard' },
+    { k: 'F6', label: 'ops' },
     { k: 'F8', label: 'wallet' },
     { k: '/',  label: 'search' },
   ];
@@ -333,7 +389,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
 
   // ── Right rail ─────────────────────────────────────────────────────────
   const rail = showRail ? (
-    <WalletRail D={D} address={search || D.wallet.address} />
+    <WalletRail address={walletAddr} onAddressChange={setWalletAddr} />
   ) : null;
 
   return (
@@ -350,12 +406,13 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
       fkeys={fkeys}
       sideFooter={sideFoot}
       rail={rail}
-      sideContent={<LiveSidebar D={D} counters={counters} ops={ops} />}
+      sideContent={<LiveSidebar D={D} counters={counters} ops={ops} watch={watch} trades={liveTicker} onWallet={openWallet} />}
       railLabel="wallet"
       theme={theme}
       onThemeChange={onThemeChange}
       notifPrefs={notifs}
       onNotifChange={setNotifs}
+      openRailRef={openRailRef}
       density={density}
     >
       <div className="tm-content">
@@ -366,13 +423,11 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
             <span className="prompt">&gt;</span>
             <span><span className="k">state ·</span> burn outpacing emission <b className="warn">{D.hero.burnedRatio}×</b></span>
             <span className="sep">·</span>
-            <span><span className="k">net flow / 24h</span> <b className="neg">{fmtSigned(infNetFlow24h)} INF</b></span>
+            <span><span className="k">total burned</span> <b className="neg">{D.hero.burnedAllTime} $dirty</b></span>
             <span className="sep">·</span>
-            <span><span className="k">at risk</span> <b className="neg">{underwaterCount} cos underwater</b></span>
+            <span><span className="k">total inf bought</span> <b className="pos">{inf.purchased.toLocaleString()}</b></span>
             <span className="sep">·</span>
-            <span><span className="k">vault paid</span> <b className="pos">{D.distributionTotals.totalLabel} USDm</b></span>
-            <span className="sep">·</span>
-            <span><span className="k">daw</span> <b>{counters.daw.toLocaleString()}</b> <span className="k">{dawPct > 0 ? `(▾ ${dawPct}% from peak)` : '(at peak)'}</span></span>
+            <span><span className="k">daily active criminals</span> <b>{counters.daw.toLocaleString()}</b> <span className="k">{dawPct > 0 ? `(▾ ${dawPct}% from peak)` : '(at peak)'}</span></span>
             <span className="sep">·</span>
             <span><span className="k">world time</span> <b>{D.currentWorldTime || 'Q4 2012'}</b></span>
           </div>
@@ -424,6 +479,24 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
               <span><span style={{ color: 'var(--t-hdr)' }}>█</span> level-up</span>
               <span><span style={{ color: 'var(--t-warn)' }}>█</span> 3rd enterprise</span>
             </div>
+          </Region>
+        </GridCell>
+        <GridCell id="staking-chart" span={spans['staking-chart']} onResize={(r) => resizeCell('staking-chart', r)}>
+          <Region
+            title="faction staking"
+            sub={stakingData?.stats
+              ? `${(stakingData.stats.totalStaked / 1e3).toFixed(1)}k $dirty staked · ${stakingData.stats.uniqueStakers} stakers · rotation ${stakingData.stats.currentRotation}`
+              : 'loading…'}
+          >
+            {stakingData?.dailyChart?.length > 0 ? (
+              <LineChart
+                data={stakingData.dailyChart.map(d => ({ x: d.label, v: d.total }))}
+                color="pos"
+                valueFmt={(v) => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(Math.round(v))}
+              />
+            ) : (
+              <span className="dim">no data</span>
+            )}
           </Region>
         </GridCell>
         <GridCell id="supply" span={spans['supply']} height={heights['supply']} onResize={(r) => resizeCell('supply', r)}>
@@ -551,60 +624,6 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
 
         </section>
 
-        <section id="sec-staking" className="tm-grid-12">
-        <GridCell id="staking-chart" span={spans['staking-chart']} onResize={(r) => resizeCell('staking-chart', r)}>
-          <Region
-            title="faction staking"
-            sub={stakingData
-              ? `${(stakingData.stats.totalStaked / 1e3).toFixed(1)}k $dirty staked · ${stakingData.stats.uniqueStakers} stakers · rotation ${stakingData.stats.currentRotation}`
-              : 'loading…'}
-            fkey="F6"
-          >
-            {stakingData?.minuteChart?.length > 0 ? (
-              <LineChart
-                data={stakingData.dailyChart.map(d => ({ x: d.label, v: d.total }))}
-                color="pos"
-                fill
-                valueFmt={(v) => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(Math.round(v))}
-              />
-            ) : (
-              <span className="dim">no data</span>
-            )}
-          </Region>
-        </GridCell>
-        <GridCell id="staking-table" span={spans['staking-table']} onResize={(r) => resizeCell('staking-table', r)}>
-          <Region title="recent deposits" sub="last 50">
-            <div className="tm-scroll-bl" style={{ maxHeight: 264, overflowY: 'auto' }}>
-              <table className="tm-tab tm-tab-bl">
-                <thead style={{ position: 'sticky', top: 0, background: 'var(--t-bg)', zIndex: 1 }}>
-                  <tr>
-                    <th>time</th>
-                    <th>wallet</th>
-                    <th>rot</th>
-                    <th className="num">$dirty</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(stakingData?.recent || []).map((r, i) => {
-                    const d = new Date(r.ts * 1000);
-                    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    return (
-                      <tr key={i}>
-                        <td className="dim">{date} {time}</td>
-                        <td><a href={`https://mega.etherscan.io/address/${r.user}`} target="_blank" rel="noopener noreferrer" className="tm-num" style={{ textDecoration: 'none', color: 'inherit' }}>{r.user.slice(0, 6)}…{r.user.slice(-4)}</a></td>
-                        <td className="dim">{r.rotationId}</td>
-                        <td className="num pos">{r.amount >= 1000 ? (r.amount / 1000).toFixed(1) + 'k' : r.amount.toFixed(0)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Region>
-        </GridCell>
-        </section>
-
         <section id="sec-trades" className="tm-grid-12">
         <GridCell id="trades" span={spans['trades']} height={heights['trades']} onResize={(r) => resizeCell('trades', r)}>
           <Region
@@ -628,7 +647,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
                   </tr>
                 </thead>
                 <tbody>
-                  {renderTradeRows(tradesFiltered, trxRange)}
+                  {renderTradeRows(tradesFiltered, trxRange, counters.eth, tick, openWallet)}
                 </tbody>
               </table>
             </div>
@@ -642,7 +661,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
                   <tr>
                     <th>t</th>
                     <th>wallet</th>
-                    <th>op</th>
+                    <th>operation</th>
                     <th>res</th>
                     <th className="num">$dirty</th>
                   </tr>
@@ -651,9 +670,9 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
                   {ops.map((o, i) => (
                     <tr key={i}>
                       <td className="dim">{o.time}</td>
-                      <td><span className="tm-num">{o.wallet}</span></td>
+                      <td><span className="tm-num" style={{ cursor: 'pointer', color: 'var(--t-hdr)' }} onClick={() => openWallet(o.walletFull || o.wallet)}>{o.wallet}</span></td>
                       <td>{o.op}</td>
-                      <td className={o.result === 'completed' || o.result === 'ok' ? 'pos' : o.result === 'busted' || o.result === 'fail' ? 'neg' : 'dim'}>{o.result}</td>
+                      <td className={o.result === 'completed' || o.result === 'ok' ? 'pos' : o.result === 'busted' || o.result === 'fail' ? 'neg' : 'dim'}>{o.result === 'ok' ? 'completed' : o.result}</td>
                       <td className={`num ${o.dirty > 0 ? 'pos' : o.dirty < 0 ? 'neg' : ''}`}>{fmt.signed(o.dirty)}</td>
                     </tr>
                   ))}
@@ -665,45 +684,6 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
 
         </section>
 
-        <section id="sec-leaderboard" className="tm-grid-12">
-        <GridCell id="leaderboard" span={spans['leaderboard']} height={heights['leaderboard']} onResize={(r) => resizeCell('leaderboard', r)}>
-          <Region title="top criminals" sub="all time · rank Δ vs yesterday" fkey="F7">
-            <table className="tm-tab">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Δ</th>
-                  <th>wallet</th>
-                  <th>tier</th>
-                  <th className="num">ops</th>
-                  <th className="num">$dirty</th>
-                  <th className="num">net</th>
-                  <th>trend</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(D.leaderboard || LEADERBOARD).map((r, i) => {
-                  const dot = r.rank > 0 ? `▲ +${r.rank}` : r.rank < 0 ? `▾ ${r.rank}` : '─';
-                  const dotCls = r.rank > 0 ? 'pos' : r.rank < 0 ? 'neg' : 'dim';
-                  return (
-                    <tr key={r.wallet} className={r.wallet === (search || D.wallet.address) ? 'sel' : ''}>
-                      <td className="dim">{String(i + 1).padStart(2, '0')}</td>
-                      <td className={dotCls}>{dot}</td>
-                      <td><span className="tm-num">{r.wallet}</span></td>
-                      <td className="dim">{TIERS[i] || 'caribbean'}</td>
-                      <td className="num">{r.ops.toLocaleString()}</td>
-                      <td className="num pos">{r.earned}</td>
-                      <td className={`num ${r.net.startsWith('+') ? 'pos' : 'neg'}`}>{r.net}</td>
-                      <td><Spark data={r.spark} color={r.net.startsWith('+') ? 'var(--t-pos)' : 'var(--t-neg)'} /></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </Region>
-        </GridCell>
-
-        </section>
 
       </div>
 
@@ -713,14 +693,43 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
 }
 
 // ── Live sidebar ───────────────────────────────────────────────────────────
-function LiveSidebar({ D, counters, ops }) {
-  const watch = useMemoO(() => {
-    return D.liveTrades
-      .filter((r) => r.active || r.buffer < 5)
-      .slice()
-      .sort((a, b) => a.buffer - b.buffer)
-      .slice(0, 5);
-  }, [D]);
+function LiveSidebar({ D, counters, ops, watch, trades, onWallet }) {
+  const [opsMatrix, setOpsMatrix] = useStateO(() => D.opsMatrix ?? null);
+  useEffectO(() => {
+    const load = () => fetch('/api/ops-matrix').then(r => r.json()).then(setOpsMatrix).catch(() => {});
+    const t = setInterval(load, 15_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const [poliziaList, setPoliziaList] = useStateO([]);
+  const [splashing, setSplashing] = useStateO({});
+
+  useEffectO(() => {
+    let live = true;
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/polizia', { cache: 'no-cache' });
+        if (res.ok) {
+          const { list, events } = await res.json();
+          for (const ev of events) {
+            if (ev.type === 'remove') {
+              setSplashing(s => ({ ...s, [ev.id]: Date.now() }));
+              setTimeout(() => setSplashing(s => { const n = { ...s }; delete n[ev.id]; return n; }), 700);
+            }
+          }
+          setPoliziaList(list);
+        }
+      } catch {}
+      if (live) setTimeout(poll, 5_000);
+    };
+    poll();
+    return () => { live = false; };
+  }, []);
+
+  const WINDOWS = ['m1', 'm5', 'm15', 'm30', 'm60'];
+  const WIN_LABELS = { m1: '1m', m5: '5m', m15: '15m', m30: '30m', m60: '60m' };
+  const OPS_COLS = ['extortion', 'arms', 'drugs'];
+  const OPS_LABELS = { extortion: 'ext', arms: 'arms', drugs: 'drug' };
 
   return (
     <div className="tm-live">
@@ -730,37 +739,45 @@ function LiveSidebar({ D, counters, ops }) {
           <span className="rule" />
           <span className="v"><span className="tm-blink" style={{ color: 'var(--t-pos)' }}>●</span></span>
         </div>
-        <Counter k="d. active players" v={counters.daw.toLocaleString()} />
+        <Counter k="active players /24" v={counters.daw.toLocaleString()} />
         <Counter k="total players"    v={D.newParticipantsTotal.toLocaleString()} />
-        <Counter k="ops/min"    v={Math.round(counters.opsMin).toLocaleString()}  tickKey={counters._bump} />
-        <Counter k="ops/hour"   v={Math.round(counters.opsMin * 60).toLocaleString()}               tickKey={counters._bump} />
+        <Counter k="finished ops/min"  v={Math.round(counters.opsMin).toLocaleString()}        tickKey={counters._bump} />
+        <Counter k="finished ops/hour" v={Math.round(counters.opsMin * 60).toLocaleString()}    tickKey={counters._bump} />
+        <Counter k="active ops"        v={counters.activeOps.toLocaleString()}                  tickKey={counters._bump} />
         <Counter k="$dirty"     v={`$${counters.dirty.toFixed(4)}`} cls="warn"   tickKey={counters._bump} />
         <Counter k="op cost"    v={`${counters.opCost.toFixed(2)} INF`}          tickKey={counters._bump} />
       </div>
 
       <div className="tm-live-panel">
         <div className="tm-live-panel-h">
-          <span><b>watch</b> imminent</span>
+          <span><b>polizia</b> imminent</span>
           <span className="rule" />
-          <span className="v">{watch.filter((r) => r.buffer < 0).length} of {watch.length}</span>
+          <span className="v">{poliziaList.length}</span>
         </div>
-        {watch.map((r) => {
-          const underwater = r.buffer < 0;
-          const urgent = r.active && r.endsIn !== '—' && r.endsIn.length <= 5;
-          const cls = underwater ? 'underwater' : urgent ? 'urgent' : 'safe';
+        {poliziaList.map((r) => {
+          const liveBuffer = Math.round((counters.eth - r.liqPrice) * 100) / 100;
+          const endsIn = fmtCountdownLocal(r.endTime);
+          const urgent = r.endTime > 0 && endsIn !== '—' && endsIn.length <= 5;
+          const cls = urgent ? 'urgent' : 'safe';
           return (
-            <div key={r.id} className={`tm-watch ${cls}`}>
+            <div key={r.id} className={`tm-watch ${cls}`} style={{ cursor: 'pointer' }} onClick={() => onWallet && onWallet(r.wallet || r.id)}>
               <span className="l">
                 <span className="id">{r.id}</span>
                 <span className="sub">liq {r.liqPrice.toLocaleString()}</span>
               </span>
               <span className="r">
-                <span className={`buf ${r.buffer >= 0 ? 'tm-pos' : 'tm-neg'}`}>{r.buffer >= 0 ? '+' : ''}{r.buffer.toFixed(2)}</span>
-                <span className="ends">{r.active ? r.endsIn : 'idle'}</span>
+                <span className="buf tm-pos">+{liveBuffer.toFixed(2)}</span>
+                <span className="ends">{endsIn}</span>
               </span>
             </div>
           );
         })}
+        {Object.keys(splashing).map(id => (
+          <div key={`splash-${id}`} className="tm-watch underwater" style={{ animation: 'tm-splash-out 0.7s forwards' }}>
+            <span className="l"><span className="id">{id}</span><span className="sub">liquidated</span></span>
+            <span className="r"><span className="buf tm-neg">BUST</span></span>
+          </div>
+        ))}
       </div>
 
       <div className="tm-live-panel">
@@ -773,13 +790,65 @@ function LiveSidebar({ D, counters, ops }) {
           {ops.slice(0, 6).map((o, i) => {
             const fadeCls = i >= 3 ? `fade${i >= 5 ? '-3' : i >= 4 ? '-2' : ''}` : '';
             return (
-              <div key={`${o.time}-${i}`} className={`tm-opfeed-row ${fadeCls}`}>
+              <div key={`${o.time}-${i}`} className={`tm-opfeed-row ${fadeCls}`} style={{ cursor: 'pointer' }} onClick={() => onWallet && onWallet(o.walletFull || o.wallet)}>
                 <span className="l">
                   <span className="t">{o.time.slice(0, 5)}</span>
-                  <span className="a">{o.wallet}</span>
-                  <span className="op">· {o.op}</span>
+                  <span className="op">{o.op}</span>
                 </span>
-                <span className={`v ${o.dirty > 0 ? 'pos' : o.dirty < 0 ? 'neg' : 'dim'}`}>{fmt.signed(o.dirty)}</span>
+                <span className={`v ${[100, 115, 130].includes(o.dirty) ? 'pos' : 'neg'}`}>{fmt.signed(o.dirty)}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="tm-live-panel">
+        <div className="tm-live-panel-h">
+          <span><b>ops</b> matrix</span>
+          <span className="rule" />
+          <span className="v">60m</span>
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--t-fs-xs)', fontFamily: 'var(--t-font)' }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: 'left', color: 'var(--t-fg-mut)', fontWeight: 400, paddingBottom: 3 }}></th>
+              {OPS_COLS.map(c => (
+                <th key={c} style={{ textAlign: 'right', color: 'var(--t-fg-mut)', fontWeight: 400, paddingBottom: 3, letterSpacing: '0.06em' }}>{OPS_LABELS[c]}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {WINDOWS.map(w => (
+              <tr key={w}>
+                <td style={{ color: 'var(--t-fg-mut)', paddingRight: 6, paddingBottom: 1 }}>{WIN_LABELS[w]}</td>
+                {OPS_COLS.map(c => {
+                  const v = opsMatrix?.[c]?.[w] ?? 0;
+                  return (
+                    <td key={c} style={{ textAlign: 'right', color: v > 0 ? 'var(--t-fg)' : 'var(--t-fg-mut)', paddingBottom: 1 }}>{v}</td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="tm-live-panel">
+        <div className="tm-live-panel-h">
+          <span><b>dirty</b> transactions</span>
+          <span className="rule" />
+          <span className="v">live</span>
+        </div>
+        <div className="tm-opfeed">
+          {trades.filter(t => t.kind === 'buy' || t.kind === 'sell').slice(0, 6).map((t, i) => {
+            const fadeCls = i >= 3 ? `fade${i >= 5 ? '-3' : i >= 4 ? '-2' : ''}` : '';
+            return (
+              <div key={`${t._ts}-${i}`} className={`tm-opfeed-row ${fadeCls}`} style={{ cursor: t.addrFull ? 'pointer' : 'default' }} onClick={() => t.addrFull && onWallet && onWallet(t.addrFull)}>
+                <span className="l">
+                  <span className={`op ${t.kind === 'buy' ? 'pos' : 'neg'}`}>{t.label}</span>
+                  <span className="t">{t._amount != null ? Math.round(t._amount).toLocaleString() : t.amount}</span>
+                </span>
+                <span className={`v ${t.kind === 'buy' ? 'pos' : 'neg'}`}>${t._amount != null ? Math.round(t._amount * counters.dirty).toLocaleString() : '—'}</span>
               </div>
             );
           })}
@@ -809,63 +878,200 @@ function Counter({ k, v, cls, tickKey }) {
 }
 
 // ── Wallet rail ────────────────────────────────────────────────────────────
-function WalletRail({ D, address }) {
-  const w = D.wallet;
-  const isOwner = address === w.address;
+function midTrunc(s, front = 10, back = 8) {
+  if (!s || s.length <= front + back + 3) return s;
+  return s.slice(0, front) + '…' + s.slice(-back);
+}
+
+function EditableAddress({ address, onChange }) {
+  const [editing, setEditing] = useStateO(false);
+  const [val, setVal] = useStateO(address || '');
+  useEffectO(() => { setVal(address || ''); }, [address]);
+
+  function commit() {
+    setEditing(false);
+    onChange(val.trim());
+  }
+
+  if (editing) return (
+    <input
+      className="tm-addr-input"
+      value={val}
+      onChange={e => { setVal(e.target.value); onChange(e.target.value.trim()); }}
+      onBlur={commit}
+      onKeyDown={e => {
+        if (e.key === 'Enter') commit();
+        if (e.key === 'Escape') { setEditing(false); setVal(address || ''); onChange(''); }
+      }}
+      autoFocus
+      spellCheck={false}
+      style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: 'var(--t-hdr)', fontFamily: 'inherit', fontSize: 'inherit' }}
+    />
+  );
+
+  return (
+    <span
+      className="tm-hot"
+      style={{ cursor: 'text', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+      title={address || 'click to enter address'}
+      onClick={() => setEditing(true)}
+    >
+      {address ? midTrunc(address) : <span className="dim">click to enter address</span>}
+    </span>
+  );
+}
+
+const OP_LABELS_SHORT = {
+  DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion',
+  THIRD_ENTERPRISE: '3rd ent.', PARTIAL: 'partial', FAIL: 'fail',
+  LEVEL_UP: 'level up', BUY_ASSET: 'buy asset', SCRAP: 'scrap',
+  DEX_BUY: 'dex buy', DEX_SELL: 'dex sell', BURN: 'burn',
+};
+const EARN_OPS = new Set(['DRUG_DEAL','ARMS_DEAL','EXTORTION','THIRD_ENTERPRISE','PARTIAL','FAIL','SCRAP']);
+
+function WalletRail({ address, onAddressChange }) {
+  const [dbData,   setDbData]   = useStateO(null);
+  const [liveData, setLiveData] = useStateO(null);
+  const [loading,  setLoading]  = useStateO(false);
+
+  useEffectO(() => {
+    if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) {
+      setDbData(null); setLiveData(null);
+      return;
+    }
+    setLoading(true);
+    const addr = address.toLowerCase();
+    Promise.all([
+      fetch(`/api/players/${addr}`).then(r => r.json()).catch(() => null),
+      fetch(`/api/monitor?wallet=${addr}`).then(r => r.json()).catch(() => null),
+    ]).then(([db, live]) => {
+      setDbData(db?.error ? null : db);
+      setLiveData(live?.error ? null : live);
+      setLoading(false);
+    });
+  }, [address]);
+
+  const addrRow = (
+    <div className="tm-rail-addr" style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
+      <EditableAddress address={address} onChange={onAddressChange} />
+      {address && <span className="x" title="clear" style={{ flexShrink: 0, cursor: 'pointer' }} onClick={() => onAddressChange('')}>×</span>}
+    </div>
+  );
+
+  if (!address) return (
+    <>
+      <div className="tm-rail-h">wallet</div>
+      {addrRow}
+    </>
+  );
+
+  const isFullAddr = /^0x[0-9a-fA-F]{40}$/.test(address);
+
   return (
     <>
-      <div className="tm-rail-h">wallet <em>{isOwner ? '· connected' : '· inspected'}</em></div>
-      <div className="tm-rail-addr">
-        <span className="tm-hot">{address}</span>
-        <span className="x" title="clear">×</span>
-      </div>
-      <Region title="indexed stats" fkey="F8">
-        <KV k="total ops"    v={w.indexed.totalOps} />
-        <KV k="dirty earned" v={w.indexed.dirtyEarned}  cls="pos" />
-        <KV k="dirty spent"  v={w.indexed.dirtySpent}   cls="neg" />
-        <KV k="balance"      v={w.indexed.balance} />
-        <KVSep />
-        <KV k="inf bought"   v={w.indexed.infBought.toLocaleString()} sub={`${w.indexed.infBoughtPurchases} purchases`} />
-        <KV k="inf refunded" v={w.indexed.infRefunded.toLocaleString()} />
-        <KV k="dex bought"   v={w.indexed.dexBought} sub={`${w.indexed.dexBoughtTxs} txs`} />
-        <KV k="dex sold"     v={w.indexed.dexSold}   sub={`${w.indexed.dexSoldTxs} txs`} cls="neg" />
-        <KVSep />
-        <KV k="vault claimed" v={w.indexed.vaultClaimed} cls="hdr" sub={`${w.indexed.vaultPayouts} payouts`} />
-      </Region>
+      <div className="tm-rail-h">wallet <em>· {loading ? 'loading…' : isFullAddr ? 'inspected' : 'enter full address'}</em></div>
+      {addrRow}
 
-      <Region title="earned by op" fkey="F8">
-        {w.earnedByOp.map((r) => (
-          <div className="tm-barrow" key={r.type}>
-            <span className="lbl">{r.type.toLowerCase()}</span>
-            <span className="tm-track">
-              <i style={{ width: `${r.share}%`, background: `var(--t-${r.color === 'green' ? 'pos' : r.color === 'orange' ? 'fg' : 'neg'})` }} />
-            </span>
-            <span className="num">{r.dirty}</span>
-          </div>
-        ))}
-      </Region>
+      {!isFullAddr && (
+        <div className="dim" style={{ fontSize: 'var(--t-fs-xs)', padding: '4px 0' }}>enter a full 0x… address</div>
+      )}
 
-      <Region title="how spent" fkey="F8">
-        {w.spent.map((r) => (
-          <div className="tm-barrow" key={r.type}>
-            <span className="lbl">{r.type.toLowerCase()}</span>
-            <span className="tm-track">
-              <i style={{ width: `${r.share == null ? 50 : r.share}%`, background: `var(--t-${r.color === 'orange' ? 'fg' : r.color === 'magenta' ? 'hdr' : 'neg'})` }} />
-            </span>
-            <span className="num">{r.dirty}</span>
-          </div>
-        ))}
-      </Region>
+      {isFullAddr && dbData?.stats && (
+        <Region title="indexed stats" fkey="F8">
+          <KV k="total ops"    v={fmt.n(dbData.stats.ops)} />
+          <KV k="dirty earned" v={fmt.k(dbData.stats.earned)}  cls="pos" />
+          <KV k="dirty spent"  v={fmt.k(dbData.stats.spent)}   cls="neg" />
+          <KV k="balance"      v={fmt.k(dbData.stats.balance)} />
+          <KVSep />
+          <KV k="inf bought"   v={fmt.n(dbData.influence?.totalPurchased ?? 0)} sub={`${dbData.influence?.purchaseCount ?? 0} purchases`} />
+          <KV k="inf refunded" v={fmt.n(dbData.influence?.totalRefunded  ?? 0)} />
+          <KV k="dex bought"   v={fmt.k(dbData.stats.dex_bought)} sub={`${dbData.breakdown?.dex_bought?.cnt ?? 0} txs`} />
+          <KV k="dex sold"     v={fmt.k(dbData.stats.dex_sold)}   sub={`${dbData.breakdown?.dex_sold?.cnt   ?? 0} txs`} cls="neg" />
+          <KVSep />
+          <KV k="vault claimed" v={`$${fmt.k(dbData.stats.vault_claimed)}`} cls="hdr" sub={`${dbData.stats.vault_count} payouts`} />
+        </Region>
+      )}
 
-      <Region title="farmed daily" fkey="F8">
-        <BarRow2
-          data={localDates(w.farmedDaily)}
-          series={[
-            { key: 'earned', label: 'earned', color: 'pos' },
-            { key: 'spent',  label: 'spent',  color: 'neg' },
-          ]}
-        />
-      </Region>
+      {isFullAddr && dbData?.breakdown?.earned?.length > 0 && (() => {
+        const rows = dbData.breakdown.earned.filter(r => EARN_OPS.has(r.op_type));
+        const total = rows.reduce((s, r) => s + Number(r.total), 0);
+        return (
+          <Region title="earned by op" fkey="F8">
+            {rows.map(r => (
+              <div className="tm-barrow" key={r.op_type}>
+                <span className="lbl">{OP_LABELS_SHORT[r.op_type] ?? r.op_type.toLowerCase()}</span>
+                <span className="tm-track">
+                  <i style={{ width: `${total > 0 ? (Number(r.total) / total * 100).toFixed(1) : 0}%`, background: 'var(--t-pos)' }} />
+                </span>
+                <span className="num">{fmt.k(Number(r.total))}</span>
+              </div>
+            ))}
+          </Region>
+        );
+      })()}
+
+      {isFullAddr && dbData?.breakdown?.spent?.length > 0 && (() => {
+        const rows = dbData.breakdown.spent;
+        const total = rows.reduce((s, r) => s + Number(r.total), 0);
+        return (
+          <Region title="how spent" fkey="F8">
+            {rows.map(r => (
+              <div className="tm-barrow" key={r.op_type}>
+                <span className="lbl">{OP_LABELS_SHORT[r.op_type] ?? r.op_type.toLowerCase()}</span>
+                <span className="tm-track">
+                  <i style={{ width: `${total > 0 ? (Number(r.total) / total * 100).toFixed(1) : 0}%`, background: 'var(--t-neg)' }} />
+                </span>
+                <span className="num">{fmt.k(Number(r.total))}</span>
+              </div>
+            ))}
+          </Region>
+        );
+      })()}
+
+      {isFullAddr && dbData?.history?.length > 1 && (
+        <Region title="farmed daily" fkey="F8">
+          <BarRow2
+            data={dbData.history.map(h => ({ x: h.day?.slice(5) ?? h.day, earned: Number(h.earned), spent: Number(h.spent) }))}
+            series={[
+              { key: 'earned', label: 'earned', color: 'pos' },
+              { key: 'spent',  label: 'spent',  color: 'neg' },
+            ]}
+          />
+        </Region>
+      )}
+
+      {isFullAddr && liveData?.companies?.length > 0 && (
+        <Region title="live companies" fkey="F8">
+          {liveData.companies.map(c => {
+            const buf = liveData.currentEthPrice && c.liqPrice
+              ? Math.round((liveData.currentEthPrice - (Number(BigInt(c.liqPrice) / 10n ** 12n) / 1e6)) * 100) / 100
+              : null;
+            return (
+              <div key={c.company} className="tm-kv" style={{ marginBottom: 2 }}>
+                <span className="k" style={{ fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs-xs)' }}>
+                  {c.company.slice(0, 6)}…{c.company.slice(-4)}
+                  {c.autoTradeEnabled && <span className="dim"> auto</span>}
+                </span>
+                <span className={`v ${buf == null ? '' : buf >= 0 ? 'pos' : 'neg'}`} style={{ fontSize: 'var(--t-fs-xs)' }}>
+                  {buf == null ? '—' : `${buf >= 0 ? '+' : ''}${buf.toFixed(2)}`}
+                  {c.active && c.endTime > 0 && <span className="dim"> {fmtCountdownLocal(c.endTime)}</span>}
+                </span>
+              </div>
+            );
+          })}
+          {liveData.influenceBalance != null && (
+            <>
+              <KVSep />
+              <KV k="inf bal"   v={fmt.k(liveData.influenceBalance)} />
+              <KV k="dirty bal" v={fmt.k(liveData.dirtyBalance)} />
+            </>
+          )}
+        </Region>
+      )}
+
+      {isFullAddr && !loading && !dbData && !liveData && (
+        <div className="dim" style={{ fontSize: 'var(--t-fs-xs)', padding: '4px 0' }}>no data found for this address</div>
+      )}
     </>
   );
 }
@@ -884,7 +1090,7 @@ const LEADERBOARD = [
 ];
 
 // ── Trade table helpers ────────────────────────────────────────────────────
-function renderTradeRows(rows, range) {
+function renderTradeRows(rows, range, ethPrice = 0, _tick = 0, onWallet) {
   const filtered = range === 'active' ? rows.filter((r) => r.active)
                  : range === 'auto'   ? rows.filter((r) => r.auto)
                  : rows;
@@ -904,15 +1110,17 @@ function renderTradeRows(rows, range) {
     </tr>,
     ...g.rows.slice(0, 10).map((r) => {
       const history = bufferHistory(r);
-      const underwater = r.buffer < 0;
+      const liveBuffer = ethPrice > 0 ? Math.round((ethPrice - r.liqPrice) * 100) / 100 : r.buffer;
+      const liveEndsIn = fmtCountdownLocal(r.endTime);
+      const underwater = liveBuffer < 0;
       return (
         <tr key={r.id} className={underwater ? 'underwater' : ''}>
-          <td><span className="tm-num">{r.id}</span></td>
+          <td><span className="tm-num" style={{ cursor: 'pointer', color: 'var(--t-hdr)' }} onClick={() => onWallet && onWallet(r.id)}>{r.id}</span></td>
           <td><span className={`tm-pill ${r.auto ? 'on' : 'off'}`}>{r.auto ? 'on' : 'off'}</span></td>
-          <td className={r.active ? 'warn' : 'dim'}>{r.endsIn}</td>
+          <td className={r.active ? 'warn' : 'dim'}>{liveEndsIn}</td>
           <td className="num">{r.liqPrice.toLocaleString()}</td>
-          <td className={`num ${r.buffer >= 0 ? 'pos' : 'neg'}`}>{r.buffer >= 0 ? '+' : ''}{r.buffer.toFixed(2)}</td>
-          <td><Spark data={history} w={60} h={16} color={`var(--t-${r.buffer >= 0 ? 'pos' : 'neg'})`} /></td>
+          <td className={`num ${liveBuffer >= 0 ? 'pos' : 'neg'}`}>{liveBuffer >= 0 ? '+' : ''}{liveBuffer.toFixed(2)}</td>
+          <td><Spark data={history} w={60} h={16} color={`var(--t-${liveBuffer >= 0 ? 'pos' : 'neg'})`} /></td>
           <td className="num dim">{r.entry != null ? `$${r.entry.toFixed(2)}` : '—'}</td>
         </tr>
       );

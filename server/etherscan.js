@@ -520,21 +520,18 @@ export async function fetchStakingEvents(fromBlock, toBlock) {
   }));
 }
 
-// ─── ETH price — Kumbaya WETH/USDm pool (chain 4326) ────────────────────────
-const KUMBAYA_ETH_POOL_ID = '0x587F6eeAfc7Ad567e96eD1B62775fA6402164b22-4326';
-
+// ─── ETH price — RedStone oracle REST API ────────────────────────────────────
 export async function fetchEthPrice() {
   const ctrl  = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
     const res = await fetch(
-      `https://exchange.kumbaya.xyz/api/v1/pools/${KUMBAYA_ETH_POOL_ID}`,
+      'https://api.redstone.finance/prices/?symbol=ETH&provider=redstone&limit=1',
       { signal: ctrl.signal }
     );
-    if (!res.ok) throw new Error(`Kumbaya HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`RedStone HTTP ${res.status}`);
     const data = await res.json();
-    // token1Price = USDm per WETH = ETH price in USDm
-    const price = parseFloat(data.pool?.token1Price);
+    const price = parseFloat(data[0]?.value);
     if (!isFinite(price) || price <= 0) throw new Error('invalid ETH price');
     return price;
   } finally {

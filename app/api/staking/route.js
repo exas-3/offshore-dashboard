@@ -5,6 +5,14 @@ import { getStakingStats, getStakingHistory, getStakingRecent } from '../../../l
 let _cache = null, _cacheTs = 0;
 const TTL = 15_000;
 
+function fmtMinute(date) {
+  return date.toLocaleString('en-US', {
+    month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+    timeZone: 'UTC', hour12: false,
+  });
+}
+
 export async function GET() {
   try {
     if (!_cache || Date.now() - _cacheTs >= TTL) {
@@ -14,21 +22,10 @@ export async function GET() {
         getStakingRecent(50),
       ]);
 
-      const fmtMinute = d => new Date(d).toLocaleString('en-US', {
-        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-        timeZone: 'UTC', hour12: false,
-      });
-      const minuteChart = history.map(r => ({
-        label:    fmtMinute(r.minute),
-        total:    Number(r.total),
-        deposits: Number(r.deposits),
-        stakers:  Number(r.stakers),
+      const dailyChart = history.map(r => ({
+        label: fmtMinute(r.minute),
+        total: Number(r.total),
       }));
-      const nowFloor = new Date(Math.floor(Date.now() / 60000) * 60000);
-      const nowLabel = fmtMinute(nowFloor);
-      if (minuteChart.length === 0 || minuteChart[minuteChart.length - 1].label !== nowLabel) {
-        minuteChart.push({ label: nowLabel, total: 0, deposits: 0, stakers: 0 });
-      }
 
       const recentRows = recent.map(r => ({
         hash:       r.hash,
@@ -39,7 +36,7 @@ export async function GET() {
         amount:     Number(r.amount),
       }));
 
-      _cache = { stats, minuteChart, recent: recentRows };
+      _cache = { stats, dailyChart, recent: recentRows };
       _cacheTs = Date.now();
     }
     return NextResponse.json(_cache);
