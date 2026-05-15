@@ -1,6 +1,6 @@
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
-import { getStakingStats, getStakingHistory, getStakingRecent } from '../../../lib/db.js';
+import { getStakingStats, getStakingHistory, getStakingRecent, getTopStakers24h } from '../../../lib/db.js';
 
 let _cache = null, _cacheTs = 0;
 const TTL = 15_000;
@@ -16,10 +16,11 @@ function fmtMinute(date) {
 export async function GET() {
   try {
     if (!_cache || Date.now() - _cacheTs >= TTL) {
-      const [stats, history, recent] = await Promise.all([
+      const [stats, history, recent, top24h] = await Promise.all([
         getStakingStats(),
         getStakingHistory(),
         getStakingRecent(50),
+        getTopStakers24h(200),
       ]);
 
       const dailyChart = history.map(r => ({
@@ -36,7 +37,14 @@ export async function GET() {
         amount:     Number(r.amount),
       }));
 
-      _cache = { stats, dailyChart, recent: recentRows };
+      const top24hRows = top24h.map(r => ({
+        user:     r.user_addr,
+        total:    Number(r.total),
+        deposits: Number(r.deposits),
+        alias:    r.alias || null,
+      }));
+
+      _cache = { stats, dailyChart, recent: recentRows, top24h: top24hRows };
       _cacheTs = Date.now();
     }
     return NextResponse.json(_cache);

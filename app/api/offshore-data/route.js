@@ -408,6 +408,7 @@ export async function GET() {
       const liq = liqPriceUsd(c.liq_price);
       return {
         id:       shortAddr(c.address),
+        owner:    c.owner,
         auto:     c.auto_trade,
         active:   c.active,
         endTime:  c.active ? Number(c.end_time) : null,
@@ -595,11 +596,12 @@ export async function GET() {
         return Math.max(1, Math.round((0.15 + t * 0.85 + (rng() - 0.5) * 0.15) * 70));
       });
       return {
-        wallet: shortAddr(r.addr),
-        ops:    r.ops,
-        earned: fmtM(r.earned),
-        net:    netStr,
-        rank:   0,
+        wallet:     shortAddr(r.addr),
+        walletFull: r.addr,
+        ops:        r.ops,
+        earned:     fmtM(r.earned),
+        net:        netStr,
+        rank:       0,
         spark,
       };
     });

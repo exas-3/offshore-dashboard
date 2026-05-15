@@ -1,6 +1,6 @@
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
-import { getVaultStats, getVaultCycleHistory, getVaultTopEarners, getVaultRecentPayouts, getVaultFirstPayouts } from '../../../lib/index.js';
+import { getVaultStats, getVaultCycleHistory, getVaultTopEarners, getVaultRecentPayouts, getVaultFirstPayouts, getTopStakers24h } from '../../../lib/index.js';
 import { fetchVaultBalance } from '../../../server/etherscan.js';
 
 // ── cycle boundary logic (mirrors stats/route.js) ─────────────────────────────
@@ -45,8 +45,8 @@ const TTL = 15_000;
 export async function GET() {
   try {
     if (!_cache || Date.now() - _cacheTs >= TTL) {
-      const [rawStats, rawPayouts, rawEarners, recentPayouts, firstPayouts] = await Promise.all([
-        getVaultStats(), getVaultCycleHistory(), getVaultTopEarners(50), getVaultRecentPayouts(100), getVaultFirstPayouts(),
+      const [rawStats, rawPayouts, rawEarners, recentPayouts, firstPayouts, rawTopStakers] = await Promise.all([
+        getVaultStats(), getVaultCycleHistory(), getVaultTopEarners(50), getVaultRecentPayouts(100), getVaultFirstPayouts(), getTopStakers24h(200),
       ]);
 
       // Group payouts by actual cycle
@@ -88,7 +88,8 @@ export async function GET() {
       };
 
       const topEarners = rawEarners.map(r => ({ addr: r.recipient, total: Number(r.total), payouts: Number(r.payouts), best: Number(r.best), last_ts: r.last_ts }));
-      _cache = { stats, cycleHistory, topEarners, recentPayouts };
+      const topStakers24h = rawTopStakers.map(r => ({ addr: r.user_addr, total: Number(r.total), deposits: Number(r.deposits) }));
+      _cache = { stats, cycleHistory, topEarners, recentPayouts, topStakers24h };
       _cacheTs = Date.now();
     }
     let currentBalance = null;
