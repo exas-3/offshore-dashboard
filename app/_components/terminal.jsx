@@ -921,6 +921,8 @@ const CELL_H   = 14; // px — fixed cell height; flex width determines shape
 
 export function Heatmap({ grid, days, max }) {
   const m = max || Math.max(...grid.flat(), 1);
+  const wrapRef = useRefT(null);
+  const { w: measuredW } = useContainerSize(wrapRef);
   const [hover, setHover] = useStateT(null);
   const [mouse, setMouse] = useStateT({ x: 0, y: 0 });
 
@@ -929,11 +931,21 @@ export function Heatmap({ grid, days, max }) {
     return Math.max(1, Math.min(HEAT_MIX.length - 1, Math.ceil((v / m) * (HEAT_MIX.length - 1))));
   }
 
-  const rowStyle  = { display: 'flex', alignItems: 'center', gap: 1, marginBottom: 1 };
-  const labelStyle = { width: 38, flexShrink: 0, color: 'var(--t-fg-soft)', fontSize: 'var(--t-fs-sm)' };
+  // Pixel-grid discipline: measure container, derive an INTEGER cell width
+  // that fits 24 hours flush. Replaces `flex: 1` cells whose subpixel rounding
+  // produced uneven stripes when the panel resized.
+  const LABEL_W = 38;
+  const GAP = 1;
+  const HOURS = 24;
+  const avail = Math.max(0, (measuredW || 480) - LABEL_W - (HOURS - 1) * GAP);
+  const cellW = Math.max(6, Math.floor(avail / HOURS));
+  const rowsW = LABEL_W + HOURS * cellW + (HOURS - 1) * GAP;
+
+  const rowStyle   = { display: 'flex', alignItems: 'center', gap: GAP, marginBottom: 1 };
+  const labelStyle = { width: LABEL_W, flexShrink: 0, color: 'var(--t-fg-soft)', fontSize: 'var(--t-fs-sm)' };
 
   return (
-    <div style={{ fontFamily: 'var(--t-font)', userSelect: 'none' }}>
+    <div ref={wrapRef} style={{ fontFamily: 'var(--t-font)', userSelect: 'none' }}>
       {grid.map((row, di) => (
         <div key={di} style={rowStyle}>
           <span style={labelStyle}>{days[di]}</span>
@@ -945,7 +957,7 @@ export function Heatmap({ grid, days, max }) {
               : `color-mix(in srgb, var(--t-fg) ${HEAT_MIX[ci]}%, var(--t-bg))`;
             return (
               <div key={hi} style={{
-                flex: 1, height: CELL_H, overflow: 'hidden',
+                width: cellW, flex: '0 0 auto', height: CELL_H, overflow: 'hidden',
                 fontSize: CELL_H, lineHeight: `${CELL_H}px`,
                 whiteSpace: 'nowrap', color,
                 cursor: 'crosshair',
@@ -958,10 +970,10 @@ export function Heatmap({ grid, days, max }) {
           })}
         </div>
       ))}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 1, marginTop: 2 }}>
-        <span style={{ width: 38, flexShrink: 0 }} />
-        {Array.from({ length: 24 }, (_, h) => (
-          <span key={h} style={{ flex: 1, textAlign: 'center', color: 'var(--t-fg-soft)', fontSize: 'var(--t-fs-sm)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: GAP, marginTop: 2, width: rowsW }}>
+        <span style={{ width: LABEL_W, flexShrink: 0 }} />
+        {Array.from({ length: HOURS }, (_, h) => (
+          <span key={h} style={{ width: cellW, flex: '0 0 auto', textAlign: 'center', color: 'var(--t-fg-soft)', fontSize: 'var(--t-fs-sm)' }}>
             {h % 6 === 0 ? String(h).padStart(2, '0') : ''}
           </span>
         ))}
@@ -1008,10 +1020,16 @@ export function Sortable({ label, k, sortKey, sortDir, on }) {
 //   all other bars are side-by-side columns.
 export function ComboChart({ data, bars, line, height = 220 }) {
   const wrapRef = useRefT(null);
+  const { w: measuredW } = useContainerSize(wrapRef);
   const [hoverIdx, setHoverIdx] = useStateT(null);
   const [mouse, setMouse] = useStateT({ x: 0, y: 0 });
 
-  const W = 1000, H = height;
+  // Render the SVG in NATIVE PIXEL SPACE: viewBox width == container width,
+  // so every viewBox unit is exactly one rendered pixel. Combined with
+  // Math.round() on bar coords and shape-rendering:crispEdges, bars stay
+  // pixel-snapped through resize. Falls back to 1000 on the very first frame
+  // (before ResizeObserver fires) — single-frame transient, invisible.
+  const W = Math.max(320, Math.round(measuredW || 1000)), H = height;
   const PAD_L = 44, PAD_R = 44, PAD_T = 10, PAD_B = 24;
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
@@ -1098,12 +1116,17 @@ export function ComboChart({ data, bars, line, height = 220 }) {
                 const bh = ((d[b.key] || 0) / barTop) * plotH;
                 const y = yBottom - bh;
                 yBottom -= bh;
+                const rx = Math.round(x);
+                const rw = Math.max(2, Math.round(colW));
+                const ry = Math.round(y);
+                const rh = Math.max(1, Math.round(bh));
                 return (
                   <rect
                     key={b.key}
-                    x={x} y={y} width={colW} height={bh}
+                    x={rx} y={ry} width={rw} height={rh}
                     fill={`var(--t-${b.color})`}
                     opacity={hoverIdx == null || hoverIdx === i ? 1 : 0.45}
+                    shapeRendering="crispEdges"
                   />
                 );
               });
@@ -1112,11 +1135,12 @@ export function ComboChart({ data, bars, line, height = 220 }) {
         ))}
         {/* line */}
         <polyline
-          points={linePts.map((p) => p.join(',')).join(' ')}
-          fill="none" stroke={`var(--t-${line.color})`} strokeWidth="1.5"
+          points={linePts.map((p) => `${(Math.round(p[0] * 2) / 2)},${(Math.round(p[1] * 2) / 2)}`).join(' ')}
+          fill="none" stroke={`var(--t-${line.color})`} strokeWidth="1.75"
+          strokeLinejoin="miter" strokeLinecap="square"
         />
         {linePts.map((p, i) => (
-          <circle key={i} cx={p[0]} cy={p[1]} r={hoverIdx === i ? 3.5 : 2.2} fill={`var(--t-${line.color})`} />
+          <circle key={i} cx={Math.round(p[0])} cy={Math.round(p[1])} r={hoverIdx === i ? 3.5 : 2.2} fill={`var(--t-${line.color})`} />
         ))}
         {/* x labels */}
         {data.map((d, i) => i % Math.ceil(data.length / 9) === 0 ? (
@@ -1158,6 +1182,7 @@ export function LineChart({ data, height = 160, color = 'fg', valueFmt = fmt.k, 
   const [hoverIdx, setHoverIdx] = useStateT(null);
   const [mouse, setMouse] = useStateT({ x: 0, y: 0 });
   const wrapRef = useRefT(null);
+  const { w: measuredW, h: measuredH } = useContainerSize(wrapRef);
 
   const max = yMax ?? Math.max(...data.map((d) => d.v), 1);
   const min = Math.min(...data.map((d) => d.v), 0);
@@ -1169,7 +1194,11 @@ export function LineChart({ data, height = 160, color = 'fg', valueFmt = fmt.k, 
   const bot = ticks[0];
   const range = top - bot || 1;
 
-  const W = 1000, H = height;
+  // Native-pixel viewBox so curves & axis text stay crisp on resize.
+  // In `fill` mode we also adopt the container height so the SVG no longer
+  // needs preserveAspectRatio="none" to stretch — the viewBox already matches.
+  const W = Math.max(320, Math.round(measuredW || 1000));
+  const H = fill && measuredH ? Math.max(80, Math.round(measuredH)) : height;
   const PAD_L = 56, PAD_R = 8, PAD_T = 6, PAD_B = 22;
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
@@ -1227,7 +1256,7 @@ export function LineChart({ data, height = 160, color = 'fg', valueFmt = fmt.k, 
           );
         })}
         <path d={areaPath} fill={`var(--t-${color})`} opacity="0.08" />
-        <path d={path} fill="none" stroke={`var(--t-${color})`} strokeWidth="1.5" />
+        <path d={path} fill="none" stroke={`var(--t-${color})`} strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round" />
         {data.map((d, i) => i % Math.ceil(data.length / 9) === 0 ? (
           <text key={i} className="tm-svg-axis" x={PAD_L + (i / (data.length - 1 || 1)) * plotW} y={H - 6} textAnchor="middle">{d.x ?? d.t}</text>
         ) : null)}

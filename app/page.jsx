@@ -40,10 +40,14 @@ export default function Page() {
   }
 
   useEffect(() => {
-    fetch('/api/offshore-data', { cache: 'no-cache' })
-      .then(r => r.json())
-      .then(setData)
-      .catch(console.error);
+    const load = () =>
+      fetch('/api/offshore-data', { cache: 'no-cache' })
+        .then(r => r.json())
+        .then(setData)
+        .catch(console.error);
+    load();
+    const t = setInterval(load, 60_000);
+    return () => clearInterval(t);
   }, []);
 
   if (!data) {
