@@ -1008,8 +1008,9 @@ function WalletRail({ address, onAddressChange, ethPrice = 0 }) {
   const [liveData, setLiveData] = useStateO(null);
   const [loading,  setLoading]  = useStateO(false);
   const [tick,     setTick]     = useStateO(0);
-  const [alarmOn,  setAlarmOn]  = useStateO(false);
-  const prevCompRef = useRefO({});
+  const [alarmOn,    setAlarmOn]    = useStateO(false);
+  const prevCompRef  = useRefO({});
+  const compAddrsRef = useRefO([]);
 
   useEffectO(() => {
     const t = setInterval(() => setTick(n => n + 1), 1000);
@@ -1025,17 +1026,19 @@ function WalletRail({ address, onAddressChange, ethPrice = 0 }) {
     for (const c of companies) {
       const p = prev[c.company];
       if (!p) continue;
-      if (!p.completable && c.completable) {
-        playAlarm('success');
-        if (typeof document !== 'undefined' && document.hidden &&
-            typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          new Notification('Op completed', { body: `${c.company.slice(0, 10)}…`, silent: true });
-        }
-      } else if (p.active && !c.active && !c.completable && !p.completable) {
-        playAlarm('partial');
-        if (typeof document !== 'undefined' && document.hidden &&
-            typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          new Notification('Op partial / bust', { body: `${c.company.slice(0, 10)}…`, silent: true });
+      if (alarmOn) {
+        if (!p.completable && c.completable) {
+          playAlarm('success');
+          if (typeof document !== 'undefined' && document.hidden &&
+              typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            new Notification('Op completed', { body: `${c.company.slice(0, 10)}…`, silent: true });
+          }
+        } else if (p.active && !c.active && !c.completable && !p.completable) {
+          playAlarm('partial');
+          if (typeof document !== 'undefined' && document.hidden &&
+              typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            new Notification('Op partial / bust', { body: `${c.company.slice(0, 10)}…`, silent: true });
+          }
         }
       }
     }
@@ -1062,34 +1065,39 @@ function WalletRail({ address, onAddressChange, ethPrice = 0 }) {
         prevCompRef.current = Object.fromEntries(
           (live.companies ?? []).map(c => [c.company, { active: c.active, completable: c.completable }])
         );
+        compAddrsRef.current = (live.companies ?? []).map(c => c.company);
         setLiveData(live);
       }
       setLoading(false);
     });
   }, [address]);
 
-  // Alarm poll — 10s interval when alarm is enabled
+  // Continuous 1s poll for company states (lightweight — single batch RPC call)
   useEffectO(() => {
-    const isFullAddr = /^0x[0-9a-fA-F]{40}$/.test(address);
-    if (!alarmOn || !isFullAddr) return;
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-    const addr = address.toLowerCase();
+    if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) return;
     const poll = () => {
-      fetch(`/api/monitor?wallet=${addr}`)
+      const addrs = compAddrsRef.current;
+      if (!addrs.length) return;
+      fetch(`/api/monitor/states?addrs=${addrs.join(',')}`)
         .then(r => r.json())
-        .then(live => {
-          if (!live?.error) {
-            checkTransitions(live.companies ?? []);
-            setLiveData(live);
+        .then(d => {
+          if (!d?.error && d.companies) {
+            checkTransitions(d.companies);
+            setLiveData(prev => prev ? { ...prev, companies: d.companies } : prev);
           }
         })
         .catch(() => {});
     };
-    const t = setInterval(poll, 10_000);
+    const t = setInterval(poll, 1_000);
     return () => clearInterval(t);
-  }, [alarmOn, address]);
+  }, [address]);
+
+  // Request notification permission when alarm is toggled on
+  useEffectO(() => {
+    if (alarmOn && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, [alarmOn]);
 
   const addrRow = (
     <div className="tm-rail-addr" style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
