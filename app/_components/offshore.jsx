@@ -556,11 +556,13 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
             sub={stakingData?.stats
               ? `${(stakingData.stats.totalStaked / 1e3).toFixed(1)}k $dirty staked · ${stakingData.stats.uniqueStakers} stakers · rotation ${stakingData.stats.currentRotation}`
               : 'loading…'}
+            fill
           >
             {stakingData?.dailyChart?.length > 0 ? (
               <LineChart
                 data={stakingData.dailyChart.map(d => ({ x: d.label, v: d.total }))}
                 color="pos"
+                fill
                 valueFmt={(v) => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(Math.round(v))}
               />
             ) : (
