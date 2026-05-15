@@ -559,15 +559,18 @@ export function BarRow2({ data, series, max, valueFmt = fmt.k }) {
 
 // ── Stacked bar row ────────────────────────────────────────────────────────
 export function StackedBarRow({ data, series, max, valueFmt = fmt.k }) {
+  const containerRef = useRefT(null);
   const glyphRef = useRefT(null);
   const width = useGlyphWidth(glyphRef);
-  const totals = data.map((d) => series.reduce((s, k) => s + (d[k.key] || 0), 0));
+  const { w: pxWidth } = useContainerSize(containerRef);
+  const visData = pxWidth > 0 && pxWidth < 480 ? data.slice(-12) : data;
+  const totals = visData.map((d) => series.reduce((s, k) => s + (d[k.key] || 0), 0));
   const m = max || Math.max(...totals, 1);
   const [hoverD, setHoverD] = useStateT(null);
   const [mouse, setMouse] = useStateT({ x: 0, y: 0 });
   return (
-    <>
-      {data.map((d, i) => {
+    <div ref={containerRef}>
+      {visData.map((d, i) => {
         const total = totals[i];
         const totalChars = Math.round((total / m) * width);
         let remaining = totalChars;
@@ -607,7 +610,7 @@ export function StackedBarRow({ data, series, max, valueFmt = fmt.k }) {
           }))}
         />
       )}
-    </>
+    </div>
   );
 }
 
@@ -634,6 +637,7 @@ export function BlockRow({ data, max, color = '', valueFmt = fmt.k }) {
 export function AsciiBarChart({ data, series, height = 14, valueFmt = fmt.k }) {
   const containerRef = useRefT(null);
   const charWidth    = useGlyphWidth(containerRef, 60);
+  const { w: pxWidth } = useContainerSize(containerRef);
   const [hoverIdx, setHoverIdx] = useStateT(null);
   const [mouse, setMouse] = useStateT({ x: 0, y: 0 });
 
@@ -655,7 +659,8 @@ export function AsciiBarChart({ data, series, height = 14, valueFmt = fmt.k }) {
 
   // Maximum points at minimum bar width (1 char per bar + 1 gap)
   const maxPoints = Math.floor(barsW / (groups.length + 1));
-  const nPoints   = Math.min(data.length, maxPoints);
+  const densityCap = pxWidth > 0 && pxWidth < 480 ? 12 : data.length;
+  const nPoints   = Math.min(data.length, maxPoints, densityCap);
 
   // Widen bars to fill available space
   const barW           = nPoints > 0 ? Math.max(1, Math.floor((barsW - nPoints) / (nPoints * groups.length))) : 1;

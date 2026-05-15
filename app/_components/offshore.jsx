@@ -146,7 +146,9 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     }
     if (height != null) setHeights((h) => ({ ...h, [id]: height }));
   }
-  const [econGran, setEconGran]  = useStateO('hourly');
+  const [econGran, setEconGran]  = useStateO(() =>
+    typeof window !== 'undefined' && window.innerWidth <= 720 ? 'daily' : 'hourly'
+  );
   const [supplyGran, setSupplyGran] = useStateO('daily');
   const [infGran, setInfGran]    = useStateO('daily');
   const [notifs, setNotifs] = useStateO({ 'buys & sells': true, 'operations': true });
