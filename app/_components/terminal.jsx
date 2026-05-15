@@ -125,7 +125,9 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
   const [activeSection, setActiveSection] = useStateT(nav && nav[0] ? nav[0].id : null);
   const [railOpen, setRailOpen] = useStateT(false);
   useEffectT(() => { if (openRailRef) openRailRef.current = () => setRailOpen(true); }, [openRailRef]);
-  const [sideOpen, setSideOpen] = useStateT(true);
+  const [sideOpen, setSideOpen] = useStateT(() =>
+    typeof window === 'undefined' ? true : window.innerWidth > 720
+  );
   const [settingsOpen, setSettingsOpen] = useStateT(false);
   const [tickerTooltip, setTickerTooltip] = useStateT(null);
   const settingsBtnRef = useRefT(null);
