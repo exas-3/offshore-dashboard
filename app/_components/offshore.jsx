@@ -1009,8 +1009,10 @@ function WalletRail({ address, onAddressChange, ethPrice = 0 }) {
   const [loading,  setLoading]  = useStateO(false);
   const [tick,     setTick]     = useStateO(0);
   const [alarmOn,    setAlarmOn]    = useStateO(false);
+  const alarmOnRef   = useRefO(false);
   const prevCompRef  = useRefO({});
   const compAddrsRef = useRefO([]);
+  alarmOnRef.current = alarmOn;
 
   useEffectO(() => {
     const t = setInterval(() => setTick(n => n + 1), 1000);
@@ -1026,7 +1028,7 @@ function WalletRail({ address, onAddressChange, ethPrice = 0 }) {
     for (const c of companies) {
       const p = prev[c.company];
       if (!p) continue;
-      if (alarmOn) {
+      if (alarmOnRef.current) {
         if (!p.completable && c.completable) {
           playAlarm('success');
           if (typeof document !== 'undefined' && document.hidden &&
