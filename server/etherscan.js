@@ -521,17 +521,22 @@ export async function fetchStakingEvents(fromBlock, toBlock) {
 }
 
 // ─── ETH price — RedStone oracle REST API ────────────────────────────────────
+const REDSTONE_ORACLE = '0xc555c100DB24dF36D406243642C169CC5A937f09';
+
 export async function fetchEthPrice() {
   const ctrl  = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
-    const res = await fetch(
-      'https://api.redstone.finance/prices/?symbol=ETH&provider=redstone&limit=1',
-      { signal: ctrl.signal }
-    );
-    if (!res.ok) throw new Error(`RedStone HTTP ${res.status}`);
-    const data = await res.json();
-    const price = parseFloat(data[0]?.value);
+    const res = await fetch(RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_call', params: [{ to: REDSTONE_ORACLE, data: '0xfeaf968c' }, 'latest'], id: 1 }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`RPC HTTP ${res.status}`);
+    const { result } = await res.json();
+    const answer = BigInt('0x' + result.slice(66, 130));
+    const price  = Number(answer) / 1e8;
     if (!isFinite(price) || price <= 0) throw new Error('invalid ETH price');
     return price;
   } finally {
