@@ -1108,14 +1108,6 @@ function WalletRail({ address, onAddressChange, ethPrice = 0 }) {
 
   const isFullAddr = /^0x[0-9a-fA-F]{40}$/.test(address);
 
-  const alarmBtn = isFullAddr ? (
-    <span
-      title={alarmOn ? 'disable alarm' : 'enable alarm'}
-      onClick={() => setAlarmOn(v => !v)}
-      style={{ marginLeft: 'auto', cursor: 'pointer', color: alarmOn ? 'var(--t-warn)' : 'var(--t-fg-mut)', fontSize: 'var(--t-fs-xs)', userSelect: 'none' }}
-    >{alarmOn ? '⟨ alarm on ⟩' : '⟨ alarm ⟩'}</span>
-  ) : null;
-
   if (!address) return (
     <>
       <div className="tm-rail-h">criminal</div>
@@ -1125,11 +1117,19 @@ function WalletRail({ address, onAddressChange, ethPrice = 0 }) {
 
   return (
     <>
-      <div className="tm-rail-h" style={{ display: 'flex', alignItems: 'center' }}>
-        <span>criminal <em>· {loading ? 'loading…' : isFullAddr ? 'inspected' : 'enter full address'}</em></span>
-        {alarmBtn}
-      </div>
+      <div className="tm-rail-h">criminal <em>· {loading ? 'loading…' : isFullAddr ? 'inspected' : 'enter full address'}</em></div>
       {addrRow}
+      {isFullAddr && (
+        <div
+          onClick={() => setAlarmOn(v => !v)}
+          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+            fontSize: 'var(--t-fs-xs)', userSelect: 'none', padding: '3px 0',
+            color: alarmOn ? 'var(--t-warn)' : 'var(--t-fg-soft)' }}
+        >
+          <span style={{ fontSize: 10 }}>{alarmOn ? '◉' : '○'}</span>
+          <span>{alarmOn ? 'alarm on' : 'alarm off'}</span>
+        </div>
+      )}
 
       {!isFullAddr && (
         <div className="dim" style={{ fontSize: 'var(--t-fs-xs)', padding: '4px 0' }}>enter a full 0x… address</div>
