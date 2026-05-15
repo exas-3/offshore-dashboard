@@ -264,6 +264,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   }, []);
 
   const [liveTicker, setLiveTicker] = useStateO(() => D.liveTradeTicker || []);
+  const [latestNewOps, setLatestNewOps] = useStateO([]);
   const filteredTicker = useMemoO(() => liveTicker.filter(item => {
     if ((item.kind === 'buy' || item.kind === 'sell') && !notifs['buys & sells']) return false;
     if (item.kind === 'op' && !notifs['operations']) return false;
@@ -297,6 +298,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
           const ts = nowHMS();
           lastOpTsRef.current = d.newOps[d.newOps.length - 1]._ts;
           setOps((prev) => [...d.newOps.map(o => ({ ...o, time: ts })).reverse(), ...prev].slice(0, 250));
+          setLatestNewOps(d.newOps);
         }
         if (d.liveTrades && d.liveTrades.length > 0) {
           setWatchRaw(d.liveTrades);
@@ -420,7 +422,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
 
   // ── Right rail ─────────────────────────────────────────────────────────
   const rail = showRail ? (
-    <WalletRail address={walletAddr} onAddressChange={setWalletAddr} ethPrice={counters.eth} />
+    <WalletRail address={walletAddr} onAddressChange={setWalletAddr} ethPrice={counters.eth} newOps={latestNewOps} />
   ) : null;
 
   return (
@@ -1003,14 +1005,13 @@ const OP_LABELS_SHORT = {
 };
 const EARN_OPS = new Set(['DRUG_DEAL','ARMS_DEAL','EXTORTION','THIRD_ENTERPRISE','PARTIAL','FAIL','SCRAP']);
 
-function WalletRail({ address, onAddressChange, ethPrice = 0 }) {
+function WalletRail({ address, onAddressChange, ethPrice = 0, newOps = [] }) {
   const [dbData,   setDbData]   = useStateO(null);
   const [liveData, setLiveData] = useStateO(null);
   const [loading,  setLoading]  = useStateO(false);
   const [tick,     setTick]     = useStateO(0);
   const [alarmOn,    setAlarmOn]    = useStateO(false);
   const alarmOnRef   = useRefO(false);
-  const prevCompRef  = useRefO({});
   const compAddrsRef = useRefO([]);
   alarmOnRef.current = alarmOn;
 
@@ -1023,36 +1024,32 @@ function WalletRail({ address, onAddressChange, ethPrice = 0 }) {
     try { new Audio(`/sounds/${which}.mp3`).play(); } catch {}
   }
 
-  function checkTransitions(companies) {
-    const prev = prevCompRef.current;
-    for (const c of companies) {
-      const p = prev[c.company];
-      if (!p) continue;
-      if (alarmOnRef.current) {
-        if (!p.completable && c.completable) {
-          playAlarm('success');
-          if (typeof document !== 'undefined' && document.hidden &&
-              typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-            new Notification('Op completed', { body: `${c.company.slice(0, 10)}…`, silent: true });
-          }
-        } else if (p.active && !c.active && !c.completable && !p.completable) {
-          playAlarm('partial');
-          if (typeof document !== 'undefined' && document.hidden &&
-              typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-            new Notification('Op partial / bust', { body: `${c.company.slice(0, 10)}…`, silent: true });
-          }
-        }
+  // Alarm: trigger on new ops for the watched wallet from the live feed
+  useEffectO(() => {
+    if (!alarmOnRef.current || !address || !newOps.length) return;
+    const addr = address.toLowerCase();
+    const mine = newOps.filter(o => (o.walletFull || '').toLowerCase() === addr);
+    if (!mine.length) return;
+    const hasSuccess = mine.some(o => o.result === 'completed');
+    if (hasSuccess) {
+      playAlarm('success');
+      if (typeof document !== 'undefined' && document.hidden &&
+          typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification('Op completed', { body: address.slice(0, 10) + '…', silent: true });
+      }
+    } else {
+      playAlarm('partial');
+      if (typeof document !== 'undefined' && document.hidden &&
+          typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification('Op partial / bust', { body: address.slice(0, 10) + '…', silent: true });
       }
     }
-    prevCompRef.current = Object.fromEntries(
-      companies.map(c => [c.company, { active: c.active, completable: c.completable }])
-    );
-  }
+  }, [newOps]);
 
   useEffectO(() => {
     if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) {
       setDbData(null); setLiveData(null);
-      prevCompRef.current = {};
+      compAddrsRef.current = [];
       return;
     }
     setLoading(true);
@@ -1063,10 +1060,6 @@ function WalletRail({ address, onAddressChange, ethPrice = 0 }) {
     ]).then(([db, live]) => {
       setDbData(db?.error ? null : db);
       if (live && !live.error) {
-        // Seed baseline state — no transitions on first load
-        prevCompRef.current = Object.fromEntries(
-          (live.companies ?? []).map(c => [c.company, { active: c.active, completable: c.completable }])
-        );
         compAddrsRef.current = (live.companies ?? []).map(c => c.company);
         setLiveData(live);
       }
@@ -1084,7 +1077,6 @@ function WalletRail({ address, onAddressChange, ethPrice = 0 }) {
         .then(r => r.json())
         .then(d => {
           if (!d?.error && d.companies) {
-            checkTransitions(d.companies);
             setLiveData(prev => prev ? { ...prev, companies: d.companies } : prev);
           }
         })
