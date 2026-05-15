@@ -498,9 +498,11 @@ export async function fetchLatestInfCost() {
   return fromWei(BigInt(last.data).toString());
 }
 
-// ─── FactionStaking deposits ─────────────────────────────────────────────────
-const STAKING_ADDR = '0x3620bbeded3bcf1b3409098dc152b0eecf66ea8e';
-const E_STAKED     = '0x1449c6dd7851abc30abf37f57715f492010519147cc2652fbc38202c18a6ee90';
+// ─── FactionStaking deposits / claims / rotations ─────────────────────────────
+const STAKING_ADDR      = '0x3620bbeded3bcf1b3409098dc152b0eecf66ea8e';
+const E_STAKED          = '0x1449c6dd7851abc30abf37f57715f492010519147cc2652fbc38202c18a6ee90';
+const E_STAKE_CLAIMED   = '0xd8cc75b8a0ba011aba2385703af6a0e5593ceae53e9951a7358f657ddf3f8dac';
+const E_ROTATION_ADV    = '0xb34543600b07719e55a8a9e5f1e792c722675345036bea2c3058954db14066fc';
 
 export async function fetchStakingEvents(fromBlock, toBlock) {
   const logs = await rpcPost('eth_getLogs', [{
@@ -517,6 +519,39 @@ export async function fetchStakingEvents(fromBlock, toBlock) {
     userAddr:   ('0x' + l.topics[1].slice(26)).toLowerCase(),
     rotationId: parseInt(l.topics[2], 16),
     amount:     Number(BigInt(l.data)) / 1e18,
+  }));
+}
+
+export async function fetchStakingClaimEvents(fromBlock, toBlock) {
+  const logs = await rpcPost('eth_getLogs', [{
+    address:   STAKING_ADDR,
+    topics:    [E_STAKE_CLAIMED],
+    fromBlock: '0x' + fromBlock.toString(16),
+    toBlock:   '0x' + toBlock.toString(16),
+  }]);
+  return (logs || []).map(l => ({
+    hash:       l.transactionHash,
+    logIndex:   parseInt(l.logIndex, 16),
+    blockNum:   parseInt(l.blockNumber, 16),
+    timestamp:  parseInt(l.blockNumber, 16) + GENESIS,
+    userAddr:   ('0x' + l.topics[1].slice(26)).toLowerCase(),
+    rotationId: parseInt(l.topics[2], 16),
+    amount:     Number(BigInt(l.data)) / 1e18,
+  }));
+}
+
+export async function fetchStakingRotationEvents(fromBlock, toBlock) {
+  const logs = await rpcPost('eth_getLogs', [{
+    address:   STAKING_ADDR,
+    topics:    [E_ROTATION_ADV],
+    fromBlock: '0x' + fromBlock.toString(16),
+    toBlock:   '0x' + toBlock.toString(16),
+  }]);
+  return (logs || []).map(l => ({
+    hash:       l.transactionHash,
+    blockNum:   parseInt(l.blockNumber, 16),
+    rotationId: parseInt(l.topics[1], 16),
+    endTime:    Number(BigInt(l.data)),
   }));
 }
 

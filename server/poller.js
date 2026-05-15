@@ -7,7 +7,7 @@ import {
   getUserCompaniesBatch, getTradeStates,
   fetchLiquidationEvents,
   fetchFactoryTradeContext, getCompanyTradeTypes, _companyTypeCache,
-  fetchStakingEvents,
+  fetchStakingEvents, fetchStakingClaimEvents, fetchStakingRotationEvents,
 } from './etherscan.js';
 import {
   getDb,
@@ -22,6 +22,8 @@ import {
   getDistinctMintHashes, batchUpdateMintOpTypes,
   getLastLiqBlock, setLastLiqBlock, syncLiquidationsFromIdx,
   upsertStakingDeposits, getLastStakingBlock, setLastStakingBlock,
+  upsertStakingClaims, getLastStakingClaimBlock, setLastStakingClaimBlock,
+  upsertStakingRotations, getLastStakingRotationBlock, setLastStakingRotationBlock,
   reconcileStatus,
 } from '../lib/db.js';
 
@@ -572,20 +574,96 @@ async function syncStaking() {
   }
 }
 
+// ─── staking claims sync ──────────────────────────────────────────────────────
+
+let stakingClaimSyncing = false;
+
+async function syncStakingClaims() {
+  if (stakingClaimSyncing) return;
+  stakingClaimSyncing = true;
+  try {
+    const fromBlock   = Math.max(await getLastStakingClaimBlock() + 1, STAKING_START);
+    const latestBlock = await getLatestBlock();
+    if (fromBlock > latestBlock) return;
+
+    let total = 0;
+    for (let start = fromBlock; start <= latestBlock; start += BATCH) {
+      const end = Math.min(start + BATCH - 1, latestBlock);
+      let attempt = 0;
+      while (attempt < 4) {
+        try {
+          const events = await fetchStakingClaimEvents(start, end);
+          if (events.length > 0) {
+            await upsertStakingClaims(events);
+            total += events.length;
+          }
+          break;
+        } catch (err) {
+          attempt++;
+          if (attempt >= 4) throw err;
+          await new Promise(r => setTimeout(r, 2000 * attempt));
+        }
+      }
+      await new Promise(r => setTimeout(r, 1200));
+    }
+
+    await setLastStakingClaimBlock(latestBlock);
+    if (total > 0) console.log(`[poller] staking claims +${total} | block ${latestBlock}`);
+  } catch (err) {
+    console.error('[poller] staking claim sync error:', err.message);
+  } finally {
+    stakingClaimSyncing = false;
+  }
+}
+
+// ─── staking rotation sync ────────────────────────────────────────────────────
+
+let stakingRotSyncing = false;
+
+async function syncStakingRotations() {
+  if (stakingRotSyncing) return;
+  stakingRotSyncing = true;
+  try {
+    const fromBlock   = Math.max(await getLastStakingRotationBlock() + 1, STAKING_START);
+    const latestBlock = await getLatestBlock();
+    if (fromBlock > latestBlock) return;
+
+    let total = 0;
+    for (let start = fromBlock; start <= latestBlock; start += BATCH) {
+      const end = Math.min(start + BATCH - 1, latestBlock);
+      const events = await fetchStakingRotationEvents(start, end).catch(() => []);
+      if (events.length > 0) {
+        await upsertStakingRotations(events);
+        total += events.length;
+      }
+      await new Promise(r => setTimeout(r, 1200));
+    }
+
+    await setLastStakingRotationBlock(latestBlock);
+    if (total > 0) console.log(`[poller] staking rotations +${total} | block ${latestBlock}`);
+  } catch (err) {
+    console.error('[poller] staking rotation sync error:', err.message);
+  } finally {
+    stakingRotSyncing = false;
+  }
+}
+
 // ─── start ────────────────────────────────────────────────────────────────────
 
 export async function startPoller() {
   console.log('[poller] starting...');
-  await Promise.all([syncTransfers(), syncInfluence(), syncVault(), syncLiquidations(), syncStaking()]);
+  await Promise.all([syncTransfers(), syncInfluence(), syncVault(), syncLiquidations(), syncStaking(), syncStakingClaims(), syncStakingRotations()]);
   await backfillSupplyHistory().catch(err => console.error('[poller] backfill error:', err.message));
   syncSnapshots();
   syncHolders();
   syncCompanies();
-  setInterval(syncInfluence,    TX_INTERVAL_MS);
-  setInterval(syncTransfers,    TX_INTERVAL_MS);
-  setInterval(syncVault,        TX_INTERVAL_MS);
-  setInterval(syncLiquidations, LIQ_INTERVAL_MS);
-  setInterval(syncStaking,      TX_INTERVAL_MS);
+  setInterval(syncInfluence,       TX_INTERVAL_MS);
+  setInterval(syncTransfers,       TX_INTERVAL_MS);
+  setInterval(syncVault,           TX_INTERVAL_MS);
+  setInterval(syncLiquidations,    LIQ_INTERVAL_MS);
+  setInterval(syncStaking,         TX_INTERVAL_MS);
+  setInterval(syncStakingClaims,   TX_INTERVAL_MS);
+  setInterval(syncStakingRotations,TX_INTERVAL_MS);
   setInterval(syncSnapshots,    SNAPSHOT_INTERVAL_MS);
   setInterval(syncHolders,      HOLDERS_INTERVAL_MS);
   setInterval(syncCompanies,    COMPANIES_INTERVAL_MS);
