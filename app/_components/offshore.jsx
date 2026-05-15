@@ -151,7 +151,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   );
   const [supplyGran, setSupplyGran] = useStateO('daily');
   const [infGran, setInfGran]    = useStateO('daily');
-  const [notifs, setNotifs] = useStateO({ 'buys & sells': true, 'operations': true });
+  const [notifs, setNotifs] = useStateO({ 'buys & sells': true, 'operations': true, 'staking': true });
   const [burnRange, setBurnRange] = useStateO('all');
   const [trxRange, setTrxRange] = useStateO('all');
   const [sortKey, setSortKey] = useStateO('endsIn');
@@ -266,6 +266,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   const filteredTicker = useMemoO(() => liveTicker.filter(item => {
     if ((item.kind === 'buy' || item.kind === 'sell') && !notifs['buys & sells']) return false;
     if (item.kind === 'op' && !notifs['operations']) return false;
+    if (item.kind === 'stake' && !notifs['staking']) return false;
     return true;
   }), [liveTicker, notifs]);
   useEffectO(() => {

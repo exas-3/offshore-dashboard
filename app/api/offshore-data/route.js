@@ -448,11 +448,15 @@ export async function GET() {
         FROM transfers WHERE kind='SPEND'
           AND op_type IN ('BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE')
         ORDER BY timestamp DESC LIMIT 10)
+      UNION ALL
+      (SELECT 'STAKE' AS etype, user_addr AS addr, amount::numeric, timestamp
+        FROM staking_deposits
+        ORDER BY timestamp DESC LIMIT 10)
       ORDER BY timestamp DESC LIMIT 60
     `.catch(() => []) : [];
 
-    const tickerKind  = { DEX_SELL:'sell', DEX_BUY:'buy', DRUG_DEAL:'op', ARMS_DEAL:'op', EXTORTION:'op', PARTIAL:'op', FAIL:'op', SCRAP:'op', BUY_ASSET:'op', LEVEL_UP:'op', THIRD_ENTERPRISE:'op' };
-    const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', PARTIAL:'OP', FAIL:'OP', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE' };
+    const tickerKind  = { DEX_SELL:'sell', DEX_BUY:'buy', DRUG_DEAL:'op', ARMS_DEAL:'op', EXTORTION:'op', PARTIAL:'op', FAIL:'op', SCRAP:'op', BUY_ASSET:'op', LEVEL_UP:'op', THIRD_ENTERPRISE:'op', STAKE:'stake' };
+    const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', PARTIAL:'OP', FAIL:'OP', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE', STAKE:'STAKE' };
 
     const liveTradeTicker = rawTicker.map(e => ({
       kind:     tickerKind[e.etype]  || 'op',

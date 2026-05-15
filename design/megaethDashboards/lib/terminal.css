@@ -933,11 +933,13 @@
 }
 .tm-toast.buy  { border-left: 3px solid var(--t-pos); }
 .tm-toast.sell { border-left: 3px solid var(--t-neg); }
-.tm-toast.op   { border-left: 3px solid var(--t-hdr); }
+.tm-toast.op    { border-left: 3px solid var(--t-hdr); }
+.tm-toast.stake { border-left: 3px solid var(--t-warn); }
 .tm-toast .kind { font-size: var(--t-fs-xs); letter-spacing: 0.08em; padding: 1px 6px; }
-.tm-toast.buy .kind  { color: var(--t-pos); border: 1px solid var(--t-pos); }
-.tm-toast.sell .kind { color: var(--t-neg); border: 1px solid var(--t-neg); }
-.tm-toast.op .kind   { color: var(--t-hdr); border: 1px solid var(--t-hdr); }
+.tm-toast.buy .kind   { color: var(--t-pos);  border: 1px solid var(--t-pos); }
+.tm-toast.sell .kind  { color: var(--t-neg);  border: 1px solid var(--t-neg); }
+.tm-toast.op .kind    { color: var(--t-hdr);  border: 1px solid var(--t-hdr); }
+.tm-toast.stake .kind { color: var(--t-warn); border: 1px solid var(--t-warn); }
 .tm-toast .amt { color: var(--t-num); font-weight: 500; }
 .tm-toast .amt em { font-style: normal; color: var(--t-fg-mut); margin-left: 4px; }
 .tm-toast .addr { color: var(--t-fg-mut); margin-left: auto; font-size: var(--t-fs-xs); }
