@@ -695,9 +695,16 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
 // ── Live sidebar ───────────────────────────────────────────────────────────
 function LiveSidebar({ D, counters, ops, watch, trades, onWallet }) {
   const [opsMatrix, setOpsMatrix] = useStateO(() => D.opsMatrix ?? null);
+  const [tick, setTick] = useStateO(0);
+
   useEffectO(() => {
     const load = () => fetch('/api/ops-matrix').then(r => r.json()).then(setOpsMatrix).catch(() => {});
     const t = setInterval(load, 15_000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffectO(() => {
+    const t = setInterval(() => setTick(n => n + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
