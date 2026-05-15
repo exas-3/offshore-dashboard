@@ -451,7 +451,7 @@ function useGlyphWidth(ref, fallback = 28) {
 
 function ChartTooltip({ mouse, title, rows }) {
   if (typeof window === 'undefined') return null;
-  const flipX = mouse.x > window.innerWidth  * 0.65;
+  const flipX = mouse.x + 180 > window.innerWidth;
   const flipY = mouse.y > window.innerHeight * 0.7;
   return (
     <div className="tm-tt" style={{
@@ -496,8 +496,10 @@ export function BarRow({ data, max, color = 'fg', valueFmt = fmt.k }) {
           onMouseLeave={() => setHoverD(null)}
         >
           <span className="lbl">{d.x}</span>
-          <span className="tm-track">
-            <i className={color === 'fg' ? '' : color} style={{ width: `${(d.v / m) * 100}%` }} />
+          <span className="tm-bar-scroll">
+            <span className="tm-track">
+              <i className={color === 'fg' ? '' : color} style={{ width: `${(d.v / m) * 100}%` }} />
+            </span>
           </span>
           <span className="num">{valueFmt(d.v)}</span>
         </div>
@@ -515,8 +517,9 @@ export function BarRow({ data, max, color = 'fg', valueFmt = fmt.k }) {
 
 // ── Two-series bar row ─────────────────────────────────────────────────────
 export function BarRow2({ data, series, max, valueFmt = fmt.k }) {
-  const glyphRef = useRefT(null);
-  const width = useGlyphWidth(glyphRef);
+  const scrollRef = useRefT(null);
+  const width = useGlyphWidth(scrollRef);
+  const halfW = Math.max(1, Math.floor(width / 2));
   const m = max || Math.max(...data.flatMap((d) => series.map((s) => d[s.key] || 0)), 1);
   const [hoverD, setHoverD] = useStateT(null);
   const [mouse, setMouse] = useStateT({ x: 0, y: 0 });
@@ -529,12 +532,14 @@ export function BarRow2({ data, series, max, valueFmt = fmt.k }) {
           onMouseLeave={() => setHoverD(null)}
         >
           <span className="lbl">{d.x ?? d.t}</span>
-          {series.map((s, si) => (
-            <span key={s.key} ref={i === 0 && si === 0 ? glyphRef : null}
-              className={`glyphs ${s.color}${s.dir === 'rtl' ? ' rtl' : ''}`} title={s.label}>
-              {blockBar(d[s.key] || 0, m, width)}
-            </span>
-          ))}
+          <span className="tm-bar-scroll" ref={i === 0 ? scrollRef : null}>
+            {series.map((s) => (
+              <span key={s.key}
+                className={`glyphs ${s.color}${s.dir === 'rtl' ? ' rtl' : ''}`} title={s.label}>
+                {blockBar(d[s.key] || 0, m, halfW)}
+              </span>
+            ))}
+          </span>
           <span className="num">
             <span className={series[0].color}>{valueFmt(d[series[0].key] || 0)}</span>
             {' · '}
@@ -560,8 +565,8 @@ export function BarRow2({ data, series, max, valueFmt = fmt.k }) {
 // ── Stacked bar row ────────────────────────────────────────────────────────
 export function StackedBarRow({ data, series, max, valueFmt = fmt.k }) {
   const containerRef = useRefT(null);
-  const glyphRef = useRefT(null);
-  const width = useGlyphWidth(glyphRef);
+  const scrollRef = useRefT(null);
+  const width = useGlyphWidth(scrollRef);
   const { w: pxWidth } = useContainerSize(containerRef);
   const visData = pxWidth > 0 && pxWidth < 480 ? data.slice(-12) : data;
   const totals = visData.map((d) => series.reduce((s, k) => s + (d[k.key] || 0), 0));
@@ -587,13 +592,15 @@ export function StackedBarRow({ data, series, max, valueFmt = fmt.k }) {
             onMouseLeave={() => setHoverD(null)}
           >
             <span className="lbl">{d.x ?? d.t}</span>
-            <span className="glyphs" ref={i === 0 ? glyphRef : null}>
-              {series.map((s, si) => (
-                <span key={s.key} style={{ color: `var(--t-${s.colorVar || s.color})` }}>
-                  {'█'.repeat(Math.max(0, charCounts[si]))}
-                </span>
-              ))}
-              {' '.repeat(Math.max(0, width - totalChars))}
+            <span className="tm-bar-scroll" ref={i === 0 ? scrollRef : null}>
+              <span className="glyphs">
+                {series.map((s, si) => (
+                  <span key={s.key} style={{ color: `var(--t-${s.colorVar || s.color})` }}>
+                    {'█'.repeat(Math.max(0, charCounts[si]))}
+                  </span>
+                ))}
+                {' '.repeat(Math.max(0, width - totalChars))}
+              </span>
             </span>
             <span className="num">{valueFmt(total)}</span>
           </div>
@@ -616,15 +623,17 @@ export function StackedBarRow({ data, series, max, valueFmt = fmt.k }) {
 
 // ── Block-char row ─────────────────────────────────────────────────────────
 export function BlockRow({ data, max, color = '', valueFmt = fmt.k }) {
-  const glyphRef = useRefT(null);
-  const width = useGlyphWidth(glyphRef);
+  const scrollRef = useRefT(null);
+  const width = useGlyphWidth(scrollRef);
   const m = max || Math.max(...data.map((d) => d.v), 1);
   return (
     <>
       {data.map((d, i) => (
         <div className="tm-blockrow" key={d.x}>
           <span className="lbl">{d.x}</span>
-          <span ref={i === 0 ? glyphRef : null} className={`glyphs ${color}`}>{blockBar(d.v, m, width)}</span>
+          <span className="tm-bar-scroll" ref={i === 0 ? scrollRef : null}>
+            <span className={`glyphs ${color}`}>{blockBar(d.v, m, width)}</span>
+          </span>
           <span className="num">{valueFmt(d.v)}</span>
         </div>
       ))}
@@ -1154,7 +1163,7 @@ export function ComboChart({ data, bars, line, height = 220 }) {
       </svg>
 
       {hovered && (() => {
-        const flipX = mouse.x > window.innerWidth  * 0.6;
+        const flipX = mouse.x + 180 > window.innerWidth;
         const flipY = mouse.y > window.innerHeight * 0.7;
         return (
           <div className="tm-tt" style={{
@@ -1238,9 +1247,18 @@ export function LineChart({ data, height = 160, color = 'fg', valueFmt = fmt.k, 
 
   const hd = hoverIdx !== null ? data[hoverIdx] : null;
   const hp = hoverIdx !== null ? pts[hoverIdx] : null;
-  const flipX = mouse.x > window.innerWidth * 0.65;
-  const flipY = mouse.y > window.innerHeight * 0.6;
   const extras = hd && extraRows ? extraRows(hd) : [];
+
+  const MIN_TICK_GAP = 28;
+  const ticksWithLabels = (() => {
+    let lastY = null;
+    return ticks.map(t => {
+      const y = PAD_T + plotH - ((t - bot) / range) * plotH;
+      const show = lastY === null || Math.abs(y - lastY) >= MIN_TICK_GAP;
+      if (show) lastY = y;
+      return { t, y, show };
+    });
+  })();
 
   return (
     <div
@@ -1251,15 +1269,12 @@ export function LineChart({ data, height = 160, color = 'fg', valueFmt = fmt.k, 
       onMouseLeave={() => setHoverIdx(null)}
     >
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio={fill ? 'none' : undefined} style={{ fontFamily: 'var(--t-font)', fontWeight: 400 }}>
-        {ticks.map((t, i) => {
-          const y = PAD_T + plotH - ((t - bot) / range) * plotH;
-          return (
-            <g key={i}>
-              <line className="tm-svg-grid" x1={PAD_L} x2={W - PAD_R} y1={y} y2={y} />
-              <text className="tm-svg-axis" x={PAD_L - 4} y={y + 3} textAnchor="end">{valueFmt(t)}</text>
-            </g>
-          );
-        })}
+        {ticksWithLabels.map(({ t, y, show }, i) => (
+          <g key={i}>
+            <line className="tm-svg-grid" x1={PAD_L} x2={W - PAD_R} y1={y} y2={y} />
+            {show && <text className="tm-svg-axis" x={PAD_L - 4} y={y + 3} textAnchor="end">{valueFmt(t)}</text>}
+          </g>
+        ))}
         <path d={areaPath} fill={`var(--t-${color})`} opacity="0.08" />
         <path d={path} fill="none" stroke={`var(--t-${color})`} strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round" />
         {data.map((d, i) => i % Math.ceil(data.length / 9) === 0 ? (
@@ -1273,17 +1288,14 @@ export function LineChart({ data, height = 160, color = 'fg', valueFmt = fmt.k, 
         )}
       </svg>
       {hd && hp && (
-        <div className="tm-tt" style={{
-          position: 'fixed', zIndex: 9999,
-          ...(flipX ? { right: window.innerWidth - mouse.x + 12 } : { left: mouse.x + 12 }),
-          ...(flipY ? { bottom: window.innerHeight - mouse.y + 12 } : { top: mouse.y + 8 }),
-        }}>
-          <div className="tm-tt-row"><span className="tm-tt-k">{hd.x ?? hd.t}</span></div>
-          <div className="tm-tt-row"><span className="tm-tt-k">value</span><span className="tm-tt-v">{valueFmt(hd.v)}</span></div>
-          {extras.map((r, i) => (
-            <div key={i} className="tm-tt-row"><span className="tm-tt-k">{r.k}</span><span className="tm-tt-v">{r.v}</span></div>
-          ))}
-        </div>
+        <ChartTooltip
+          mouse={mouse}
+          title={hd.x ?? hd.t}
+          rows={[
+            { k: 'value', v: valueFmt(hd.v) },
+            ...extras.map(r => ({ k: r.k, v: r.v })),
+          ]}
+        />
       )}
     </div>
   );

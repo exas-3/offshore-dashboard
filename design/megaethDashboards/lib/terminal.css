@@ -441,7 +441,7 @@
 /* ─── Bar row (horizontal track) ────────────────────────────────────────── */
 .tm-barrow {
   display: grid;
-  grid-template-columns: 68px 1fr 90px;
+  grid-template-columns: var(--tm-bar-lbl, 68px) 1fr 90px;
   gap: 10px;
   align-items: center;
   font-size: var(--t-fs);
@@ -471,14 +471,14 @@
 /* Multi-series barrow (e.g. earned vs spent) */
 .tm-barrow-2 {
   display: grid;
-  grid-template-columns: 56px 1fr 1fr 80px;
+  grid-template-columns: 56px 1fr 80px;
   gap: 8px;
   align-items: center;
   font-size: var(--t-fs);
   padding: 1px 0;
 }
 .tm-barrow-2 .lbl { color: var(--t-fg-soft); }
-.tm-barrow-2 .glyphs { font-family: var(--t-font); white-space: pre; overflow: hidden; }
+.tm-barrow-2 .glyphs { font-family: var(--t-font); white-space: pre; }
 .tm-barrow-2 .glyphs.neg { color: var(--t-neg); }
 .tm-barrow-2 .glyphs.pos { color: var(--t-pos); }
 .tm-barrow-2 .glyphs.rtl { transform: scaleX(-1); display: inline-block; }
@@ -487,7 +487,7 @@
 /* Block-char bar (text glyphs, TUI style) */
 .tm-blockrow {
   display: grid;
-  grid-template-columns: 56px 1fr 80px;
+  grid-template-columns: var(--tm-bar-lbl, 56px) 1fr 80px;
   gap: 10px;
   align-items: center;
   font-size: var(--t-fs);
@@ -499,10 +499,29 @@
   color: var(--t-fg);
   font-family: var(--t-font);
   white-space: pre;
-  overflow: hidden;
 }
 .tm-blockrow .glyphs.b { color: var(--t-hdr); }
 .tm-blockrow .num { text-align: right; color: var(--t-num); }
+
+/* Horizontal-scroll wrapper for bar tracks and glyph bars */
+.tm-bar-scroll {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-width: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--t-rule-hot) transparent;
+}
+.tm-bar-scroll::-webkit-scrollbar { height: 6px; }
+.tm-bar-scroll::-webkit-scrollbar-thumb { background: var(--t-rule-hot); border-radius: 3px; }
+/* track inside scroll wrapper: honour min-width so it can overflow */
+.tm-bar-scroll > .tm-track { flex: 1; min-width: var(--tm-bar-min, 220px); }
+/* glyph bars inside scroll wrapper: don't shrink, let content drive width */
+.tm-bar-scroll > .glyphs { flex-shrink: 0; overflow: visible; }
+
+@media (max-width: 720px) {
+  .tm-barrow, .tm-barrow-2, .tm-blockrow { --tm-bar-min: 280px; }
+}
 
 /* ─── Table (lazygit-ish, lowercase, dashed rules) ──────────────────────── */
 .tm-tab {
