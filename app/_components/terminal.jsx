@@ -187,9 +187,9 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
               onClick={() => setSettingsOpen(o => !o)}
               title="tweaks"
               style={{
-                background: settingsOpen ? 'var(--t-fg)' : 'none',
+                background: settingsOpen ? 'var(--t-fg)' : 'var(--t-bg-soft)',
                 color: settingsOpen ? 'var(--t-bg)' : 'var(--t-fg)',
-                border: settingsOpen ? '1px solid var(--t-fg)' : '1px solid var(--t-fg-mut)',
+                border: settingsOpen ? '1px solid var(--t-fg)' : '1px solid var(--t-fg-soft)',
                 fontFamily: 'var(--t-font)', fontSize: 11,
                 padding: '0 9px', cursor: 'pointer',
                 letterSpacing: '0.06em', height: 18,
