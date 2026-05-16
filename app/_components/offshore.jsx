@@ -1311,9 +1311,10 @@ const LEADERBOARD = [
 
 // ── Trade table helpers ────────────────────────────────────────────────────
 function renderTradeRows(rows, range, ethPrice = 0, _tick = 0, onWallet, aliases = {}) {
-  const filtered = range === 'active' ? rows.filter((r) => r.active)
-                 : range === 'auto'   ? rows.filter((r) => r.auto)
-                 : rows;
+  const now = Math.floor(Date.now() / 1000);
+  const filtered = (range === 'active' ? rows.filter((r) => r.active)
+                  : range === 'auto'   ? rows.filter((r) => r.auto)
+                  : rows).filter((r) => r.endTime > now);
   const active = filtered.filter((r) => r.active);
   const idle   = filtered.filter((r) => !r.active);
 
