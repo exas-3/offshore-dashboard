@@ -273,7 +273,7 @@ export async function fetchLiquidationEvents(fromBlock, toBlock) {
 
 let _latestBlock = 0, _latestBlockTs = 0;
 export async function getLatestBlock() {
-  if (Date.now() - _latestBlockTs < 5_000) return _latestBlock;
+  if (Date.now() - _latestBlockTs < 1_000) return _latestBlock;
   _latestBlock = parseInt(await rpcPost('eth_blockNumber', []), 16);
   _latestBlockTs = Date.now();
   return _latestBlock;
