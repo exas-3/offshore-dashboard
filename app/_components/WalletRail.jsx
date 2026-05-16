@@ -1,7 +1,16 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { Region, KV, KVSep, BarRow2, fmt } from './terminal.jsx';
-import { fmtCountdownLocal } from './trade-helpers.jsx';
+import { fmtCountdownLocal, OP_LABELS_SHORT } from './trade-helpers.jsx';
+
+function relTime(ts) {
+  const diff = Math.floor(Date.now() / 1000) - Number(ts);
+  if (diff < 0)     return 'now';
+  if (diff < 60)    return `${diff}s`;
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  return `${Math.floor(diff / 86400)}d`;
+}
 
 function midTrunc(s, front = 10, back = 8) {
   if (!s || s.length <= front + back + 3) return s;
@@ -210,6 +219,46 @@ export function WalletRail({ address, onAddressChange, ethPrice = 0, newOps = []
               <KV k="dirty bal" v={fmt.k(liveData.dirtyBalance)} />
             </>
           )}
+        </Region>
+      )}
+
+      {isFullAddr && dbData?.activity?.length > 0 && (
+        <Region title="recent activity" sub={`${dbData.activity.length} txs`}>
+          <div className="tm-scroll-bl" style={{ maxHeight: 280, overflowY: 'auto' }}>
+            <table className="tm-tab tm-tab-bl" style={{ width: '100%', tableLayout: 'fixed' }}>
+              <thead style={{ position: 'sticky', top: 0, background: 'var(--t-bg)', zIndex: 1 }}>
+                <tr>
+                  <th style={{ width: 38 }}>time</th>
+                  <th>op</th>
+                  <th className="num" style={{ width: 64 }}>amount</th>
+                  <th style={{ width: 50 }}>tx</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dbData.activity.map(a => {
+                  const playerLc  = address.toLowerCase();
+                  const amt       = Number(a.amount) || 0;
+                  const isIncoming = a.kind === 'MINT' || (a.kind === 'TRANSFER' && a.to_addr === playerLc);
+                  const signed    = isIncoming ? amt : -amt;
+                  const label     = OP_LABELS_SHORT[a.op_type] || (a.op_type ? a.op_type.toLowerCase() : a.kind.toLowerCase());
+                  return (
+                    <tr key={`${a.hash}:${a.log_index}`}>
+                      <td className="dim" style={{ fontSize: 'var(--t-fs-xs)' }}>{relTime(a.timestamp)}</td>
+                      <td style={{ fontSize: 'var(--t-fs-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</td>
+                      <td className={`num ${signed > 0 ? 'pos' : signed < 0 ? 'neg' : 'dim'}`} style={{ fontSize: 'var(--t-fs-xs)' }}>
+                        {signed > 0 ? '+' : signed < 0 ? '−' : ''}{fmt.k(Math.abs(signed))}
+                      </td>
+                      <td>
+                        <a href={`https://mega.etherscan.io/tx/${a.hash}`} target="_blank" rel="noopener noreferrer" className="dim" style={{ fontSize: 'var(--t-fs-xs)', textDecoration: 'none' }}>
+                          {a.hash.slice(-6)}↗
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </Region>
       )}
 

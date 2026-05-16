@@ -7,6 +7,7 @@ export const OP_LABELS_SHORT = {
   THIRD_ENTERPRISE: '3rd ent.', PARTIAL: 'partial', FAIL: 'fail',
   LEVEL_UP: 'level up', BUY_ASSET: 'buy asset', SCRAP: 'scrap',
   DEX_BUY: 'dex buy', DEX_SELL: 'dex sell', BURN: 'burn',
+  STAKE_DEPOSIT: 'stake', STAKE_WITHDRAW: 'unstake', TRANSFER: 'transfer',
 };
 
 export const EARN_OPS = new Set(['DRUG_DEAL','ARMS_DEAL','EXTORTION','THIRD_ENTERPRISE','PARTIAL','FAIL','SCRAP']);
