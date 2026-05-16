@@ -940,7 +940,7 @@ function LiveSidebar({ D, counters, ops, watch, trades, onWallet, aliases = {} }
             return (
               <div key={`${o.time}-${i}`} className={`tm-opfeed-row ${fadeCls}`}>
                 <span className="l">
-                  <span className="t">{aliases[o.walletFull] || o.time.slice(0, 5)}</span>
+                  <span className="t">{aliases[o.walletFull] || o.wallet}</span>
                   <span className="op">{o.op}</span>
                 </span>
                 <span className={`v ${[100, 115, 130].includes(o.dirty) ? 'pos' : 'neg'}`}>
