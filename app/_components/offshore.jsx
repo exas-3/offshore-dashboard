@@ -885,7 +885,7 @@ function LiveSidebar({ D, counters, ops, watch, trades, onWallet, aliases = {} }
           <span className="rule" />
           <span className="v">60m</span>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--t-fs-xs)', fontFamily: 'var(--t-font)' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--t-fs-xs)', fontFamily: 'var(--t-font)', filter: 'blur(4px)', pointerEvents: 'none', userSelect: 'none' }}>
           <thead>
             <tr>
               <th style={{ textAlign: 'left', color: 'var(--t-fg-mut)', fontWeight: 400, paddingBottom: 3 }}></th>
