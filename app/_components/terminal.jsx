@@ -616,9 +616,9 @@ export function StackedBarRow({ data, series, max, valueFmt = fmt.k, hideNum = f
         <ChartTooltip
           mouse={mouse}
           title={hoverD.x ?? hoverD.t}
-          rows={series.map(s => ({
+          rows={series.filter(s => hoverD[s.key]).map(s => ({
             k: s.label || s.key,
-            v: valueFmt(hoverD[s.key] || 0),
+            v: valueFmt(hoverD[s.key]),
             color: `var(--t-${s.colorVar || s.color})`,
           }))}
         />
