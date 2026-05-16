@@ -644,13 +644,13 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
           <Region title="net flow" sub="purchased + refunded − consumed" fkey="F2" fill>
             {(() => {
               const src = infGran === 'hourly' ? (D.influenceFlow.hours || []) : D.influenceFlow.days;
-              const labels = src.map(d => d.ts ? (infGran === 'hourly' ? fmtLocalHour(d.ts) : fmtLocal(d.ts)) : (d.x || ''));
+              const netVals = src.map(d => (d.purchased || 0) + (d.refunded || 0) - (d.consumed || 0));
               return (
-                <LineChart
-                  data={src.map((d, i) => ({ x: labels[i], v: (d.purchased || 0) + (d.refunded || 0) - (d.consumed || 0) }))}
-                  color="warn"
-                  valueFmt={fmt.k}
-                />
+                <div style={{ padding: '6px 10px', fontSize: 'var(--t-fs-xs)', fontFamily: 'var(--t-font)', color: 'var(--t-warn)' }}>
+                  {netVals.map((v, i) => (
+                    <div key={i}>{src[i]?.x ?? i}: {fmt.k(v)}</div>
+                  ))}
+                </div>
               );
             })()}
           </Region>
