@@ -571,6 +571,7 @@ export async function fetchEthPrice() {
     });
     if (!res.ok) throw new Error(`RPC HTTP ${res.status}`);
     const { result } = await res.json();
+    if (!result) throw new Error('empty oracle result');
     const answer = BigInt('0x' + result.slice(66, 130));
     const price  = Number(answer) / 1e8;
     if (!isFinite(price) || price <= 0) throw new Error('invalid ETH price');

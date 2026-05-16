@@ -251,12 +251,14 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     _bump: 0,
   }));
   useEffectO(() => {
-    const es = new EventSource('/api/eth-price/stream');
-    es.onmessage = ({ data }) => {
-      const price = parseFloat(data);
-      if (isFinite(price) && price > 0) setCounters(c => ({ ...c, eth: price }));
-    };
-    return () => es.close();
+    const update = () =>
+      fetch('/api/eth-price', { cache: 'no-cache' })
+        .then(r => r.json())
+        .then(({ price }) => { if (isFinite(price) && price > 0) setCounters(c => ({ ...c, eth: price })); })
+        .catch(() => {});
+    update();
+    const t = setInterval(update, 3_000);
+    return () => clearInterval(t);
   }, []);
 
   const [liveTicker, setLiveTicker] = useStateO(() => D.liveTradeTicker || []);
@@ -495,6 +497,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
         <GridCell id="burned" span={spans['burned']} height={heights['burned']} onResize={(r) => resizeCell('burned', r)}>
           <Region title="$dirty burned" sub="daily · all">
             <StackedBarRow
+              hideNum
               data={localDates(D.burnedDaily)}
               series={[
                 { key: 'protocolBurn', label: 'protocol burn',  color: 'neg',  colorVar: 'neg' },
@@ -579,6 +582,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
         <GridCell id="company-state" span={spans['company-state']} height={heights['company-state']} onResize={(r) => resizeCell('company-state', r)}>
           <Region title="company state" sub={`${D.companies.totalCompanies.toLocaleString()} total`} fkey="F5">
             <StackedBarRow
+              hideNum
               data={[
                 { x: 'active',   manual: Math.max(0, D.companies.activeTrades - D.companies.autoTradeOn), auto: D.companies.autoTradeOn },
                 { x: 'inactive', expired: expiredCount, idle: trueIdleCount },
@@ -843,7 +847,7 @@ function LiveSidebar({ D, counters, ops, watch, trades, onWallet, aliases = {} }
                 <span className="sub">liq {r.liqPrice.toLocaleString()}</span>
               </span>
               <span className="r">
-                <span className="buf tm-pos">+{liveBuffer.toFixed(2)}</span>
+                <span className="buf tm-neg">+{liveBuffer.toFixed(2)}</span>
                 <span className="ends">{endsIn}</span>
               </span>
             </div>
@@ -863,7 +867,7 @@ function LiveSidebar({ D, counters, ops, watch, trades, onWallet, aliases = {} }
           <span className="rule" />
           <span className="v">live</span>
         </div>
-        <div className="tm-opfeed" style={{ filter: 'blur(4px)', pointerEvents: 'none', userSelect: 'none' }}>
+        <div className="tm-opfeed">
           {ops.slice(0, 6).map((o, i) => {
             const fadeCls = i >= 3 ? `fade${i >= 5 ? '-3' : i >= 4 ? '-2' : ''}` : '';
             return (
@@ -885,7 +889,7 @@ function LiveSidebar({ D, counters, ops, watch, trades, onWallet, aliases = {} }
           <span className="rule" />
           <span className="v">60m</span>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--t-fs-xs)', fontFamily: 'var(--t-font)', filter: 'blur(4px)', pointerEvents: 'none', userSelect: 'none' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--t-fs-xs)', fontFamily: 'var(--t-font)' }}>
           <thead>
             <tr>
               <th style={{ textAlign: 'left', color: 'var(--t-fg-mut)', fontWeight: 400, paddingBottom: 3 }}></th>
@@ -1152,6 +1156,7 @@ function WalletRail({ address, onAddressChange, ethPrice = 0, newOps = [] }) {
         return (
           <Region title="earned by op" fkey="F8">
             <StackedBarRow
+              hideNum
               data={rows.map(r => ({ x: OP_LABELS_SHORT[r.op_type] ?? r.op_type.toLowerCase(), v: Number(r.total) }))}
               series={[{ key: 'v', color: 'pos' }]}
               valueFmt={fmt.k}
@@ -1166,6 +1171,7 @@ function WalletRail({ address, onAddressChange, ethPrice = 0, newOps = [] }) {
         return (
           <Region title="how spent" fkey="F8">
             <StackedBarRow
+              hideNum
               data={rows.map(r => ({ x: OP_LABELS_SHORT[r.op_type] ?? r.op_type.toLowerCase(), v: Number(r.total) }))}
               series={[{ key: 'v', color: 'neg' }]}
               valueFmt={fmt.k}

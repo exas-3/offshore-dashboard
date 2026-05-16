@@ -529,6 +529,7 @@ export function BarRow2({ data, series, max, valueFmt = fmt.k, hideNum = false }
     <>
       {data.map((d, i) => (
         <div className="tm-barrow-2" key={d.x ?? i}
+          style={hideNum ? { gridTemplateColumns: '56px 1fr' } : undefined}
           onMouseEnter={(e) => { setHoverD(d); setMouse({ x: e.clientX, y: e.clientY }); }}
           onMouseMove={(e) => setMouse({ x: e.clientX, y: e.clientY })}
           onMouseLeave={() => setHoverD(null)}
@@ -567,7 +568,7 @@ export function BarRow2({ data, series, max, valueFmt = fmt.k, hideNum = false }
 }
 
 // ── Stacked bar row ────────────────────────────────────────────────────────
-export function StackedBarRow({ data, series, max, valueFmt = fmt.k }) {
+export function StackedBarRow({ data, series, max, valueFmt = fmt.k, hideNum = false }) {
   const containerRef = useRefT(null);
   const scrollRef = useRefT(null);
   const width = useGlyphWidth(scrollRef);
@@ -591,6 +592,7 @@ export function StackedBarRow({ data, series, max, valueFmt = fmt.k }) {
         });
         return (
           <div className="tm-blockrow" key={d.x ?? i}
+            style={hideNum ? { gridTemplateColumns: 'var(--tm-bar-lbl, 56px) 1fr' } : undefined}
             onMouseEnter={(e) => { setHoverD(d); setMouse({ x: e.clientX, y: e.clientY }); }}
             onMouseMove={(e) => setMouse({ x: e.clientX, y: e.clientY })}
             onMouseLeave={() => setHoverD(null)}
@@ -606,7 +608,7 @@ export function StackedBarRow({ data, series, max, valueFmt = fmt.k }) {
                 {' '.repeat(Math.max(0, width - totalChars))}
               </span>
             </span>
-            <span className="num">{valueFmt(total)}</span>
+            {!hideNum && <span className="num">{valueFmt(total)}</span>}
           </div>
         );
       })}
