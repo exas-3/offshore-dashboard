@@ -632,9 +632,10 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
                 <MultiSpark
                   labels={src.map(d => d.ts ? (infGran === 'hourly' ? fmtLocalHour(d.ts) : fmtLocal(d.ts)) : (d.x || ''))}
                   series={[
-                    { label: 'purchased', color: 'var(--t-pos)', data: src.map(d => d.purchased || 0) },
-                    { label: 'consumed',  color: 'var(--t-neg)', data: src.map(d => d.consumed  || 0) },
-                    { label: 'refunded',  color: 'var(--t-fg)',  data: src.map(d => d.refunded  || 0) },
+                    { label: 'purchased', color: 'var(--t-pos)',  data: src.map(d => d.purchased || 0) },
+                    { label: 'consumed',  color: 'var(--t-neg)',  data: src.map(d => d.consumed  || 0) },
+                    { label: 'refunded',  color: 'var(--t-fg)',   data: src.map(d => d.refunded  || 0) },
+                    { label: 'net',       color: 'var(--t-warn)', data: src.map(d => (d.purchased || 0) + (d.refunded || 0) - (d.consumed || 0)) },
                   ]}
                 />
               );
@@ -838,7 +839,8 @@ function LiveSidebar({ D, counters, ops, watch, trades, onWallet, aliases = {} }
 
   useEffectO(() => {
     const load = () => fetch('/api/ops-matrix').then(r => r.json()).then(setOpsMatrix).catch(() => {});
-    const t = setInterval(load, 15_000);
+    load();
+    const t = setInterval(load, 10_000);
     return () => clearInterval(t);
   }, []);
 
