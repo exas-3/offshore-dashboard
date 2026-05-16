@@ -1151,15 +1151,11 @@ function WalletRail({ address, onAddressChange, ethPrice = 0, newOps = [] }) {
         const total = rows.reduce((s, r) => s + Number(r.total), 0);
         return (
           <Region title="earned by op" fkey="F8">
-            {rows.map(r => (
-              <div className="tm-barrow" key={r.op_type}>
-                <span className="lbl">{OP_LABELS_SHORT[r.op_type] ?? r.op_type.toLowerCase()}</span>
-                <span className="tm-track">
-                  <i style={{ width: `${total > 0 ? (Number(r.total) / total * 100).toFixed(1) : 0}%`, background: 'var(--t-pos)' }} />
-                </span>
-                <span className="num">{fmt.k(Number(r.total))}</span>
-              </div>
-            ))}
+            <StackedBarRow
+              data={rows.map(r => ({ x: OP_LABELS_SHORT[r.op_type] ?? r.op_type.toLowerCase(), v: Number(r.total) }))}
+              series={[{ key: 'v', color: 'pos' }]}
+              valueFmt={fmt.k}
+            />
           </Region>
         );
       })()}
@@ -1169,15 +1165,11 @@ function WalletRail({ address, onAddressChange, ethPrice = 0, newOps = [] }) {
         const total = rows.reduce((s, r) => s + Number(r.total), 0);
         return (
           <Region title="how spent" fkey="F8">
-            {rows.map(r => (
-              <div className="tm-barrow" key={r.op_type}>
-                <span className="lbl">{OP_LABELS_SHORT[r.op_type] ?? r.op_type.toLowerCase()}</span>
-                <span className="tm-track">
-                  <i style={{ width: `${total > 0 ? (Number(r.total) / total * 100).toFixed(1) : 0}%`, background: 'var(--t-neg)' }} />
-                </span>
-                <span className="num">{fmt.k(Number(r.total))}</span>
-              </div>
-            ))}
+            <StackedBarRow
+              data={rows.map(r => ({ x: OP_LABELS_SHORT[r.op_type] ?? r.op_type.toLowerCase(), v: Number(r.total) }))}
+              series={[{ key: 'v', color: 'neg' }]}
+              valueFmt={fmt.k}
+            />
           </Region>
         );
       })()}
