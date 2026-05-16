@@ -652,11 +652,15 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
         </GridCell>
         <GridCell id="daw" span={spans['daw']} onResize={(r) => resizeCell('daw', r)}>
           <Region title="daily active wallets" sub={`peak ${D.dailyActiveWalletsPeak.toLocaleString()}`} fkey="F3">
-            <BarRow
-              data={participantsChart.map(d => ({ x: d.x, v: d.daw }))}
-              color="fg"
-              valueFmt={(v) => String(Math.round(v))}
-            />
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={participantsChart.map(d => ({ x: d.x, v: d.daw }))} margin={{ top: 4, right: 4, left: -18, bottom: 0 }} barCategoryGap="20%">
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--t-rule)" vertical={false} />
+                <XAxis dataKey="x" tick={CHART_AXIS} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                <YAxis tick={CHART_AXIS} axisLine={false} tickLine={false} tickFormatter={(v) => String(Math.round(v))} />
+                <Tooltip content={<TmTooltip valueFmt={(v) => String(Math.round(v))} />} />
+                <Bar dataKey="v" name="active wallets" fill="var(--t-fg)" maxBarSize={40} radius={[2,2,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </Region>
         </GridCell>
         <GridCell id="total-players" span={spans['total-players']} onResize={(r) => resizeCell('total-players', r)}>
