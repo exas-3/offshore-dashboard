@@ -1,6 +1,6 @@
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
-import { getStakingStats, getStakingHistory, getStakingRecent, getTopStakers24h } from '../../../lib/db.js';
+import { getStakingStats, getStakingHistory, getStakingRecent, getTopStakers24h } from '../../../lib/index.js';
 
 let _cache = null, _cacheTs = 0;
 const TTL = 15_000;

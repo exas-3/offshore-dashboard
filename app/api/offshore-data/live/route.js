@@ -1,8 +1,9 @@
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { getDb } from '../../../../lib/index.js';
-import { getLatestEthPrice } from '../../../../lib/db.js';
+import { getLatestEthPrice } from '../../../../lib/index.js';
 import { fetchDirtyPrice, fetchLatestInfCost, getLatestBlock, fetchTps } from '../../../../server/etherscan.js';
+import { ethPriceFeed } from '../../../../lib/eth-price-feed.js';
 
 const CORS = { 'Access-Control-Allow-Origin': '*' };
 
@@ -23,6 +24,22 @@ function mapOpType(opType) {
 const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL', 'FAIL']);
 const COMPLETE_AMOUNTS = new Set([100, 115, 130]);
 
+let _dirtyPrice = null, _dirtyPriceTs = 0;
+async function getCachedDirtyPrice() {
+  if (_dirtyPrice !== null && Date.now() - _dirtyPriceTs < 3000) return _dirtyPrice;
+  _dirtyPrice = await fetchDirtyPrice();
+  _dirtyPriceTs = Date.now();
+  return _dirtyPrice;
+}
+
+let _infCost = null, _infCostTs = 0;
+async function getCachedInfCost() {
+  if (_infCost !== null && Date.now() - _infCostTs < 3000) return _infCost;
+  _infCost = await fetchLatestInfCost();
+  _infCostTs = Date.now();
+  return _infCost;
+}
+
 export async function GET(request) {
   try {
     const since = Number(new URL(request.url).searchParams.get('since') || '0');
@@ -30,8 +47,8 @@ export async function GET(request) {
     const db    = getDb();
 
     const [dirtyPrice, infCost, latestBlock, tps, ethFromDb, dawRow, opsRow, latestOpRow, newOpsRows, latestEventRow, companiesRow, activeOpsRow, newLiqsRows] = await Promise.all([
-      fetchDirtyPrice().catch(() => null),
-      fetchLatestInfCost().catch(() => null),
+      getCachedDirtyPrice().catch(() => null),
+      getCachedInfCost().catch(() => null),
       getLatestBlock().catch(() => null),
       fetchTps().catch(() => null),
       getLatestEthPrice().catch(() => null),
@@ -91,12 +108,12 @@ export async function GET(request) {
         FROM companies c
         LEFT JOIN LATERAL (
           SELECT op_type FROM transfers
-          WHERE to_addr = c.address AND kind = 'MINT'
-            AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION')
+          WHERE to_addr = c.owner AND kind = 'MINT'
+            AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL')
           ORDER BY timestamp DESC LIMIT 1
         ) t ON TRUE
         WHERE c.active = TRUE
-        ORDER BY c.end_time ASC NULLS LAST LIMIT 200
+        ORDER BY c.end_time ASC NULLS LAST
       `.catch(() => []) : Promise.resolve([]),
       db ? db`SELECT COUNT(*)::int AS cnt FROM companies WHERE active = TRUE`.catch(() => []) : Promise.resolve([]),
       // Newly-liquidated positions since last poll
@@ -116,8 +133,9 @@ export async function GET(request) {
     const liveTrades = (companiesRow || []).map(c => {
       const liq = liqPriceUsd(c.liq_price);
       return {
-        id:       shortAddr(c.address),
-        owner:    c.owner,
+        id:         shortAddr(c.address),
+        owner:      c.owner,
+        ownerShort: shortAddr(c.owner),
         auto:     c.auto_trade,
         active:   c.active,
         endTime:  c.active ? Number(c.end_time) : null,
@@ -197,7 +215,7 @@ export async function GET(request) {
       tps:         tps ?? null,
       dirty:       dirtyPrice ?? null,
       opCost:      typeof infCost === 'number' ? infCost : null,
-      eth:         ethFromDb ?? null,
+      eth:         ethPriceFeed.getLatest() ?? ethFromDb ?? null,
       gas:         0.001,
       daw:         Number(dawRow[0]?.cnt ?? 0),
       opsMin:      Number(opsRow[0]?.cnt ?? 0),

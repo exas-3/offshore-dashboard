@@ -8,117 +8,18 @@ import {
   getRecentTransfers, getLatestEthPrice,
   getEnhancedLeaderboard,
   getDirtyMarketCapHistory,
-} from '../../../lib/index.js';
-import {
-  getFlowBuckets, getBurnBuckets, getInfluenceBuckets,
+  getFlowBuckets, getBurnBuckets, getInfluenceBuckets, getInfluenceDaily,
   getParticipantBuckets, getActiveWalletBuckets,
   getSupplyHistoryForChart, getPriceBaseline25h,
-} from '../../../lib/db.js';
+} from '../../../lib/index.js';
 import {
   fetchDirtyPrice, fetchLatestInfCost, getLatestBlock,
-  getCompanyTradeTypes, _companyTypeCache,
 } from '../../../server/etherscan.js';
 import { ethPriceFeed } from '../../../lib/eth-price-feed.js';
-
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-};
-
-// ── Cycle boundary helpers (mirrors vault/route.js) ───────────────────────────
-const WEEKDAY_ANCHOR = 5400;
-const WEEKDAY_DUR    = 8 * 3600;
-const WEEKEND_ANCHOR = 9 * 3600 + 30 * 60;
-
-function isWeekendTs(ts) {
-  const d = new Date(ts * 1000);
-  const dow = d.getUTCDay();
-  const s = d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds();
-  if (dow === 6 && s >= WEEKEND_ANCHOR) return true;
-  if (dow === 0) return true;
-  if (dow === 1 && s < WEEKEND_ANCHOR) return true;
-  return false;
-}
-
-function getCycleStart(ts) {
-  if (!isWeekendTs(ts)) {
-    return Math.floor((ts - WEEKDAY_ANCHOR) / WEEKDAY_DUR) * WEEKDAY_DUR + WEEKDAY_ANCHOR;
-  }
-  const d = new Date(ts * 1000);
-  const s = d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds();
-  const dayStart = ts - s;
-  return s >= WEEKEND_ANCHOR ? dayStart + WEEKEND_ANCHOR : dayStart - 86400 + WEEKEND_ANCHOR;
-}
-
-// ── Game quarter mapping ───────────────────────────────────────────────────────
-// Anchor: cycle #20 (absolute sequence) = Q3 2013.
-// Weekdays: 3 cycles/day. Weekends: 1 cycle/day.
-// Each vault cycle = 1 in-game quarter.
-const ANCHOR_CYCLE = 20;
-const ANCHOR_Q_IDX = 2013 * 4 + 2; // Q3 2013, 0-indexed (Q1=0, Q2=1, Q3=2, Q4=3)
-
-function cycleQuarter(cycleNum) {
-  const qIdx = ANCHOR_Q_IDX + (cycleNum - ANCHOR_CYCLE);
-  const year = Math.floor(qIdx / 4);
-  const q    = ((qIdx % 4) + 4) % 4;
-  return `Q${q + 1} ${year}`;
-}
-
-// ── Format helpers ─────────────────────────────────────────────────────────────
-
-function fmtDate(ts) {
-  const d = new Date(Number(ts) * 1000);
-  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
-}
-
-function fmtDateHour(ts) {
-  const d = new Date(Number(ts) * 1000);
-  return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, '0')}h`;
-}
-
-function fmtCycleTime(ts) {
-  const d = new Date(Number(ts) * 1000);
-  const M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${M[d.getUTCMonth()]} ${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2,'0')}:${d.getUTCMinutes() < 30 ? '00' : '30'}`;
-}
-
-function fmtM(n) {
-  const abs = Math.abs(n);
-  if (abs >= 1e9) return (n / 1e9).toFixed(2) + 'B';
-  if (abs >= 1e6) return (n / 1e6).toFixed(2) + 'M';
-  if (abs >= 1e3) return (n / 1e3).toFixed(1) + 'k';
-  return String(Math.round(n));
-}
-
-function shortAddr(addr) {
-  if (!addr || addr.length < 10) return addr ?? '';
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
-
-function liqPriceUsd(raw) {
-  if (!raw || raw === '0') return 0;
-  try { return Number(BigInt(raw) / 10n ** 12n) / 1e6; }
-  catch { return 0; }
-}
-
-function fmtCountdown(endTime) {
-  if (!endTime) return '—';
-  const diff = endTime - Math.floor(Date.now() / 1000);
-  if (diff <= 0) return '—';
-  if (diff < 60) return `${diff}s`;
-  const m = Math.floor(diff / 60), s = diff % 60;
-  if (diff < 3600) return s > 0 ? `${m}m ${s}s` : `${m}m`;
-  return `${Math.floor(diff / 3600)}h ${String(m % 60).padStart(2,'0')}m`;
-}
-
-function mapOpType(opType) {
-  const m = {
-    DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion',
-    PARTIAL: 'op', FAIL: 'op', SCRAP: 'scrap', BUY_ASSET: 'buy-asset',
-    LEVEL_UP: 'level-up', THIRD_ENTERPRISE: 'buy-asset',
-  };
-  return m[opType] ?? opType.toLowerCase().replace(/_/g, '-');
-}
+import {
+  CORS, getCycleStart, cycleQuarter,
+  fmtDate, fmtDateHour, fmtCycleTime, fmtM, shortAddr, liqPriceUsd, fmtCountdown, mapOpType,
+} from './helpers.js';
 
 // ── Cache ──────────────────────────────────────────────────────────────────────
 let _cache = null, _cacheTs = 0;
@@ -148,6 +49,7 @@ export async function GET() {
       recentTransfers, ethPriceDb,
       dirtyPriceResult, infCostResult, latestBlock, ethPriceLive,
       rawLeaderboard, marketCapHistory, priceBase25h,
+      influenceDailyRows,
     ] = await Promise.all([
       getStats(), getLatestTokenInfo(), getHolderCount(), getPlayerCount(),
       getFlowBuckets(3600).catch(() => []),
@@ -158,7 +60,7 @@ export async function GET() {
       getParticipantBuckets(86400).catch(() => []),
       getActiveWalletBuckets(86400).catch(() => []),
       getInfluenceStats(), getVaultStats(),
-      getCompanyStats(), getCompanies('active', 200),
+      getCompanyStats(), getCompanies('active'),
       getSupplyHistoryForChart(86400).catch(() => []),
       getDexRecentSwaps(20).catch(() => []),
       getRecentTransfers(250).catch(() => []),
@@ -170,6 +72,7 @@ export async function GET() {
       getEnhancedLeaderboard(15).catch(() => []),
       getDirtyMarketCapHistory().catch(() => []),
       getPriceBaseline25h().catch(() => ({ dirty: null, infCost: null, eth: null })),
+      getInfluenceDaily().catch(() => []),
     ]);
 
     // Raw DB queries that need the connection directly
@@ -249,6 +152,7 @@ export async function GET() {
       // ops matrix seed
       db`
         SELECT op_type,
+          (amount IN (100, 115, 130)) AS is_ok,
           COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 60})   AS m1,
           COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 300})  AS m5,
           COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 900})  AS m15,
@@ -257,7 +161,7 @@ export async function GET() {
         FROM transfers
         WHERE kind = 'MINT' AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION')
           AND timestamp::bigint >= ${now - 3600}
-        GROUP BY op_type
+        GROUP BY op_type, is_ok
       `.catch(() => []),
     ]) : [[], [], [{ cnt: 0 }], [{ cnt: 0 }], [{}], [], [], [], [], [], []];
 
@@ -321,11 +225,13 @@ export async function GET() {
         refunded:    influenceStats.totalRefunded,
         circulating: Number(influenceStats.circulating ?? 0),
       },
-      days: influenceBuckets.slice(-9).map(r => ({
-        ts: Number(r.ts), x: fmtDate(r.ts),
-        purchased: r.purchased,
-        consumed:  r.burned,
-        refunded:  Math.max(0, r.minted - r.purchased),
+      days: (influenceDailyRows.length > 0 ? influenceDailyRows : influenceBuckets).slice(-9).map(r => ({
+        ts:       Number(r.day_ts ?? r.ts),
+        x:        fmtDate(r.day_ts ?? r.ts),
+        purchased: Number(r.purchased),
+        consumed:  Number(r.consumed ?? r.burned),
+        refunded:  r.refunded != null ? Number(r.refunded) : Math.max(0, Number(r.minted) - Number(r.purchased)),
+        net:       r.net != null ? Number(r.net) : Number(r.purchased) + (r.refunded != null ? Number(r.refunded) : Math.max(0, Number(r.minted) - Number(r.purchased))) - Number(r.consumed ?? r.burned),
       })),
       hours: influenceBucketsHourly.slice(-24).map(r => ({
         ts: Number(r.ts), x: fmtDateHour(r.ts),
@@ -408,8 +314,9 @@ export async function GET() {
     const liveTrades = companies.map(c => {
       const liq = liqPriceUsd(c.liq_price);
       return {
-        id:       shortAddr(c.address),
-        owner:    c.owner,
+        id:         shortAddr(c.address),
+        owner:      c.owner,
+        ownerShort: shortAddr(c.owner),
         auto:     c.auto_trade,
         active:   c.active,
         endTime:  c.active ? Number(c.end_time) : null,
@@ -417,7 +324,7 @@ export async function GET() {
         liqPrice: liq,
         ethPrice,
         buffer:   Math.round((ethPrice - liq) * 100) / 100,
-        opType:   '—',
+        opType:   c.op_type ? mapOpType(c.op_type) : '—',
       };
     });
 
@@ -625,7 +532,8 @@ export async function GET() {
       };
     });
 
-    const currentWorldTime = cycleHistory.length > 0 ? cycleHistory.at(-1).t : 'Q4 2012';
+    // cycleHistory.length = last completed cycle number; current active cycle is +1
+    const currentWorldTime = cycleHistory.length > 0 ? cycleQuarter(cycleHistory.length + 1) : 'Q1 2013';
 
     const result = {
       hero, supplyOverTime, marketCapChart, emissionsVsBurn, emissionsVsBurnDaily, influenceFlow,
@@ -644,10 +552,13 @@ export async function GET() {
       opsMatrix: (() => {
         const keyMap = { DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion' };
         const windows = ['m1', 'm5', 'm15', 'm30', 'm60'];
-        const result = { drugs: {m1:0,m5:0,m15:0,m30:0,m60:0}, arms: {m1:0,m5:0,m15:0,m30:0,m60:0}, extortion: {m1:0,m5:0,m15:0,m30:0,m60:0} };
+        const empty = () => Object.fromEntries(windows.map(w => [w, { ok: 0, bust: 0 }]));
+        const result = { drugs: empty(), arms: empty(), extortion: empty() };
         for (const row of (opsMatrixRows || [])) {
           const key = keyMap[row.op_type];
-          if (key) for (const w of windows) result[key][w] = Number(row[w] ?? 0);
+          if (!key) continue;
+          const field = row.is_ok ? 'ok' : 'bust';
+          for (const w of windows) result[key][w][field] += Number(row[w] ?? 0);
         }
         return result;
       })(),

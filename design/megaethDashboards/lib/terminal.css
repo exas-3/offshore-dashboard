@@ -21,6 +21,7 @@
   --t-hdr-soft:  #a89270;
   --t-pos:       #50d870;
   --t-neg:       #ff5252;
+  --t-heart:     var(--t-neg);
   --t-warn:      #ffd24a;
   --t-focus:     #ffb000;       /* focused pane border = amber primary */
   --t-sel:       #221700;
@@ -768,7 +769,9 @@
 .tm-watch.underwater .buf { color: var(--t-neg); }
 .tm-watch.urgent { border-left-color: var(--t-warn); }
 .tm-watch.urgent .ends { color: var(--t-warn); }
-.tm-watch.safe .buf { color: var(--t-pos); }
+.tm-watch .buf.tm-pos  { color: var(--t-pos); }
+.tm-watch .buf.tm-warn { color: var(--t-warn); }
+.tm-watch .buf.tm-neg  { color: var(--t-neg); }
 
 /* Live ops feed (sidebar) */
 .tm-opfeed {
@@ -867,6 +870,9 @@
 .tm-tab-bl tbody tr:hover td { background: var(--t-sel); }
 .tm-tab-bl tbody tr.underwater td { background: rgba(255, 82, 82, 0.06); }
 .tm-tab-bl tbody tr.underwater:hover td { background: rgba(255, 82, 82, 0.10); }
+.tm-tab-bl td.pos  { color: var(--t-pos); }
+.tm-tab-bl td.neg  { color: var(--t-neg); }
+.tm-tab-bl td.warn { color: var(--t-warn); }
 
 /* ─── Square thin scrollbars for bloomberg scroll containers ─────────────── */
 .tm-scroll-bl {
@@ -968,6 +974,7 @@
 .tm-hdr   { color: var(--t-hdr); }
 .tm-pos   { color: var(--t-pos); }
 .tm-neg   { color: var(--t-neg); }
+.tm-warn  { color: var(--t-warn); }
 .tm-mono  { font-family: var(--t-font); }
 
 /* ─── Brand mark animations ─────────────────────────────────────────────── */
@@ -1027,6 +1034,7 @@
   --t-warn:      #f0d27c;
   --t-sel:       #082011;
   --t-focus:     #4ade80;
+  --t-heart:     var(--t-fg);
 }
 
 .tm[data-theme="purple"] {

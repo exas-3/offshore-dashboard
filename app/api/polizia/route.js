@@ -1,6 +1,6 @@
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
-import { getDb } from '../../../lib/db.js';
+import { getDb } from '../../../lib/index.js';
 import { ethPriceFeed } from '../../../lib/eth-price-feed.js';
 
 let _list   = [];   // current canonical list (top 5)
@@ -35,10 +35,11 @@ function buildList(pool, ethPrice) {
   const now = Math.floor(Date.now() / 1000);
   const eligible = pool
     .map(c => ({
-      id:       shortAddr(c.address),
-      address:  c.address,
-      wallet:   c.owner || c.address,
-      liqPrice: liqPriceUsd(c.liq_price),
+      id:          shortAddr(c.address),
+      address:     c.address,
+      wallet:      c.owner || c.address,
+      walletShort: shortAddr(c.owner || c.address),
+      liqPrice:    liqPriceUsd(c.liq_price),
       endTime:  c.active ? Number(c.end_time) : null,
     }))
     .map(c => ({ ...c, buffer: Math.round((ethPrice - c.liqPrice) * 100) / 100 }))

@@ -1,6 +1,6 @@
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
-import { getLastBlock, getLastInfluenceBlock, getLastVaultBlock } from '../../../../lib/db.js';
+import { getLastBlock, getLastInfluenceBlock, getLastVaultBlock } from '../../../../lib/index.js';
 import { getLatestBlock, GENESIS } from '../../../../server/etherscan.js';
 
 export async function GET() {

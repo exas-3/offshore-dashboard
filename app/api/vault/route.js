@@ -2,33 +2,7 @@ export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { getVaultStats, getVaultCycleHistory, getVaultTopEarners, getVaultRecentPayouts, getVaultFirstPayouts, getTopStakers24h } from '../../../lib/index.js';
 import { fetchVaultBalance } from '../../../server/etherscan.js';
-
-// ── cycle boundary logic (mirrors stats/route.js) ─────────────────────────────
-const WEEKDAY_ANCHOR = 5400;       // 01:30 UTC — first weekday cycle start of day
-const WEEKDAY_DUR    = 8  * 3600;  // 8 hours
-const WEEKEND_ANCHOR = 9 * 3600 + 30 * 60;  // 09:30 UTC
-
-function isWeekendTs(ts) {
-  const d   = new Date(ts * 1000);
-  const dow = d.getUTCDay();
-  const s   = d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds();
-  if (dow === 6 && s >= WEEKEND_ANCHOR) return true;
-  if (dow === 0) return true;
-  if (dow === 1 && s < WEEKEND_ANCHOR) return true;
-  return false;
-}
-
-// Returns the Unix timestamp of the start of the cycle that contains ts.
-function getCycleStart(ts) {
-  if (!isWeekendTs(ts)) {
-    return Math.floor((ts - WEEKDAY_ANCHOR) / WEEKDAY_DUR) * WEEKDAY_DUR + WEEKDAY_ANCHOR;
-  }
-  // Weekend: 24h cycles anchored at WEEKEND_ANCHOR each day (Sat 09:30, Sun 09:30)
-  const d = new Date(ts * 1000);
-  const s = d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds();
-  const dayStart = ts - s;
-  return s >= WEEKEND_ANCHOR ? dayStart + WEEKEND_ANCHOR : dayStart - 86400 + WEEKEND_ANCHOR;
-}
+import { getCycleStart } from '../offshore-data/helpers.js';
 
 function fmtCycleLabel(ts) {
   const d = new Date(ts * 1000);

@@ -51,10 +51,11 @@ export default function Page() {
   }, []);
 
   if (!data) {
+    const { fg, bg } = THEME_FAVICON[theme] || THEME_FAVICON.paper;
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100vh', background: '#000', color: '#ffb000',
+        height: '100vh', background: bg, color: fg,
         fontFamily: "'IBM Plex Mono', monospace", fontSize: 13,
         letterSpacing: '0.04em',
       }}>

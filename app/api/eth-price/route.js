@@ -1,7 +1,7 @@
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { fetchEthPrice } from '../../../server/etherscan.js';
-import { getLatestEthPrice } from '../../../lib/db.js';
+import { getLatestEthPrice } from '../../../lib/index.js';
 
 let _cached = null, _cachedTs = 0;
 const TTL = 3_000;

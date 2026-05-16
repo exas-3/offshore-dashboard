@@ -1,365 +1,31 @@
 import {
-  fetchTransferLogs, fetchSupply, fetchSupplyAtBlock,
-  fetchEthPrice, fetchDirtyPrice, fetchLatestInfCost,
-  checkIsContract, getLatestBlock,
-  classifyTransfer, fetchTxInputs, FUNCTION_OP_TYPES,
-  DIRTY, INFLUENCE, USDM, VAULT,
-  getUserCompaniesBatch, getTradeStates,
-  fetchLiquidationEvents,
-  fetchFactoryTradeContext, getCompanyTradeTypes, _companyTypeCache,
-  fetchStakingEvents, fetchStakingClaimEvents, fetchStakingRotationEvents,
+  fetchTransferLogs, fetchTxInputs, classifyTransfer, FUNCTION_OP_TYPES, DIRTY, getLatestBlock,
 } from './etherscan.js';
 import {
-  getDb,
-  upsertTransfers, getLastBlock, setLastBlock,
-  saveTokenInfoSnapshot, saveEthPriceSnapshot, saveInfluenceSupply,
-  savePriceSnapshot, cleanupOldEthPrices,
-  upsertHolders, computeHolderBalances, getKnownIsContract, computeTrueHolderCount,
-  getDaysNeedingSupplyBackfill, getHoursNeedingSupplyBackfill,
-  upsertInfluenceTransfers, getLastInfluenceBlock, setLastInfluenceBlock,
-  upsertVaultPayouts, getLastVaultBlock, setLastVaultBlock,
-  getAllPlayerAddresses, upsertCompanies,
-  getDistinctMintHashes, batchUpdateMintOpTypes,
-  getLastLiqBlock, setLastLiqBlock, syncLiquidationsFromIdx,
-  upsertStakingDeposits, getLastStakingBlock, setLastStakingBlock,
-  upsertStakingClaims, getLastStakingClaimBlock, setLastStakingClaimBlock,
-  upsertStakingRotations, getLastStakingRotationBlock, setLastStakingRotationBlock,
-  reconcileStatus,
-} from '../lib/db.js';
+  getDistinctMintHashes, batchUpdateMintOpTypes, upsertTransfers,
+} from '../lib/index.js';
+import { syncTransfers, backfillSupplyHistory } from './syncs/transfers.js';
+import { syncInfluence } from './syncs/influence.js';
+import { syncSnapshots } from './syncs/snapshots.js';
+import { syncHolders } from './syncs/holders.js';
+import { syncVault } from './syncs/vault.js';
+import { syncCompanies } from './syncs/companies.js';
+import { syncLiquidations, LIQ_INTERVAL_MS } from './syncs/liquidations.js';
+import { syncStaking, syncStakingClaims, syncStakingRotations } from './syncs/staking.js';
+
+// Job status (mutated by the long-running reconcile/reclassify jobs, read by admin routes).
+// Lives here because both the mutators and the API consumers run in the Next.js process.
+export const reconcileStatus = { running: false, done: 0, total: 0, added: 0, error: null };
 
 const TX_INTERVAL_MS        = 15_000;
 const SNAPSHOT_INTERVAL_MS  = 60_000;
 const HOLDERS_INTERVAL_MS   = 15 * 60_000;
 const COMPANIES_INTERVAL_MS = 2 * 60_000;
 
-const DIRTY_START     = 15_190_000;
-const INFLUENCE_START = 15_194_000;
-const VAULT_START     = 15_194_000;
-const BATCH           = 20_000;
-const VAULT_BATCH     = 2_000;
-
-// ─── transfer sync ────────────────────────────────────────────────────────────
-
-let syncing = false;
-
-async function syncTransfers() {
-  if (syncing) return;
-  syncing = true;
-  try {
-    const fromBlock   = Math.max(await getLastBlock() + 1, DIRTY_START);
-    const latestBlock = await getLatestBlock();
-    if (fromBlock > latestBlock) return;
-
-    let total = 0;
-    for (let start = fromBlock; start <= latestBlock; start += BATCH) {
-      const end = Math.min(start + BATCH - 1, latestBlock);
-      let attempt = 0;
-      while (attempt < 4) {
-        try {
-          const logs = await fetchTransferLogs(DIRTY, start, end);
-          if (logs.length > 0) {
-            // Fetch tx inputs for MINT events to detect non-mission ops (scrapInventoryItem, etc.)
-            const mintHashes = [...new Set(
-              logs.filter(l => l.fromAddr === '0x0000000000000000000000000000000000000000')
-                  .map(l => l.hash.toLowerCase())
-            )];
-            const [txInputs, tradeCtx] = await Promise.all([
-              fetchTxInputs(mintHashes).catch(() => new Map()),
-              fetchFactoryTradeContext(start, end).catch(() => ({ companyMap: new Map(), fullTxs: new Set(), companyBlockMap: new Map(), d47Map: new Map() })),
-            ]);
-            // Pre-fetch trade types for all companies seen in this block range.
-            // Uses blockNum-1 eth_call; works for recent ops on non-archive RPC.
-            const companyAddrs = [...new Set([...tradeCtx.companyBlockMap.keys()])];
-            if (companyAddrs.length > 0) {
-              await getCompanyTradeTypes(companyAddrs, tradeCtx.companyBlockMap).catch(() => {});
-            }
-            const rows = logs.map(t => {
-              const classified = { ...t, rawValue: t.amount.toString(), ...classifyTransfer(t.fromAddr, t.toAddr, t.amount, txInputs.get(t.hash.toLowerCase())) };
-              // Resolve PARTIAL: d47 OpResult event (offset -2 from DIRTY ERC20) takes priority;
-              // fall back to company type cache. companyMap is keyed by "txHash:dirtyLogIndex"
-              // so multi-company batch txs correctly resolve each mint to its own company.
-              if (classified.kind === 'MINT' && classified.opType === 'PARTIAL') {
-                const txh = t.hash.toLowerCase();
-                const d47OpType = tradeCtx.d47Map?.get(txh + ':' + (t.logIndex - 2));
-                if (d47OpType) {
-                  classified.opType = d47OpType;
-                } else {
-                  const company = tradeCtx.companyMap.get(txh + ':' + t.logIndex);
-                  if (company) {
-                    const compType = _companyTypeCache.get(company) ?? 0;
-                    if (compType === 1) classified.opType = 'DRUG_DEAL';
-                    else if (compType === 2) classified.opType = 'ARMS_DEAL';
-                    else if (compType === 3) classified.opType = 'EXTORTION';
-                  }
-                }
-              }
-              return classified;
-            });
-            await upsertTransfers(rows);
-            total += rows.length;
-          }
-          break;
-        } catch (err) {
-          attempt++;
-          if (attempt >= 4) throw err;
-          await new Promise(r => setTimeout(r, 2000 * attempt));
-          console.log(`[poller] DIRTY rate-limit, retry ${attempt}...`);
-        }
-      }
-      await new Promise(r => setTimeout(r, 1200));
-    }
-
-    await setLastBlock(latestBlock);
-    if (total > 0) console.log(`[poller] DIRTY +${total} | block ${latestBlock}`);
-  } catch (err) {
-    console.error('[poller] transfer sync error:', err.message);
-  } finally {
-    syncing = false;
-  }
-}
-
-let influenceSyncing = false;
-
-async function syncInfluence() {
-  if (influenceSyncing) return;
-  influenceSyncing = true;
-  try {
-    const fromBlock   = Math.max(await getLastInfluenceBlock() + 1, INFLUENCE_START);
-    const latestBlock = await getLatestBlock();
-    if (fromBlock > latestBlock) return;
-
-    let total = 0;
-    for (let start = fromBlock; start <= latestBlock; start += BATCH) {
-      const end = Math.min(start + BATCH - 1, latestBlock);
-      let attempt = 0;
-      while (attempt < 4) {
-        try {
-          const rows = await fetchTransferLogs(INFLUENCE, start, end);
-          if (rows.length > 0) { await upsertInfluenceTransfers(rows); total += rows.length; }
-          break;
-        } catch (err) {
-          attempt++;
-          if (attempt >= 4) throw err;
-          await new Promise(r => setTimeout(r, 2000 * attempt));
-          console.log(`[poller] influence rate-limit, retry ${attempt}...`);
-        }
-      }
-      await new Promise(r => setTimeout(r, 1200));
-    }
-
-    await setLastInfluenceBlock(latestBlock);
-    if (total > 0) console.log(`[poller] influence +${total} | block ${latestBlock}`);
-  } catch (err) {
-    console.error('[poller] influence sync error:', err.message);
-  } finally {
-    influenceSyncing = false;
-  }
-}
-
-// ─── snapshots ────────────────────────────────────────────────────────────────
-
-async function syncSnapshots() {
-  try {
-    const [dirtySupply, infSupply, ethPrice, dirtyPrice, infCost] = await Promise.allSettled([
-      fetchSupply(DIRTY),
-      fetchSupply(INFLUENCE),
-      fetchEthPrice(),
-      fetchDirtyPrice(),
-      fetchLatestInfCost(),
-    ]);
-
-    if (dirtySupply.status === 'fulfilled') {
-      const holders = await computeTrueHolderCount();
-      await saveTokenInfoSnapshot(dirtySupply.value, holders || null);
-      console.log(`[poller] supply=${dirtySupply.value.toFixed(0)} holders=${holders}`);
-    } else {
-      console.error('[poller] supply error:', dirtySupply.reason.message);
-    }
-
-    if (infSupply.status === 'fulfilled') {
-      await saveInfluenceSupply(infSupply.value);
-    } else {
-      console.error('[poller] influence supply error:', infSupply.reason.message);
-    }
-
-    if (ethPrice.status === 'fulfilled') {
-      await saveEthPriceSnapshot(ethPrice.value);
-    } else {
-      console.error('[poller] eth price error:', ethPrice.reason.message);
-    }
-
-    const d = dirtyPrice.status === 'fulfilled' ? dirtyPrice.value : null;
-    const i = infCost.status   === 'fulfilled' ? infCost.value   : null;
-    if (d != null || i != null) {
-      await savePriceSnapshot(d, i);
-      console.log(`[poller] prices dirty=${d?.toFixed(4)} inf=${i?.toFixed(2)}`);
-    }
-
-    await cleanupOldEthPrices();
-  } catch (err) {
-    console.error('[poller] snapshot error:', err.message);
-  }
-}
-
-// ─── holders ──────────────────────────────────────────────────────────────────
-
-async function syncHolders() {
-  try {
-    const rows  = await computeHolderBalances(500);
-    const known = await getKnownIsContract();
-
-    const newAddrs = rows.map(r => r.addr).filter(a => !known.has(a));
-    let contractMap = new Map(known);
-    if (newAddrs.length > 0) {
-      for (let i = 0; i < newAddrs.length; i += 50) {
-        const chunk   = newAddrs.slice(i, i + 50);
-        const results = await checkIsContract(chunk);
-        results.forEach((v, k) => contractMap.set(k, v ? 1 : 0));
-        if (i + 50 < newAddrs.length) await new Promise(r => setTimeout(r, 200));
-      }
-    }
-
-    const now = Math.floor(Date.now() / 1000);
-    const holders = rows.map((r, i) => ({
-      address:      r.addr,
-      balance:      r.balance,
-      balanceRaw:   String(Math.round(r.balance * 1e18)),
-      rank:         i + 1,
-      isContract:   contractMap.get(r.addr) ?? 0,
-      lastSnapshot: now,
-    }));
-
-    await upsertHolders(holders);
-    console.log(`[poller] holders synced: ${holders.length}`);
-  } catch (err) {
-    console.error('[poller] holders sync error:', err.message);
-  }
-}
-
-// ─── vault sync ───────────────────────────────────────────────────────────────
-
-let vaultSyncing = false;
-
-async function syncVault() {
-  if (vaultSyncing) return;
-  vaultSyncing = true;
-  try {
-    const fromBlock   = Math.max(await getLastVaultBlock() + 1, VAULT_START);
-    const latestBlock = await getLatestBlock();
-    if (fromBlock > latestBlock) return;
-
-    let total = 0;
-    for (let start = fromBlock; start <= latestBlock; start += VAULT_BATCH) {
-      const end = Math.min(start + VAULT_BATCH - 1, latestBlock);
-      let attempt = 0;
-      while (attempt < 4) {
-        try {
-          const logs    = await fetchTransferLogs(USDM, start, end);
-          const payouts = logs.filter(l => l.fromAddr.toLowerCase() === VAULT.toLowerCase());
-          if (payouts.length > 0) {
-            const rows = payouts.map(l => ({
-              hash: l.hash, logIndex: l.logIndex, blockNum: l.blockNum,
-              timestamp: l.timestamp, recipient: l.toAddr, amount: l.amount,
-            }));
-            await upsertVaultPayouts(rows);
-            total += rows.length;
-          }
-          break;
-        } catch (err) {
-          attempt++;
-          if (attempt >= 4) throw err;
-          await new Promise(r => setTimeout(r, 2000 * attempt));
-        }
-      }
-      await new Promise(r => setTimeout(r, 1200));
-    }
-
-    await setLastVaultBlock(latestBlock);
-    if (total > 0) console.log(`[poller] vault +${total} payouts | block ${latestBlock}`);
-  } catch (err) {
-    console.error('[poller] vault sync error:', err.message);
-  } finally {
-    vaultSyncing = false;
-  }
-}
-
-// ─── supply history backfill ──────────────────────────────────────────────────
-
-async function backfillSupplyHistory() {
-  let days, hours;
-  try {
-    days  = await getDaysNeedingSupplyBackfill();
-    hours = await getHoursNeedingSupplyBackfill();
-  } catch (err) {
-    console.error('[poller] supply backfill skipped:', err.message);
-    return;
-  }
-  const total = days.length + hours.length;
-  if (total === 0) return;
-  console.log(`[poller] backfilling supply history: ${days.length} days + ${hours.length} hours`);
-
-  for (const { block_num, day_ts } of days) {
-    try {
-      const supply = await fetchSupplyAtBlock(block_num);
-      await saveTokenInfoSnapshot(supply, null, day_ts);
-      await new Promise(r => setTimeout(r, 80));
-    } catch { /* block not in archive — skip */ }
-  }
-  for (const { block_num, hour_ts } of hours) {
-    try {
-      const supply = await fetchSupplyAtBlock(block_num);
-      await saveTokenInfoSnapshot(supply, null, hour_ts);
-      await new Promise(r => setTimeout(r, 80));
-    } catch { /* block not in archive — skip */ }
-  }
-  console.log('[poller] supply history backfill done');
-}
-
-// ─── companies ────────────────────────────────────────────────────────────────
-
-export async function syncCompanies() {
-  try {
-    const wallets = await getAllPlayerAddresses(10000);
-    if (!wallets.length) return;
-
-    // Batch getUserCompanies in chunks of 50
-    const ownerMap = {};
-    const WALLET_CHUNK = 50;
-    for (let i = 0; i < wallets.length; i += WALLET_CHUNK) {
-      const chunk = wallets.slice(i, i + WALLET_CHUNK);
-      const result = await getUserCompaniesBatch(chunk);
-      for (const [wallet, companies] of Object.entries(result)) {
-        for (const addr of companies) ownerMap[addr] = wallet;
-      }
-      if (i + WALLET_CHUNK < wallets.length) await new Promise(r => setTimeout(r, 300));
-    }
-
-    const allCompanies = Object.keys(ownerMap);
-    if (!allCompanies.length) return;
-
-    // Fetch trade states in chunks of 100
-    const allStates = [];
-    const STATE_CHUNK = 100;
-    for (let i = 0; i < allCompanies.length; i += STATE_CHUNK) {
-      const chunk = allCompanies.slice(i, i + STATE_CHUNK);
-      const states = await getTradeStates(chunk);
-      allStates.push(...states.map(s => ({ ...s, owner: ownerMap[s.company] ?? '' })));
-      if (i + STATE_CHUNK < allCompanies.length) await new Promise(r => setTimeout(r, 500));
-    }
-
-    await upsertCompanies(allStates);
-    const autoOn = allStates.filter(s => s.autoTradeEnabled).length;
-    const active  = allStates.filter(s => s.active).length;
-    console.log(`[poller] companies synced: ${allStates.length} total, ${active} active, ${autoOn} auto-trade on`);
-  } catch (err) {
-    console.error('[poller] companies sync error:', err.message);
-  }
-}
+const DIRTY_START = 15_190_000;
+const BATCH       = 20_000;
 
 // ─── targeted mint reclassification ──────────────────────────────────────────
-// Re-fetches tx inputs only for MINT rows whose op_type may be wrong
-// (PARTIAL/FAIL misclassified as SCRAP_ITEM, or unknown op_types).
-// Much faster than full reconcile since it skips non-MINT blocks.
 
 let reclassifying = false;
 export const reclassifyStatus = { running: false, done: 0, total: 0, updated: 0, error: null };
@@ -402,80 +68,9 @@ export async function reclassifyMintTransfers() {
   }
 }
 
-// ─── liquidation sync ─────────────────────────────────────────────────────────
-// Fetches factory TradeExited events via RPC (primary) and inserts FAIL records
-// into transfers. Falls back to idx_logs for any gap the RPC path missed.
-
-const LIQ_INTERVAL_MS = 60_000;
-const LIQ_START       = 15_190_000;
-let liqSyncing = false;
-
-async function syncLiquidations() {
-  if (liqSyncing) return;
-  liqSyncing = true;
-  try {
-    const fromBlock   = Math.max(await getLastLiqBlock() + 1, LIQ_START);
-    const latestBlock = await getLatestBlock();
-    if (fromBlock > latestBlock) return;
-
-    const db = getDb();
-    let total = 0;
-    for (let start = fromBlock; start <= latestBlock; start += BATCH) {
-      const end  = Math.min(start + BATCH - 1, latestBlock);
-      const [liqs, tradeCtx] = await Promise.all([
-        fetchLiquidationEvents(start, end).catch(() => []),
-        fetchFactoryTradeContext(start, end).catch(() => ({ companyMap: new Map(), fullTxs: new Set(), companyBlockMap: new Map(), d47Map: new Map() })),
-      ]);
-      if (liqs.length > 0) {
-        // Pre-fetch company trade types for E_COMPLETE-protocol ops without d47.
-        const liqCompanyAddrs = [...new Set(liqs.map(l => l.companyAddr))];
-        if (liqCompanyAddrs.length > 0) {
-          await getCompanyTradeTypes(liqCompanyAddrs, tradeCtx.companyBlockMap).catch(() => {});
-        }
-        // Look up player addresses from companies table for events missing topic2.
-        const missingPlayer = liqs.filter(l => !l.playerAddr).map(l => l.companyAddr);
-        let ownerMap = new Map();
-        if (db && missingPlayer.length > 0) {
-          const rows = await db`SELECT address, owner FROM companies WHERE address = ANY(${missingPlayer})`.catch(() => []);
-          for (const r of rows) ownerMap.set(r.address.toLowerCase(), r.owner.toLowerCase());
-        }
-
-        const rows = liqs.map(l => {
-          // tradeType() at blockNum-1 (pre-fetched into _companyTypeCache) is the
-          // authoritative source — it reads the startTrade(uint8 mode) state directly.
-          // d47 at exitedLogIndex+1 encodes a bust status code, not the trade type.
-          const compType = _companyTypeCache.get(l.companyAddr) ?? 0;
-          const opType = compType === 1 ? 'DRUG_DEAL'
-                       : compType === 2 ? 'ARMS_DEAL'
-                       : compType === 3 ? 'EXTORTION'
-                       : l.dirtyAmount > 0 ? 'PARTIAL' : 'EXTORTION';
-          const toAddr = l.playerAddr ?? ownerMap.get(l.companyAddr) ?? l.companyAddr;
-          return {
-            hash: l.hash, logIndex: l.logIndex, blockNum: l.blockNum,
-            timestamp: l.timestamp, fromAddr: '0x0000000000000000000000000000000000000000',
-            toAddr, rawValue: String(l.dirtyAmount), amount: l.dirtyAmount,
-            kind: 'MINT', opType,
-          };
-        });
-        await upsertTransfers(rows);
-        total += rows.length;
-      }
-      await new Promise(r => setTimeout(r, 400));
-    }
-
-    await setLastLiqBlock(latestBlock);
-    if (total > 0) console.log(`[poller] liquidations +${total} | block ${latestBlock}`);
-  } catch (err) {
-    console.error('[poller] liquidation sync error:', err.message);
-  } finally {
-    liqSyncing = false;
-  }
-}
-
 // ─── reconcile ────────────────────────────────────────────────────────────────
 
 let reconciling = false;
-export { reconcileStatus };
 
 export async function reconcileDirtyTransfers() {
   if (reconciling) return;
@@ -530,124 +125,6 @@ export async function reconcileDirtyTransfers() {
   }
 }
 
-// ─── staking sync ─────────────────────────────────────────────────────────────
-
-const STAKING_START = 15_800_000; // approximate deployment block
-
-let stakingSyncing = false;
-
-async function syncStaking() {
-  if (stakingSyncing) return;
-  stakingSyncing = true;
-  try {
-    const fromBlock   = Math.max(await getLastStakingBlock() + 1, STAKING_START);
-    const latestBlock = await getLatestBlock();
-    if (fromBlock > latestBlock) return;
-
-    let total = 0;
-    for (let start = fromBlock; start <= latestBlock; start += BATCH) {
-      const end = Math.min(start + BATCH - 1, latestBlock);
-      let attempt = 0;
-      while (attempt < 4) {
-        try {
-          const events = await fetchStakingEvents(start, end);
-          if (events.length > 0) {
-            await upsertStakingDeposits(events);
-            total += events.length;
-          }
-          break;
-        } catch (err) {
-          attempt++;
-          if (attempt >= 4) throw err;
-          await new Promise(r => setTimeout(r, 2000 * attempt));
-        }
-      }
-      await new Promise(r => setTimeout(r, 1200));
-    }
-
-    await setLastStakingBlock(latestBlock);
-    if (total > 0) console.log(`[poller] staking +${total} deposits | block ${latestBlock}`);
-  } catch (err) {
-    console.error('[poller] staking sync error:', err.message);
-  } finally {
-    stakingSyncing = false;
-  }
-}
-
-// ─── staking claims sync ──────────────────────────────────────────────────────
-
-let stakingClaimSyncing = false;
-
-async function syncStakingClaims() {
-  if (stakingClaimSyncing) return;
-  stakingClaimSyncing = true;
-  try {
-    const fromBlock   = Math.max(await getLastStakingClaimBlock() + 1, STAKING_START);
-    const latestBlock = await getLatestBlock();
-    if (fromBlock > latestBlock) return;
-
-    let total = 0;
-    for (let start = fromBlock; start <= latestBlock; start += BATCH) {
-      const end = Math.min(start + BATCH - 1, latestBlock);
-      let attempt = 0;
-      while (attempt < 4) {
-        try {
-          const events = await fetchStakingClaimEvents(start, end);
-          if (events.length > 0) {
-            await upsertStakingClaims(events);
-            total += events.length;
-          }
-          break;
-        } catch (err) {
-          attempt++;
-          if (attempt >= 4) throw err;
-          await new Promise(r => setTimeout(r, 2000 * attempt));
-        }
-      }
-      await new Promise(r => setTimeout(r, 1200));
-    }
-
-    await setLastStakingClaimBlock(latestBlock);
-    if (total > 0) console.log(`[poller] staking claims +${total} | block ${latestBlock}`);
-  } catch (err) {
-    console.error('[poller] staking claim sync error:', err.message);
-  } finally {
-    stakingClaimSyncing = false;
-  }
-}
-
-// ─── staking rotation sync ────────────────────────────────────────────────────
-
-let stakingRotSyncing = false;
-
-async function syncStakingRotations() {
-  if (stakingRotSyncing) return;
-  stakingRotSyncing = true;
-  try {
-    const fromBlock   = Math.max(await getLastStakingRotationBlock() + 1, STAKING_START);
-    const latestBlock = await getLatestBlock();
-    if (fromBlock > latestBlock) return;
-
-    let total = 0;
-    for (let start = fromBlock; start <= latestBlock; start += BATCH) {
-      const end = Math.min(start + BATCH - 1, latestBlock);
-      const events = await fetchStakingRotationEvents(start, end).catch(() => []);
-      if (events.length > 0) {
-        await upsertStakingRotations(events);
-        total += events.length;
-      }
-      await new Promise(r => setTimeout(r, 1200));
-    }
-
-    await setLastStakingRotationBlock(latestBlock);
-    if (total > 0) console.log(`[poller] staking rotations +${total} | block ${latestBlock}`);
-  } catch (err) {
-    console.error('[poller] staking rotation sync error:', err.message);
-  } finally {
-    stakingRotSyncing = false;
-  }
-}
-
 // ─── start ────────────────────────────────────────────────────────────────────
 
 export async function startPoller() {
@@ -657,15 +134,15 @@ export async function startPoller() {
   syncSnapshots();
   syncHolders();
   syncCompanies();
-  setInterval(syncInfluence,       TX_INTERVAL_MS);
-  setInterval(syncTransfers,       TX_INTERVAL_MS);
-  setInterval(syncVault,           TX_INTERVAL_MS);
-  setInterval(syncLiquidations,    LIQ_INTERVAL_MS);
-  setInterval(syncStaking,         TX_INTERVAL_MS);
-  setInterval(syncStakingClaims,   TX_INTERVAL_MS);
-  setInterval(syncStakingRotations,TX_INTERVAL_MS);
-  setInterval(syncSnapshots,    SNAPSHOT_INTERVAL_MS);
-  setInterval(syncHolders,      HOLDERS_INTERVAL_MS);
-  setInterval(syncCompanies,    COMPANIES_INTERVAL_MS);
+  setInterval(syncInfluence,        TX_INTERVAL_MS);
+  setInterval(syncTransfers,        TX_INTERVAL_MS);
+  setInterval(syncVault,            TX_INTERVAL_MS);
+  setInterval(syncLiquidations,     LIQ_INTERVAL_MS);
+  setInterval(syncStaking,          TX_INTERVAL_MS);
+  setInterval(syncStakingClaims,    TX_INTERVAL_MS);
+  setInterval(syncStakingRotations, TX_INTERVAL_MS);
+  setInterval(syncSnapshots,     SNAPSHOT_INTERVAL_MS);
+  setInterval(syncHolders,       HOLDERS_INTERVAL_MS);
+  setInterval(syncCompanies,     COMPANIES_INTERVAL_MS);
   setInterval(() => backfillSupplyHistory().catch(() => {}), 60 * 60_000);
 }
