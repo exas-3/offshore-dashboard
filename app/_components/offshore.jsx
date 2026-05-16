@@ -863,11 +863,11 @@ function LiveSidebar({ D, counters, ops, watch, trades, onWallet, aliases = {} }
           <span className="rule" />
           <span className="v">live</span>
         </div>
-        <div className="tm-opfeed">
+        <div className="tm-opfeed" style={{ filter: 'blur(4px)', pointerEvents: 'none', userSelect: 'none' }}>
           {ops.slice(0, 6).map((o, i) => {
             const fadeCls = i >= 3 ? `fade${i >= 5 ? '-3' : i >= 4 ? '-2' : ''}` : '';
             return (
-              <div key={`${o.time}-${i}`} className={`tm-opfeed-row ${fadeCls}`} style={{ cursor: 'pointer' }} onClick={() => onWallet && onWallet(o.walletFull || o.wallet)}>
+              <div key={`${o.time}-${i}`} className={`tm-opfeed-row ${fadeCls}`}>
                 <span className="l">
                   <span className="t">{aliases[o.walletFull] || o.time.slice(0, 5)}</span>
                   <span className="op">{o.op}</span>
