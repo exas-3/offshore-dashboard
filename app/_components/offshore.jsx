@@ -1218,8 +1218,8 @@ function WalletRail({ address, onAddressChange, ethPrice = 0, newOps = [] }) {
           <BarRow2
             data={dbData.history.map(h => ({ x: h.day?.slice(5) ?? h.day, earned: Number(h.earned), spent: Number(h.spent) }))}
             series={[
+              { key: 'spent',  label: 'spent',  color: 'neg', dir: 'rtl' },
               { key: 'earned', label: 'earned', color: 'pos' },
-              { key: 'spent',  label: 'spent',  color: 'neg' },
             ]}
             hideNum
           />
