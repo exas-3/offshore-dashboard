@@ -131,6 +131,19 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
   const [settingsOpen, setSettingsOpen] = useStateT(false);
   const [tickerTooltip, setTickerTooltip] = useStateT(null);
   const settingsBtnRef = useRefT(null);
+  const [showTweakHint, setShowTweakHint] = useStateT(() => {
+    if (typeof window === 'undefined') return false;
+    return !localStorage.getItem('offshore-hint-seen');
+  });
+  function dismissHint() {
+    if (typeof window !== 'undefined') localStorage.setItem('offshore-hint-seen', '1');
+    setShowTweakHint(false);
+  }
+  useEffectT(() => {
+    if (!showTweakHint) return;
+    const t = setTimeout(dismissHint, 8000);
+    return () => clearTimeout(t);
+  }, [showTweakHint]);
   useEffectT(() => {
     if (clock) return;
     const t = setInterval(() => setNow(nowUTC()), 1000);
@@ -184,23 +197,45 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
         <span className="tm-ticker-clock">{now}</span>
         {onThemeChange ? (
           <>
-            <button
-              ref={settingsBtnRef}
-              onClick={() => setSettingsOpen(o => !o)}
-              title="tweaks"
-              style={{
-                background: settingsOpen ? 'var(--t-fg)' : 'var(--t-bg-soft)',
-                color: settingsOpen ? 'var(--t-bg)' : 'var(--t-fg)',
-                border: settingsOpen ? '1px solid var(--t-fg)' : '1px solid var(--t-fg-soft)',
-                fontFamily: 'var(--t-font)', fontSize: 11,
-                padding: '0 9px', cursor: 'pointer',
-                letterSpacing: '0.06em', height: 18,
-                display: 'inline-flex', alignItems: 'center',
-                marginLeft: 6,
-              }}
-            >
-              ⚙
-            </button>
+            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+              <button
+                ref={settingsBtnRef}
+                onClick={() => { setSettingsOpen(o => !o); if (showTweakHint) dismissHint(); }}
+                title="tweaks"
+                style={{
+                  background: settingsOpen ? 'var(--t-fg)' : 'var(--t-bg-soft)',
+                  color: settingsOpen ? 'var(--t-bg)' : 'var(--t-fg)',
+                  border: settingsOpen ? '1px solid var(--t-fg)' : `1px solid ${showTweakHint ? 'var(--t-fg)' : 'var(--t-fg-soft)'}`,
+                  fontFamily: 'var(--t-font)', fontSize: 11,
+                  padding: '0 9px', cursor: 'pointer',
+                  letterSpacing: '0.06em', height: 18,
+                  display: 'inline-flex', alignItems: 'center',
+                  marginLeft: 6,
+                }}
+              >
+                ⚙
+              </button>
+              {showTweakHint && (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 7px)', right: 0,
+                  background: 'var(--t-fg)', color: 'var(--t-bg)',
+                  fontSize: 10, fontFamily: 'var(--t-font)',
+                  padding: '4px 8px', whiteSpace: 'nowrap',
+                  zIndex: 300, pointerEvents: 'none',
+                  letterSpacing: '0.05em',
+                }}>
+                  {/* triangle pointer */}
+                  <span style={{
+                    position: 'absolute', top: -4, right: 10,
+                    width: 0, height: 0,
+                    borderLeft: '4px solid transparent',
+                    borderRight: '4px solid transparent',
+                    borderBottom: '4px solid var(--t-fg)',
+                  }} />
+                  <span className="tm-blink">↑</span> click to customize theme
+                </div>
+              )}
+            </div>
             {settingsOpen && (
               <TweaksPanel
                 theme={theme}
