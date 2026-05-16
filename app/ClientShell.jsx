@@ -17,7 +17,6 @@ export default function ClientShell({ children }) {
       const res = await fetch('/api/stats');
       if (res.ok) {
         const d = await res.json();
-        setEthPrice(d.ethPrice ?? null);
         setDirtyPrice(d.dirtyPrice ?? null);
         setInfCost(d.infCost ?? null);
         setLastUpdate(Date.now());
@@ -30,6 +29,15 @@ export default function ClientShell({ children }) {
     const t = setInterval(refreshStats, REFRESH_MS);
     return () => clearInterval(t);
   }, [refreshStats]);
+
+  useEffect(() => {
+    const es = new EventSource('/api/eth-price/stream');
+    es.onmessage = ({ data }) => {
+      const price = parseFloat(data);
+      if (isFinite(price) && price > 0) setEthPrice(price);
+    };
+    return () => es.close();
+  }, []);
 
   return (
     <div className="app">
