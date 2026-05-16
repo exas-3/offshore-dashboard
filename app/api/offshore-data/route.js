@@ -355,7 +355,7 @@ export async function GET() {
     const totalPlayersChart = participantBuckets.map(r => {
       _cum += r.newWallets;
       return { ts: Number(r.ts), x: fmtDate(r.ts), v: _cum };
-    }).slice(-9);
+    });
 
     const dawSlice = activeWalletBuckets.slice(-9);
     const dailyActiveWallets = dawSlice.map(r => ({
