@@ -1,9 +1,26 @@
 'use client';
 import { useState as useStateO, useMemo as useMemoO, useRef as useRefO, useEffect as useEffectO } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   TerminalShell, Region, Stats, KV, KVSep, BarRow, BarRow2, StackedBarRow,
   BlockRow, Spark, MultiSpark, Heatmap, AsciiBarChart, LineChart, Seg, Sortable, GridCell, Toasts, fmt,
 } from './terminal.jsx';
+
+const CHART_AXIS = { fill: 'var(--t-fg-mut)', fontSize: 10, fontFamily: 'var(--t-font)' };
+
+function TmTooltip({ active, payload, label, valueFmt = (v) => v >= 1000 ? (v/1000).toFixed(1)+'k' : String(Math.round(v)) }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{ background: 'var(--t-bg)', border: '1px solid var(--t-rule)', padding: '6px 10px', fontFamily: 'var(--t-font)', fontSize: 11 }}>
+      <div style={{ color: 'var(--t-fg-mut)', marginBottom: 4 }}>{label}</div>
+      {payload.map(p => (
+        <div key={p.dataKey} style={{ display: 'flex', gap: 12, justifyContent: 'space-between', color: p.fill }}>
+          <span>{p.name}</span><span>{valueFmt(p.value ?? 0)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function InfTooltip({ data, current, trend }) {
   const W = 260, H = 90;
@@ -480,16 +497,17 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
             fkey="F2"
             actions={<Seg value={econGran} options={['daily','hourly']} onChange={setEconGran} />}
           >
-            <AsciiBarChart
-              data={localDates(econGran === 'daily' ? (D.emissionsVsBurnDaily || D.emissionsVsBurn) : D.emissionsVsBurn, econGran === 'hourly')}
-              series={[
-                { key: 'minted',       color: 'fg'   },
-                { key: 'protocolMint', color: 'warn', stackOn: 'minted' },
-                { key: 'spent',        color: 'neg'  },
-              ]}
-              height={14}
-              valueFmt={fmt.k}
-            />
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={localDates(econGran === 'daily' ? (D.emissionsVsBurnDaily || D.emissionsVsBurn) : D.emissionsVsBurn, econGran === 'hourly')} margin={{ top: 4, right: 4, left: -18, bottom: 0 }} barCategoryGap="20%">
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--t-rule)" vertical={false} />
+                <XAxis dataKey="x" tick={CHART_AXIS} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                <YAxis tick={CHART_AXIS} axisLine={false} tickLine={false} tickFormatter={fmt.k} />
+                <Tooltip content={<TmTooltip valueFmt={fmt.k} />} />
+                <Bar dataKey="minted"       name="minted"   stackId="a" fill="var(--t-fg)"   maxBarSize={40} />
+                <Bar dataKey="protocolMint" name="protocol" stackId="a" fill="var(--t-warn)" maxBarSize={40} />
+                <Bar dataKey="spent"        name="spent"    fill="var(--t-neg)"              maxBarSize={40} radius={[2,2,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
             <div style={{ marginTop: 4, fontSize: 'var(--t-fs-sm)', color: 'var(--t-fg-soft)', display: 'flex', gap: 12, fontFamily: 'var(--t-font)' }}>
               <span><span style={{ color: 'var(--t-fg)' }}>█</span> minted</span>
               <span><span style={{ color: 'var(--t-warn)' }}>█</span> protocol</span>
@@ -660,12 +678,15 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
                 <KV k="new recipients / cycle" v={medNewRecip ? `~${medNewRecip}` : '—'} cls="dim" />
               </div>
               <div>
-                <AsciiBarChart
-                  data={D.usdmPerCycle.map((d) => ({ label: d.t, usdm: d.v }))}
-                  series={[{ key: 'usdm', color: 'hdr' }]}
-                  height={14}
-                  valueFmt={(v) => v >= 1000 ? Math.round(v / 1000) + 'k' : String(Math.round(v))}
-                />
+                <ResponsiveContainer width="100%" height={160}>
+                  <BarChart data={D.usdmPerCycle.map((d) => ({ label: d.t, usdm: d.v }))} margin={{ top: 4, right: 4, left: -18, bottom: 0 }} barCategoryGap="20%">
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--t-rule)" vertical={false} />
+                    <XAxis dataKey="label" tick={CHART_AXIS} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                    <YAxis tick={CHART_AXIS} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? Math.round(v/1000)+'k' : String(Math.round(v))} />
+                    <Tooltip content={<TmTooltip valueFmt={(v) => v >= 1000 ? (v/1000).toFixed(2)+'k' : String(Math.round(v))} />} />
+                    <Bar dataKey="usdm" name="USDm" fill="var(--t-hdr)" maxBarSize={40} radius={[2,2,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
           </Region>
