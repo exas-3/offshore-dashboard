@@ -145,8 +145,9 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     'supply':             7,
     'circ-supply':        6,
     'dirty-price':        6,
-    'influence-totals':   5,
-    'influence-daily':    7,
+    'influence-totals':   4,
+    'influence-daily':    5,
+    'influence-net':      3,
     'heatmap':            5,
     'daw':                4,
     'total-players':      3,
@@ -620,38 +621,39 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
           </Region>
         </GridCell>
         <GridCell id="influence-daily" span={spans['influence-daily']} height={heights['influence-daily']} onResize={(r) => resizeCell('influence-daily', r)}>
-          {(() => {
-            const src = infGran === 'hourly'
-              ? (D.influenceFlow.hours || [])
-              : D.influenceFlow.days;
-            const labels = src.map(d => d.ts ? (infGran === 'hourly' ? fmtLocalHour(d.ts) : fmtLocal(d.ts)) : (d.x || ''));
-            const netData = src.map(d => (d.purchased || 0) + (d.refunded || 0) - (d.consumed || 0));
-            return (
-              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 0 }}>
-                <Region title="influence flow" sub={infGran === 'hourly' ? 'last 24h · hourly' : 'last 9d · daily'} fkey="F2"
-                  actions={<Seg value={infGran} options={['daily','hourly']} onChange={setInfGran} />}
-                  fill
-                >
-                  <MultiSpark
-                    labels={labels}
-                    series={[
-                      { label: 'purchased', color: 'var(--t-pos)', data: src.map(d => d.purchased || 0) },
-                      { label: 'consumed',  color: 'var(--t-neg)', data: src.map(d => d.consumed  || 0) },
-                      { label: 'refunded',  color: 'var(--t-fg)',  data: src.map(d => d.refunded  || 0) },
-                    ]}
-                  />
-                </Region>
-                <Region title="net flow" sub="purchased + refunded − consumed" fkey="F2" fill>
-                  <LineChart
-                    data={src.map((d, i) => ({ x: labels[i], v: netData[i] }))}
-                    color="warn"
-                    height={80}
-                    valueFmt={fmt.k}
-                  />
-                </Region>
-              </div>
-            );
-          })()}
+          <Region title="influence flow" sub={infGran === 'hourly' ? 'last 24h · hourly' : 'last 9d · daily'} fkey="F2"
+            actions={<Seg value={infGran} options={['daily','hourly']} onChange={setInfGran} />}
+            fill
+          >
+            {(() => {
+              const src = infGran === 'hourly' ? (D.influenceFlow.hours || []) : D.influenceFlow.days;
+              return (
+                <MultiSpark
+                  labels={src.map(d => d.ts ? (infGran === 'hourly' ? fmtLocalHour(d.ts) : fmtLocal(d.ts)) : (d.x || ''))}
+                  series={[
+                    { label: 'purchased', color: 'var(--t-pos)', data: src.map(d => d.purchased || 0) },
+                    { label: 'consumed',  color: 'var(--t-neg)', data: src.map(d => d.consumed  || 0) },
+                    { label: 'refunded',  color: 'var(--t-fg)',  data: src.map(d => d.refunded  || 0) },
+                  ]}
+                />
+              );
+            })()}
+          </Region>
+        </GridCell>
+        <GridCell id="influence-net" span={spans['influence-net']} height={heights['influence-daily']} onResize={(r) => resizeCell('influence-net', r)}>
+          <Region title="net flow" sub="purchased + refunded − consumed" fkey="F2" fill>
+            {(() => {
+              const src = infGran === 'hourly' ? (D.influenceFlow.hours || []) : D.influenceFlow.days;
+              const labels = src.map(d => d.ts ? (infGran === 'hourly' ? fmtLocalHour(d.ts) : fmtLocal(d.ts)) : (d.x || ''));
+              return (
+                <LineChart
+                  data={src.map((d, i) => ({ x: labels[i], v: (d.purchased || 0) + (d.refunded || 0) - (d.consumed || 0) }))}
+                  color="warn"
+                  valueFmt={fmt.k}
+                />
+              );
+            })()}
+          </Region>
         </GridCell>
 
         </section>
