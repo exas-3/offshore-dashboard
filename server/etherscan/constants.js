@@ -9,6 +9,7 @@ export {
   VAULT,
   FACTORY,
   BATCH_RESOLVER,
+  STAKING,
 } from '../../lib/chain-constants.js';
 
 // Function selector → op_type for operations that can be classified definitively from tx input.

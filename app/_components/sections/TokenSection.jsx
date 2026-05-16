@@ -50,7 +50,7 @@ export function TokenSection({ D, grid }) {
           <div style={{ marginTop: 4, fontSize: 'var(--t-fs-sm)', color: 'var(--t-fg-soft)', display: 'flex', gap: 12, fontFamily: 'var(--t-font)' }}>
             <span><span style={{ color: 'var(--t-fg)' }}>█</span> minted</span>
             <span><span style={{ color: 'var(--t-warn)' }}>█</span> protocol</span>
-            <span><span style={{ color: 'var(--t-neg)' }}>█</span> spent</span>
+            <span><span style={{ color: 'var(--t-neg)' }}>█</span> burned</span>
           </div>
         </Region>
       </GridCell>
