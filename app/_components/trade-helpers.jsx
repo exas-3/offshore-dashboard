@@ -100,6 +100,27 @@ export function nowHMS() {
   return `${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
 }
 
+// Dashboard-wide compact formatters. Live alongside the other trade-helpers
+// because several sections share them (ticker, token KVs, vault KVs).
+export function fmtK(n) {
+  if (!n && n !== 0) return '—';
+  const abs = Math.abs(n);
+  if (abs >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (abs >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+  return Math.round(n).toLocaleString();
+}
+
+export function fmtSigned(n) {
+  return n >= 0 ? `+${fmtK(n)}` : `−${fmtK(Math.abs(n))}`;
+}
+
+export function median(arr) {
+  if (!arr || !arr.length) return 0;
+  const s = [...arr].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
 export function fmtLocal(ts) {
   const d = new Date(Number(ts) * 1000);
   return `${d.getMonth() + 1}/${d.getDate()}`;
