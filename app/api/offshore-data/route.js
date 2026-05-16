@@ -474,20 +474,34 @@ export async function GET() {
     const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL', 'FAIL']);
     const COMPLETE_AMOUNTS = new Set([100, 115, 130]);
 
-    const recentOps = recentTransfers
-      .filter(t => (t.kind === 'MINT' && t.op_type && t.op_type !== '') ||
-                   (t.kind === 'SPEND' && ['BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE'].includes(t.op_type)))
+    // Deduplicate: same wallet + same tx → collapse into one entry (sum amounts)
+    const opDedupMap = new Map();
+    for (const t of recentTransfers) {
+      if (!((t.kind === 'MINT' && t.op_type && t.op_type !== '') ||
+            (t.kind === 'SPEND' && ['BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE'].includes(t.op_type)))) continue;
+      const wallet = t.kind === 'MINT' ? t.to_addr : t.from_addr;
+      const key = `${t.hash}:${wallet}:${t.op_type}`;
+      if (opDedupMap.has(key)) {
+        opDedupMap.get(key)._rawAmount += Number(t.amount);
+        opDedupMap.get(key)._count += 1;
+      } else {
+        opDedupMap.set(key, { ...t, _rawAmount: Number(t.amount), _count: 1 });
+      }
+    }
+    const recentOps = [...opDedupMap.values()]
+      .sort((a, b) => Number(b.timestamp) - Number(a.timestamp) || Number(b.log_index) - Number(a.log_index))
       .slice(0, 250)
       .map(t => ({
         wallet: shortAddr(t.kind === 'MINT' ? t.to_addr : t.from_addr),
         walletFull: (t.kind === 'MINT' ? t.to_addr : t.from_addr),
         op:     mapOpType(t.op_type),
         result: EARN_OPS.has(t.op_type)
-          ? (COMPLETE_AMOUNTS.has(Math.round(Number(t.amount))) ? 'completed' : 'busted')
+          ? (COMPLETE_AMOUNTS.has(Math.round(t._rawAmount)) ? 'completed' : 'busted')
           : 'ok',
         dirty:  t.kind === 'MINT'
-          ? Math.round(Number(t.amount) * 100) / 100
-          : -Math.round(Number(t.amount) * 100) / 100,
+          ? Math.round(t._rawAmount * 100) / 100
+          : -Math.round(t._rawAmount * 100) / 100,
+        count:  t._count,
         inf:    infCost,
         _ts:    Number(t.timestamp),
       }));

@@ -778,8 +778,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
                     <th><Sortable label="ends"    k="endsIn"   sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
                     <th className="num"><Sortable label="liq px"  k="liqPrice" sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
                     <th className="num"><Sortable label="buffer" k="buffer"   sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
-                    <th>history</th>
-                    <th className="num">entry</th>
+
                   </tr>
                 </thead>
                 <tbody>
@@ -810,7 +809,9 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
                       <td className="dim">{o.time}</td>
                       <td><span className="tm-num" style={{ cursor: 'pointer', color: 'var(--t-hdr)' }} onClick={() => openWallet(o.walletFull || o.wallet)}>{aliases[o.walletFull] || o.wallet}</span></td>
                       <td className={success ? 'pos' : fail ? 'neg' : ''}>{o.op}</td>
-                      <td className={`num ${o.dirty > 0 ? 'pos' : o.dirty < 0 ? 'neg' : ''}`}>{fmt.signed(o.dirty)}</td>
+                      <td className={`num ${o.dirty > 0 ? 'pos' : o.dirty < 0 ? 'neg' : ''}`}>
+                        {fmt.signed(o.dirty)}{o.count > 1 && <span className="dim" style={{ marginLeft: 4, fontSize: 'var(--t-fs-xs)' }}>{o.count}×</span>}
+                      </td>
                     </tr>
                     );
                   })}
@@ -942,7 +943,9 @@ function LiveSidebar({ D, counters, ops, watch, trades, onWallet, aliases = {} }
                   <span className="t">{aliases[o.walletFull] || o.time.slice(0, 5)}</span>
                   <span className="op">{o.op}</span>
                 </span>
-                <span className={`v ${[100, 115, 130].includes(o.dirty) ? 'pos' : 'neg'}`}>{fmt.signed(o.dirty)}</span>
+                <span className={`v ${[100, 115, 130].includes(o.dirty) ? 'pos' : 'neg'}`}>
+                  {fmt.signed(o.dirty)}{o.count > 1 && <span style={{ opacity: 0.5, fontSize: '0.8em', marginLeft: 2 }}>{o.count}×</span>}
+                </span>
               </div>
             );
           })}

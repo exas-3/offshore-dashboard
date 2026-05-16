@@ -50,16 +50,16 @@ export async function GET(request) {
       `.catch(() => []) : Promise.resolve([]),
       // New ops since last poll
       db && since > 0 ? db`
-        (SELECT to_addr AS addr, NULL AS from_addr2, op_type, amount::float AS amount, timestamp, 'MINT' AS kind
+        (SELECT hash, to_addr AS addr, NULL AS from_addr2, op_type, amount::float AS amount, timestamp, 'MINT' AS kind
           FROM transfers WHERE kind='MINT' AND timestamp > ${since}
             AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP')
-          ORDER BY timestamp ASC LIMIT 20)
+          ORDER BY timestamp ASC LIMIT 60)
         UNION ALL
-        (SELECT NULL, from_addr, op_type, amount::float, timestamp, 'SPEND'
+        (SELECT hash, NULL, from_addr, op_type, amount::float, timestamp, 'SPEND'
           FROM transfers WHERE kind='SPEND' AND timestamp > ${since}
             AND op_type IN ('BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE')
-          ORDER BY timestamp ASC LIMIT 10)
-        ORDER BY timestamp ASC LIMIT 20
+          ORDER BY timestamp ASC LIMIT 20)
+        ORDER BY timestamp ASC LIMIT 60
       `.catch(() => []) : Promise.resolve([]),
       db ? db`
         (SELECT 'DEX_SELL' AS etype, from_addr AS addr, amount, timestamp
@@ -140,16 +140,30 @@ export async function GET(request) {
     } : null;
 
     const ic = typeof infCost === 'number' ? infCost : 12.41;
-    const newOps = (newOpsRows || []).map(r => ({
+    // Deduplicate: same wallet + same tx → collapse into one entry (sum amounts)
+    const dedupMap = new Map();
+    for (const r of (newOpsRows || [])) {
+      const wallet = r.kind === 'MINT' ? r.addr : r.from_addr2;
+      const key = `${r.hash}:${wallet}:${r.op_type}`;
+      if (dedupMap.has(key)) {
+        dedupMap.get(key)._rawAmount += Number(r.amount);
+        dedupMap.get(key)._count += 1;
+      } else {
+        dedupMap.set(key, { ...r, _rawAmount: Number(r.amount), _count: 1 });
+      }
+    }
+    const dedupedRows = [...dedupMap.values()].sort((a, b) => Number(a.timestamp) - Number(b.timestamp)).slice(0, 20);
+    const newOps = dedupedRows.map(r => ({
       wallet: shortAddr(r.kind === 'MINT' ? r.addr : r.from_addr2),
       walletFull: (r.kind === 'MINT' ? r.addr : r.from_addr2),
       op:     mapOpType(r.op_type),
       result: EARN_OPS.has(r.op_type)
-        ? (COMPLETE_AMOUNTS.has(Math.round(Number(r.amount))) ? 'completed' : 'busted')
+        ? (COMPLETE_AMOUNTS.has(Math.round(r._rawAmount)) ? 'completed' : 'busted')
         : 'ok',
       dirty:  r.kind === 'MINT'
-        ? Math.round(Number(r.amount) * 100) / 100
-        : -Math.round(Number(r.amount) * 100) / 100,
+        ? Math.round(r._rawAmount * 100) / 100
+        : -Math.round(r._rawAmount * 100) / 100,
+      count:  r._count,
       inf:    ic,
       _ts:    Number(r.timestamp),
     }));
