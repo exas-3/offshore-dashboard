@@ -294,6 +294,7 @@ export async function GET() {
       ts: Number(r.ts), x: fmtDateHour(r.ts),
       v: r.marketCap,
       price: r.price,
+      supply: r.supply,
     }));
 
     // ── emissionsVsBurn (hourly last 24h + daily all-time) ────────────────────

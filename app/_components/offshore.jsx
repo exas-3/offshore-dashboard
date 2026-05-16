@@ -117,6 +117,8 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     'participants':      'heatmap',
     'supply':            'company-state',
     'company-state':     'supply',
+    'circ-supply':       'dirty-price',
+    'dirty-price':       'circ-supply',
     'top-stakers':       'staking-chart',
     'staking-chart':     'top-stakers',
   };
@@ -124,6 +126,8 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     'emissions':          7,
     'burned':             5,
     'supply':             7,
+    'circ-supply':        6,
+    'dirty-price':        6,
     'influence-totals':   5,
     'influence-daily':    7,
     'heatmap':            5,
@@ -576,6 +580,26 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
               fill
               valueFmt={(v) => v >= 1e6 ? (v/1e6).toFixed(2)+'M' : v >= 1e3 ? (v/1e3).toFixed(1)+'k' : String(Math.round(v))}
               extraRows={(d) => d.price != null ? [{ k: 'price', v: `$${Number(d.price).toFixed(4)}` }] : []}
+            />
+          </Region>
+        </GridCell>
+        <GridCell id="circ-supply" span={spans['circ-supply']} onResize={(r) => resizeCell('circ-supply', r)}>
+          <Region title="circulating supply" sub="hourly · $DIRTY">
+            <LineChart
+              data={localDates((D.marketCapChart || []).map(r => ({ ...r, v: r.supply })), true)}
+              color="fg"
+              fill
+              valueFmt={(v) => v >= 1e6 ? (v/1e6).toFixed(2)+'M' : v >= 1e3 ? (v/1e3).toFixed(1)+'k' : String(Math.round(v))}
+            />
+          </Region>
+        </GridCell>
+        <GridCell id="dirty-price" span={spans['dirty-price']} onResize={(r) => resizeCell('dirty-price', r)}>
+          <Region title="$dirty price" sub="hourly · USDm">
+            <LineChart
+              data={localDates((D.marketCapChart || []).map(r => ({ ...r, v: r.price })), true)}
+              color="pos"
+              fill
+              valueFmt={(v) => '$' + Number(v).toFixed(4)}
             />
           </Region>
         </GridCell>
