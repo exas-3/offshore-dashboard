@@ -13,9 +13,9 @@ function TmTooltip({ active, payload, label, valueFmt = (v) => v >= 1000 ? (v/10
   return (
     <div style={{ background: 'var(--t-bg)', border: '1px solid var(--t-rule)', padding: '6px 10px', fontFamily: 'var(--t-font)', fontSize: 11 }}>
       <div style={{ color: 'var(--t-fg-mut)', marginBottom: 4 }}>{label}</div>
-      {payload.map(p => (
+      {payload.filter(p => p.value).map(p => (
         <div key={p.dataKey} style={{ display: 'flex', gap: 12, justifyContent: 'space-between', color: p.fill }}>
-          <span>{p.name}</span><span>{valueFmt(p.value ?? 0)}</span>
+          <span>{p.name}</span><span>{valueFmt(p.value)}</span>
         </div>
       ))}
     </div>
