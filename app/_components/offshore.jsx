@@ -620,27 +620,38 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
           </Region>
         </GridCell>
         <GridCell id="influence-daily" span={spans['influence-daily']} height={heights['influence-daily']} onResize={(r) => resizeCell('influence-daily', r)}>
-          <Region title="influence flow" sub={infGran === 'hourly' ? 'last 24h · hourly' : 'last 9d · daily'} fkey="F2"
-            actions={<Seg value={infGran} options={['daily','hourly']} onChange={setInfGran} />}
-            fill
-          >
-            {(() => {
-              const src = infGran === 'hourly'
-                ? (D.influenceFlow.hours || [])
-                : D.influenceFlow.days;
-              return (
-                <MultiSpark
-                  labels={src.map(d => d.ts ? (infGran === 'hourly' ? fmtLocalHour(d.ts) : fmtLocal(d.ts)) : (d.x || ''))}
-                  series={[
-                    { label: 'purchased', color: 'var(--t-pos)',  data: src.map(d => d.purchased || 0) },
-                    { label: 'consumed',  color: 'var(--t-neg)',  data: src.map(d => d.consumed  || 0) },
-                    { label: 'refunded',  color: 'var(--t-fg)',   data: src.map(d => d.refunded  || 0) },
-                    { label: 'net',       color: 'var(--t-warn)', secondary: true, data: src.map(d => (d.purchased || 0) + (d.refunded || 0) - (d.consumed || 0)) },
-                  ]}
-                />
-              );
-            })()}
-          </Region>
+          {(() => {
+            const src = infGran === 'hourly'
+              ? (D.influenceFlow.hours || [])
+              : D.influenceFlow.days;
+            const labels = src.map(d => d.ts ? (infGran === 'hourly' ? fmtLocalHour(d.ts) : fmtLocal(d.ts)) : (d.x || ''));
+            const netData = src.map(d => (d.purchased || 0) + (d.refunded || 0) - (d.consumed || 0));
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 0 }}>
+                <Region title="influence flow" sub={infGran === 'hourly' ? 'last 24h · hourly' : 'last 9d · daily'} fkey="F2"
+                  actions={<Seg value={infGran} options={['daily','hourly']} onChange={setInfGran} />}
+                  fill
+                >
+                  <MultiSpark
+                    labels={labels}
+                    series={[
+                      { label: 'purchased', color: 'var(--t-pos)', data: src.map(d => d.purchased || 0) },
+                      { label: 'consumed',  color: 'var(--t-neg)', data: src.map(d => d.consumed  || 0) },
+                      { label: 'refunded',  color: 'var(--t-fg)',  data: src.map(d => d.refunded  || 0) },
+                    ]}
+                  />
+                </Region>
+                <Region title="net flow" sub="purchased + refunded − consumed" fkey="F2" fill>
+                  <LineChart
+                    data={src.map((d, i) => ({ x: labels[i], v: netData[i] }))}
+                    color="warn"
+                    height={80}
+                    valueFmt={fmt.k}
+                  />
+                </Region>
+              </div>
+            );
+          })()}
         </GridCell>
 
         </section>
