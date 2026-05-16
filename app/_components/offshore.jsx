@@ -635,7 +635,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
                     { label: 'purchased', color: 'var(--t-pos)',  data: src.map(d => d.purchased || 0) },
                     { label: 'consumed',  color: 'var(--t-neg)',  data: src.map(d => d.consumed  || 0) },
                     { label: 'refunded',  color: 'var(--t-fg)',   data: src.map(d => d.refunded  || 0) },
-                    { label: 'net',       color: 'var(--t-warn)', data: src.map(d => (d.purchased || 0) + (d.refunded || 0) - (d.consumed || 0)) },
+                    { label: 'net',       color: 'var(--t-warn)', secondary: true, data: src.map(d => (d.purchased || 0) + (d.refunded || 0) - (d.consumed || 0)) },
                   ]}
                 />
               );

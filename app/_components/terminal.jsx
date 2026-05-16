@@ -815,25 +815,34 @@ export function MultiSpark({ series, labels }) {
   const [hoverIdx, setHoverIdx] = useStateT(null);
   const [mouse, setMouse] = useStateT({ x: 0, y: 0 });
 
-  const PAD_L = 28, PAD_R = 4, PAD_T = 4, PAD_B = 16;
+  const hasSec   = series.some(s => s.secondary);
+  const PAD_L = 28, PAD_R = hasSec ? 28 : 4, PAD_T = 4, PAD_B = 16;
   const cW = Math.max(1, w - PAD_L - PAD_R);
   const cH = Math.max(1, h - PAD_T - PAD_B);
 
-  const allVals = series.flatMap(s => s.data);
-  const max     = Math.max(...allVals, 1);
-  const min     = Math.min(...allVals, 0);
-  const range   = max - min || 1;
+  const primSeries = series.filter(s => !s.secondary);
+  const secSeries  = series.filter(s => s.secondary);
+
+  const primVals = primSeries.flatMap(s => s.data);
+  const primMax  = Math.max(...primVals, 1);
+  const primMin  = Math.min(...primVals, 0);
+  const primRange = primMax - primMin || 1;
+
+  const secVals  = secSeries.flatMap(s => s.data);
+  const secMax   = hasSec ? Math.max(...secVals, 1)  : 1;
+  const secMin   = hasSec ? Math.min(...secVals, 0)  : 0;
+  const secRange = secMax - secMin || 1;
+
   const longest = Math.max(...series.map(s => s.data.length), 2);
 
-  function pts(data) {
-    return data.map((v, i) => {
-      const x = PAD_L + (i / (longest - 1)) * cW;
-      const y = PAD_T + cH - ((v - min) / range) * cH;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    }).join(' ');
-  }
   function getX(i) { return PAD_L + (i / (longest - 1)) * cW; }
-  function getY(v) { return PAD_T + cH - ((v - min) / range) * cH; }
+  function getYPrim(v) { return PAD_T + cH - ((v - primMin) / primRange) * cH; }
+  function getYSec(v)  { return PAD_T + cH - ((v - secMin)  / secRange)  * cH; }
+  function getYFor(s, v) { return s.secondary ? getYSec(v) : getYPrim(v); }
+
+  function ptsFor(s) {
+    return s.data.map((v, i) => `${getX(i).toFixed(1)},${getYFor(s, v).toFixed(1)}`).join(' ');
+  }
 
   function handleMouseMove(e) {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -845,6 +854,9 @@ export function MultiSpark({ series, labels }) {
     setMouse({ x: e.clientX, y: e.clientY });
   }
 
+  // secondary series color for right axis ticks (use first secondary series color)
+  const secColor = secSeries[0]?.color ?? 'var(--t-fg-mut)';
+
   return (
     <div ref={containerRef}
       style={{ flex: 1, minHeight: 0, position: 'relative', cursor: 'crosshair' }}
@@ -853,9 +865,10 @@ export function MultiSpark({ series, labels }) {
     >
       {w > 0 && h > 0 && (
         <svg width={w} height={h} style={{ display: 'block', overflow: 'visible' }} aria-hidden="true">
+          {/* grid lines + left axis ticks */}
           {[0, 0.5, 1].map(t => {
             const y   = PAD_T + cH * (1 - t);
-            const val = min + range * t;
+            const val = primMin + primRange * t;
             return (
               <g key={t}>
                 <line x1={PAD_L} y1={y} x2={w - PAD_R} y2={y}
@@ -867,11 +880,32 @@ export function MultiSpark({ series, labels }) {
               </g>
             );
           })}
+          {/* left axis line */}
           <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={PAD_T + cH}
             stroke="var(--t-fg-mut)" strokeOpacity="0.3" />
+          {/* right axis line + ticks */}
+          {hasSec && (
+            <>
+              <line x1={w - PAD_R} y1={PAD_T} x2={w - PAD_R} y2={PAD_T + cH}
+                stroke={secColor} strokeOpacity="0.3" />
+              {[0, 0.5, 1].map(t => {
+                const y   = PAD_T + cH * (1 - t);
+                const val = secMin + secRange * t;
+                return (
+                  <text key={t} x={w - PAD_R + 3} y={y + 3} textAnchor="start"
+                    fill={secColor} fontSize="9" fontFamily="var(--t-font)" opacity="0.7">
+                    {fmt.k(val)}
+                  </text>
+                );
+              })}
+            </>
+          )}
+          {/* series lines */}
           {series.map(s => (
-            <polyline key={s.label} points={pts(s.data)}
-              fill="none" stroke={s.color} strokeWidth="1.25" strokeLinejoin="round" />
+            <polyline key={s.label} points={ptsFor(s)}
+              fill="none" stroke={s.color} strokeWidth={s.secondary ? 1.5 : 1.25}
+              strokeDasharray={s.secondary ? '4 2' : undefined}
+              strokeLinejoin="round" />
           ))}
           {/* crosshair + dots */}
           {hoverIdx != null && w > 0 && (
@@ -886,18 +920,20 @@ export function MultiSpark({ series, labels }) {
                 if (v == null) return null;
                 return (
                   <circle key={s.label}
-                    cx={getX(hoverIdx)} cy={getY(v)} r={3}
+                    cx={getX(hoverIdx)} cy={getYFor(s, v)} r={3}
                     fill={s.color} stroke="var(--t-bg)" strokeWidth="1"
                   />
                 );
               })}
             </g>
           )}
+          {/* legend */}
           {series.map((s, i) => {
             const lx = PAD_L + (cW / series.length) * i;
             return (
               <g key={s.label} transform={`translate(${lx},${h - 5})`}>
-                <line x1={0} y1={0} x2={8} y2={0} stroke={s.color} strokeWidth="1.5" />
+                <line x1={0} y1={0} x2={8} y2={0} stroke={s.color} strokeWidth="1.5"
+                  strokeDasharray={s.secondary ? '4 2' : undefined} />
                 <text x={11} y={4} fill="var(--t-fg-soft)" fontSize="9" fontFamily="var(--t-font)">{s.label}</text>
               </g>
             );
