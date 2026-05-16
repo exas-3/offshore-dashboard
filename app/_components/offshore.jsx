@@ -1328,7 +1328,7 @@ function renderTradeRows(rows, range, ethPrice = 0, _tick = 0, onWallet, aliases
         <span className="rule" />
       </td>
     </tr>,
-    ...g.rows.slice(0, 10).map((r) => {
+    ...g.rows.map((r) => {
       const liveBuffer = ethPrice > 0 ? Math.round((ethPrice - r.liqPrice) * 100) / 100 : r.buffer;
       const liveEndsIn = fmtCountdownLocal(r.endTime);
       const underwater = liveBuffer < 0;
