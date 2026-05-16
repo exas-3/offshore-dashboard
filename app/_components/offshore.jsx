@@ -1182,6 +1182,7 @@ function WalletRail({ address, onAddressChange, ethPrice = 0, newOps = [] }) {
               { key: 'earned', label: 'earned', color: 'pos' },
               { key: 'spent',  label: 'spent',  color: 'neg' },
             ]}
+            hideNum
           />
         </Region>
       )}

@@ -518,7 +518,7 @@ export function BarRow({ data, max, color = 'fg', valueFmt = fmt.k }) {
 }
 
 // ── Two-series bar row ─────────────────────────────────────────────────────
-export function BarRow2({ data, series, max, valueFmt = fmt.k }) {
+export function BarRow2({ data, series, max, valueFmt = fmt.k, hideNum = false }) {
   const scrollRef = useRefT(null);
   const width = useGlyphWidth(scrollRef);
   const halfW = Math.max(1, Math.floor(width / 2));
@@ -542,11 +542,13 @@ export function BarRow2({ data, series, max, valueFmt = fmt.k }) {
               </span>
             ))}
           </span>
-          <span className="num">
-            <span className={series[0].color}>{valueFmt(d[series[0].key] || 0)}</span>
-            {' · '}
-            <span className={series[1].color}>{valueFmt(d[series[1].key] || 0)}</span>
-          </span>
+          {!hideNum && (
+            <span className="num">
+              <span className={series[0].color}>{valueFmt(d[series[0].key] || 0)}</span>
+              {' · '}
+              <span className={series[1].color}>{valueFmt(d[series[1].key] || 0)}</span>
+            </span>
+          )}
         </div>
       ))}
       {hoverD && (
