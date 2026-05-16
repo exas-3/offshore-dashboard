@@ -583,26 +583,6 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
             />
           </Region>
         </GridCell>
-        <GridCell id="circ-supply" span={spans['circ-supply']} onResize={(r) => resizeCell('circ-supply', r)}>
-          <Region title="circulating supply" sub="hourly · $DIRTY">
-            <LineChart
-              data={localDates((D.marketCapChart || []).map(r => ({ ...r, v: r.supply })), true)}
-              color="fg"
-              fill
-              valueFmt={(v) => v >= 1e6 ? (v/1e6).toFixed(2)+'M' : v >= 1e3 ? (v/1e3).toFixed(1)+'k' : String(Math.round(v))}
-            />
-          </Region>
-        </GridCell>
-        <GridCell id="dirty-price" span={spans['dirty-price']} onResize={(r) => resizeCell('dirty-price', r)}>
-          <Region title="$dirty price" sub="hourly · USDm">
-            <LineChart
-              data={localDates((D.marketCapChart || []).map(r => ({ ...r, v: r.price })), true)}
-              color="pos"
-              fill
-              valueFmt={(v) => '$' + Number(v).toFixed(4)}
-            />
-          </Region>
-        </GridCell>
         <GridCell id="company-state" span={spans['company-state']} height={heights['company-state']} onResize={(r) => resizeCell('company-state', r)}>
           <Region title="company state" sub={`${D.companies.totalCompanies.toLocaleString()} total`} fkey="F5">
             <StackedBarRow
@@ -633,6 +613,33 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
           </Region>
         </GridCell>
 
+        <GridCell id="circ-supply" span={spans['circ-supply']} onResize={(r) => resizeCell('circ-supply', r)}>
+          <Region title="circulating supply" sub="hourly · $DIRTY">
+            <LineChart
+              data={localDates((D.marketCapChart || []).map(r => ({ ...r, v: r.supply })), true)}
+              color="fg"
+              fill
+              valueFmt={(v) => v >= 1e6 ? (v/1e6).toFixed(2)+'M' : v >= 1e3 ? (v/1e3).toFixed(1)+'k' : String(Math.round(v))}
+            />
+          </Region>
+        </GridCell>
+        <GridCell id="dirty-price" span={spans['dirty-price']} onResize={(r) => resizeCell('dirty-price', r)}>
+          <Region title="$dirty price" sub="hourly · USDm">
+            {(() => {
+              const prices = (D.marketCapChart || []).map(r => r.price).filter(Boolean);
+              const dataMin = prices.length ? Math.min(...prices) : 0;
+              return (
+                <LineChart
+                  data={localDates((D.marketCapChart || []).map(r => ({ ...r, v: r.price })), true)}
+                  color="pos"
+                  fill
+                  yMin={dataMin * 0.95}
+                  valueFmt={(v) => '$' + Number(v).toFixed(4)}
+                />
+              );
+            })()}
+          </Region>
+        </GridCell>
         <GridCell id="influence-totals" span={spans['influence-totals']} height={heights['influence-totals']} onResize={(r) => resizeCell('influence-totals', r)}>
           <Region title="influence flow" sub="all time" fkey="F2">
             <KV k="purchased"   v={inf.purchased.toLocaleString()}   cls="pos" />

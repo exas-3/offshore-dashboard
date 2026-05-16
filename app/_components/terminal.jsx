@@ -1198,14 +1198,14 @@ export function ComboChart({ data, bars, line, height = 220 }) {
 }
 
 // ── LineChart ──────────────────────────────────────────────────────────────
-export function LineChart({ data, height = 160, color = 'fg', valueFmt = fmt.k, extraRows, yMax, fill = false }) {
+export function LineChart({ data, height = 160, color = 'fg', valueFmt = fmt.k, extraRows, yMax, yMin, fill = false }) {
   const [hoverIdx, setHoverIdx] = useStateT(null);
   const [mouse, setMouse] = useStateT({ x: 0, y: 0 });
   const wrapRef = useRefT(null);
   const { w: measuredW, h: measuredH } = useContainerSize(wrapRef);
 
   const max = yMax ?? Math.max(...data.map((d) => d.v), 1);
-  const min = Math.min(...data.map((d) => d.v), 0);
+  const min = yMin ?? Math.min(...data.map((d) => d.v), 0);
   const top = max * 1.06;
   const step = niceStep((top - min) / 4);
   const ticks = [];
