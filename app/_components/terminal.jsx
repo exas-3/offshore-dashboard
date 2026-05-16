@@ -938,8 +938,7 @@ export function MultiSpark({ series, labels }) {
           {/* series lines */}
           {series.map(s => (
             <polyline key={s.label} points={ptsFor(s)}
-              fill="none" stroke={s.color} strokeWidth={s.secondary ? 1.5 : 1.25}
-              strokeDasharray={s.secondary ? '4 2' : undefined}
+              fill="none" stroke={s.color} strokeWidth={s.secondary ? 2 : 1.25}
               strokeLinejoin="round" />
           ))}
           {/* crosshair + dots */}
@@ -967,8 +966,7 @@ export function MultiSpark({ series, labels }) {
             const lx = PAD_L + (cW / series.length) * i;
             return (
               <g key={s.label} transform={`translate(${lx},${h - 5})`}>
-                <line x1={0} y1={0} x2={8} y2={0} stroke={s.color} strokeWidth="1.5"
-                  strokeDasharray={s.secondary ? '4 2' : undefined} />
+                <line x1={0} y1={0} x2={8} y2={0} stroke={s.color} strokeWidth={s.secondary ? 2 : 1.5} />
                 <text x={11} y={4} fill="var(--t-fg-soft)" fontSize="9" fontFamily="var(--t-font)">{s.label}</text>
               </g>
             );
