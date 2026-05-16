@@ -1,7 +1,13 @@
 'use client';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { TerminalShell, Toasts } from './terminal.jsx';
-import { InfTooltip, computeWatch, nowHMS, fmtK } from './trade-helpers.jsx';
+import { InfTooltip, computeWatch, fmtK } from './trade-helpers.jsx';
+
+function nowHMS() {
+  const d = new Date();
+  const z = (n) => String(n).padStart(2, '0');
+  return `${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
+}
 import { LiveSidebar } from './LiveSidebar.jsx';
 import { WalletRail } from './WalletRail.jsx';
 import { OverviewSection } from './sections/OverviewSection.jsx';

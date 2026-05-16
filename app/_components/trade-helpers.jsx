@@ -94,12 +94,6 @@ export function bufferHistory(r) {
   return out;
 }
 
-export function nowHMS() {
-  const d = new Date();
-  const z = (n) => String(n).padStart(2, '0');
-  return `${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
-}
-
 // Dashboard-wide compact formatters. Live alongside the other trade-helpers
 // because several sections share them (ticker, token KVs, vault KVs).
 export function fmtK(n) {
