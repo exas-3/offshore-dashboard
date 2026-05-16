@@ -357,13 +357,12 @@ export async function GET() {
       return { ts: Number(r.ts), x: fmtDate(r.ts), v: _cum };
     });
 
-    const dawSlice = activeWalletBuckets.slice(-9);
-    const dailyActiveWallets = dawSlice.map(r => ({
+    const dailyActiveWallets = activeWalletBuckets.map(r => ({
       ts: Number(r.ts), x: fmtDate(r.ts),
       v: r.activeWallets,
     }));
-    const dailyActiveWalletsPeak = dawSlice.length
-      ? Math.max(...dawSlice.map(r => r.activeWallets))
+    const dailyActiveWalletsPeak = activeWalletBuckets.length
+      ? Math.max(...activeWalletBuckets.map(r => r.activeWallets))
       : 0;
 
     // ── vault cycles — group raw payouts by actual cycle boundary ─────────────
