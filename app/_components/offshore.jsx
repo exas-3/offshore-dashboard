@@ -671,7 +671,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
           </Region>
         </GridCell>
         <GridCell id="top-stakers" span={spans['top-stakers']} onResize={(r) => resizeCell('top-stakers', r)}>
-          <Region title={`top 200 stakers · last 24h${stakingData?.stats?.uniqueStakers ? ` · from ${stakingData.stats.uniqueStakers.toLocaleString()} total` : ''}`} sub="by $dirty staked">
+          <Region title={`all stakers${stakingData?.stats?.uniqueStakers ? ` · ${stakingData.stats.uniqueStakers.toLocaleString()} total` : ''}`} sub="by $dirty staked">
             {!stakingData?.top24h?.length ? (
               <span className="dim">no staking activity in the last 24h</span>
             ) : (

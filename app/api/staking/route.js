@@ -20,7 +20,7 @@ export async function GET() {
         getStakingStats(),
         getStakingHistory(),
         getStakingRecent(50),
-        getTopStakers24h(200),
+        getTopStakers24h(),
       ]);
 
       const dailyChart = history.map(r => ({

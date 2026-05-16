@@ -46,7 +46,7 @@ export async function GET() {
   try {
     if (!_cache || Date.now() - _cacheTs >= TTL) {
       const [rawStats, rawPayouts, rawEarners, recentPayouts, firstPayouts, rawTopStakers] = await Promise.all([
-        getVaultStats(), getVaultCycleHistory(), getVaultTopEarners(50), getVaultRecentPayouts(100), getVaultFirstPayouts(), getTopStakers24h(200),
+        getVaultStats(), getVaultCycleHistory(), getVaultTopEarners(50), getVaultRecentPayouts(100), getVaultFirstPayouts(), getTopStakers24h(),
       ]);
 
       // Group payouts by actual cycle
