@@ -26,9 +26,9 @@ export default function Page() {
   const [data, setData] = useState(null);
   const [theme, setTheme] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('offshore-theme') || 'purple';
+      return localStorage.getItem('offshore-theme') || 'paper';
     }
-    return 'purple';
+    return 'paper';
   });
 
   useEffect(() => { setFavicon(theme); }, [theme]);
