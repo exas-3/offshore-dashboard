@@ -130,8 +130,8 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     'influence-daily':   'influence-totals',
     'trades':            'ops',
     'ops':               'trades',
-    'heatmap':           'participants',
-    'participants':      'heatmap',
+    'heatmap':           'daw',
+    'daw':               'heatmap',
     'supply':            'company-state',
     'company-state':     'supply',
     'circ-supply':       'dirty-price',
@@ -148,7 +148,8 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     'influence-totals':   5,
     'influence-daily':    7,
     'heatmap':            5,
-    'participants':        7,
+    'daw':                4,
+    'total-players':      3,
     'vault':             12,
     'top-stakers':        5,
     'trades':             7,
@@ -649,15 +650,22 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
             <Heatmap grid={D.heatmap} days={D.heatmapDayTs ? D.heatmapDayTs.map(fmtLocal) : D.heatmapDays} />
           </Region>
         </GridCell>
-        <GridCell id="participants" span={spans['participants']} height={heights['participants']} onResize={(r) => resizeCell('participants', r)}>
-          <Region title="daily active wallets · total players" sub={`peak daw ${D.dailyActiveWalletsPeak.toLocaleString()} · ${D.newParticipantsTotal.toLocaleString()} players all time`} fkey="F3">
-            <BarRow2
-              data={participantsChart}
-              series={[
-                { key: 'daw',     label: 'daily active wallets', color: 'fg',  dir: 'rtl' },
-                { key: 'players', label: 'total players',        color: 'pos' },
-              ]}
-              valueFmt={(v) => v == null ? '—' : String(Math.round(v))}
+        <GridCell id="daw" span={spans['daw']} onResize={(r) => resizeCell('daw', r)}>
+          <Region title="daily active wallets" sub={`peak ${D.dailyActiveWalletsPeak.toLocaleString()}`} fkey="F3">
+            <BarRow
+              data={participantsChart.map(d => ({ x: d.x, v: d.daw }))}
+              color="fg"
+              valueFmt={(v) => String(Math.round(v))}
+            />
+          </Region>
+        </GridCell>
+        <GridCell id="total-players" span={spans['total-players']} onResize={(r) => resizeCell('total-players', r)}>
+          <Region title="total players" sub={`${D.newParticipantsTotal.toLocaleString()} all time`} fkey="F3">
+            <LineChart
+              data={(D.totalPlayersChart || []).map(r => ({ x: r.x, v: r.v }))}
+              color="pos"
+              fill
+              valueFmt={(v) => v >= 1000 ? (v/1000).toFixed(1)+'k' : String(Math.round(v))}
             />
           </Region>
         </GridCell>
