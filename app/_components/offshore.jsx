@@ -518,60 +518,6 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
             </div>
           </Region>
         </GridCell>
-        <GridCell id="top-stakers" span={spans['top-stakers']} onResize={(r) => resizeCell('top-stakers', r)}>
-          <Region title={`top 200 stakers · last 24h${stakingData?.stats?.uniqueStakers ? ` · from ${stakingData.stats.uniqueStakers.toLocaleString()} total` : ''}`} sub="by $dirty staked">
-            {!stakingData?.top24h?.length ? (
-              <span className="dim">no staking activity in the last 24h</span>
-            ) : (
-              <div className="tm-scroll-bl" style={{ maxHeight: 264, overflowY: 'auto' }}>
-                <table className="tm-tab tm-tab-bl">
-                  <thead style={{ position: 'sticky', top: 0, background: 'var(--t-bg)', zIndex: 1 }}>
-                    <tr>
-                      <th>#</th>
-                      <th>wallet</th>
-                      <th className="num">$dirty staked</th>
-                      <th className="num">deposits</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stakingData.top24h.map((s, i) => (
-                      <tr key={s.user}>
-                        <td className="dim">{i + 1}</td>
-                        <td>
-                          <span className="tm-num" style={{ cursor: 'pointer', color: 'var(--t-hdr)' }} onClick={() => openWallet(s.user)}>
-                            {s.alias || aliases[s.user] || `${s.user.slice(0, 6)}..${s.user.slice(-4)}`}
-                          </span>
-                        </td>
-                        <td className="num pos">{s.total >= 1000 ? (s.total / 1000).toFixed(1) + 'k' : s.total.toLocaleString()}</td>
-                        <td className="num">{s.deposits}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Region>
-        </GridCell>
-        <GridCell id="staking-chart" span={spans['staking-chart']} onResize={(r) => resizeCell('staking-chart', r)}>
-          <Region
-            title="faction staking"
-            sub={stakingData?.stats
-              ? `${(stakingData.stats.totalStaked / 1e3).toFixed(1)}k $dirty staked · ${stakingData.stats.uniqueStakers} stakers · rotation ${stakingData.stats.currentRotation}`
-              : 'loading…'}
-            fill
-          >
-            {stakingData?.dailyChart?.length > 0 ? (
-              <LineChart
-                data={stakingData.dailyChart.map(d => ({ x: d.label, v: d.total }))}
-                color="pos"
-                fill
-                valueFmt={(v) => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(Math.round(v))}
-              />
-            ) : (
-              <span className="dim">no data</span>
-            )}
-          </Region>
-        </GridCell>
         <GridCell id="supply" span={spans['supply']} height={heights['supply']} onResize={(r) => resizeCell('supply', r)}>
           <Region title="$dirty valuation" sub="hourly · USDm" fkey="F2">
             <LineChart
@@ -722,6 +668,60 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
                 />
               </div>
             </div>
+          </Region>
+        </GridCell>
+        <GridCell id="top-stakers" span={spans['top-stakers']} onResize={(r) => resizeCell('top-stakers', r)}>
+          <Region title={`top 200 stakers · last 24h${stakingData?.stats?.uniqueStakers ? ` · from ${stakingData.stats.uniqueStakers.toLocaleString()} total` : ''}`} sub="by $dirty staked">
+            {!stakingData?.top24h?.length ? (
+              <span className="dim">no staking activity in the last 24h</span>
+            ) : (
+              <div className="tm-scroll-bl" style={{ maxHeight: 264, overflowY: 'auto' }}>
+                <table className="tm-tab tm-tab-bl">
+                  <thead style={{ position: 'sticky', top: 0, background: 'var(--t-bg)', zIndex: 1 }}>
+                    <tr>
+                      <th>#</th>
+                      <th>wallet</th>
+                      <th className="num">$dirty staked</th>
+                      <th className="num">deposits</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stakingData.top24h.map((s, i) => (
+                      <tr key={s.user}>
+                        <td className="dim">{i + 1}</td>
+                        <td>
+                          <span className="tm-num" style={{ cursor: 'pointer', color: 'var(--t-hdr)' }} onClick={() => openWallet(s.user)}>
+                            {s.alias || aliases[s.user] || `${s.user.slice(0, 6)}..${s.user.slice(-4)}`}
+                          </span>
+                        </td>
+                        <td className="num pos">{s.total >= 1000 ? (s.total / 1000).toFixed(1) + 'k' : s.total.toLocaleString()}</td>
+                        <td className="num">{s.deposits}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Region>
+        </GridCell>
+        <GridCell id="staking-chart" span={spans['staking-chart']} onResize={(r) => resizeCell('staking-chart', r)}>
+          <Region
+            title="faction staking"
+            sub={stakingData?.stats
+              ? `${(stakingData.stats.totalStaked / 1e3).toFixed(1)}k $dirty staked · ${stakingData.stats.uniqueStakers} stakers · rotation ${stakingData.stats.currentRotation}`
+              : 'loading…'}
+            fill
+          >
+            {stakingData?.dailyChart?.length > 0 ? (
+              <LineChart
+                data={stakingData.dailyChart.map(d => ({ x: d.label, v: d.total }))}
+                color="pos"
+                fill
+                valueFmt={(v) => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(Math.round(v))}
+              />
+            ) : (
+              <span className="dim">no data</span>
+            )}
           </Region>
         </GridCell>
 
