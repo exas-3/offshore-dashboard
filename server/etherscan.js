@@ -1,8 +1,6 @@
 // All on-chain data sourced from MegaETH RPC.
-// ETH/USD price sourced from CoinGecko (no on-chain oracle available).
 
-const COINGECKO = 'https://api.coingecko.com/api/v3';
-const RPC       = 'https://mainnet.megaeth.com/rpc';
+const RPC = 'https://mainnet.megaeth.com/rpc';
 
 // Known DIRTY liquidity pool addresses (main + legacy).
 export const DEX_POOLS = new Set([
@@ -273,15 +271,18 @@ export async function fetchLiquidationEvents(fromBlock, toBlock) {
 
 // ─── block / logs ─────────────────────────────────────────────────────────────
 
+let _latestBlock = 0, _latestBlockTs = 0;
 export async function getLatestBlock() {
-  return parseInt(await rpcPost('eth_blockNumber', []), 16);
+  if (Date.now() - _latestBlockTs < 5_000) return _latestBlock;
+  _latestBlock = parseInt(await rpcPost('eth_blockNumber', []), 16);
+  _latestBlockTs = Date.now();
+  return _latestBlock;
 }
 
 let _tpsCache = null, _tpsCacheTs = 0;
 export async function fetchTps(numBlocks = 6) {
   if (_tpsCache !== null && Date.now() - _tpsCacheTs < 1000) return _tpsCache;
-  const latestHex = await rpcPost('eth_blockNumber', []);
-  const latest = parseInt(latestHex, 16);
+  const latest = await getLatestBlock();
   const reqs = Array.from({ length: numBlocks }, (_, i) => ({
     method: 'eth_getBlockByNumber',
     params: [`0x${(latest - i).toString(16)}`, false],

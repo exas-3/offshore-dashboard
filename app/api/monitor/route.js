@@ -2,8 +2,9 @@ export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import {
   fetchTokenBalance, getUserCompaniesBatch, getTradeStates, getEntryPrices,
-  fetchEthPrice, fetchLatestInfCost, INFLUENCE, DIRTY,
+  fetchLatestInfCost, INFLUENCE, DIRTY,
 } from '../../../server/etherscan.js';
+import { ethPriceFeed } from '../../../lib/eth-price-feed.js';
 import { getPlayerStats } from '../../../lib/index.js';
 
 export async function GET(req) {
@@ -24,7 +25,7 @@ export async function GET(req) {
     const [tradeStates, playerStats, currentEthPrice, entryPriceMap, infCost] = await Promise.all([
       companyAddrs.length ? getTradeStates(companyAddrs) : Promise.resolve([]),
       getPlayerStats(wallet).catch(() => null),
-      fetchEthPrice().catch(() => null),
+      Promise.resolve(ethPriceFeed.getLatest()),
       companyAddrs.length ? getEntryPrices(companyAddrs) : Promise.resolve(new Map()),
       fetchLatestInfCost().catch(() => null),
     ]);

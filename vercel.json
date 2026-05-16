@@ -1,9 +1,0 @@
-{
-  "framework": "nextjs",
-  "buildCommand": "next build",
-  "installCommand": "npm install",
-  "env": {
-    "DATABASE_URL": "@offshore-db-url",
-    "DATABASE_SSL": "false"
-  }
-}

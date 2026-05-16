@@ -251,19 +251,12 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     _bump: 0,
   }));
   useEffectO(() => {
-    let live = true;
-    const fetchEth = async () => {
-      try {
-        const res = await fetch('/api/eth-price', { cache: 'no-cache' });
-        if (res.ok) {
-          const { price } = await res.json();
-          if (isFinite(price) && price > 0) setCounters(c => ({ ...c, eth: price }));
-        }
-      } catch {}
-      if (live) setTimeout(fetchEth, 1000);
+    const es = new EventSource('/api/eth-price/stream');
+    es.onmessage = ({ data }) => {
+      const price = parseFloat(data);
+      if (isFinite(price) && price > 0) setCounters(c => ({ ...c, eth: price }));
     };
-    fetchEth();
-    return () => { live = false; };
+    return () => es.close();
   }, []);
 
   const [liveTicker, setLiveTicker] = useStateO(() => D.liveTradeTicker || []);

@@ -1,16 +1,11 @@
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { getDb } from '../../../lib/db.js';
+import { ethPriceFeed } from '../../../lib/eth-price-feed.js';
 
-const RPC    = 'https://mainnet.megaeth.com/rpc';
-const ORACLE = '0xc555c100DB24dF36D406243642C169CC5A937f09';
-
-let _ethPrice   = 0;
-let _ethTs      = 0;
-let _list       = [];   // current canonical list (top 5)
-let _pool       = [];   // full pool (top 50)
-let _poolTs     = 0;
-const ETH_TTL  = 1_000;
+let _list   = [];   // current canonical list (top 5)
+let _pool   = [];   // full pool (top 50)
+let _poolTs = 0;
 const POOL_TTL = 5_000;
 
 function liqPriceUsd(raw) {
@@ -21,25 +16,6 @@ function liqPriceUsd(raw) {
 function shortAddr(addr) {
   if (!addr || addr.length < 10) return addr ?? '';
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
-
-async function fetchEthPrice() {
-  if (Date.now() - _ethTs < ETH_TTL) return _ethPrice;
-  try {
-    const res = await fetch(RPC, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_call', params: [{ to: ORACLE, data: '0xfeaf968c' }, 'latest'], id: 1 }),
-      cache: 'no-cache',
-    });
-    if (res.ok) {
-      const { result } = await res.json();
-      const answer = BigInt('0x' + result.slice(66, 130));
-      const price = Number(answer) / 1e8;
-      if (isFinite(price) && price > 0) { _ethPrice = price; _ethTs = Date.now(); }
-    }
-  } catch {}
-  return _ethPrice;
 }
 
 async function fetchPool() {
@@ -82,7 +58,7 @@ function diff(prev, next) {
 }
 
 export async function GET() {
-  const [ethPrice, pool] = await Promise.all([fetchEthPrice(), fetchPool()]);
+  const [ethPrice, pool] = await Promise.all([ethPriceFeed.getLatest() ?? 0, fetchPool()]);
   const { list: next, total } = buildList(pool, ethPrice);
   const events = diff(_list, next);
   _list = next;

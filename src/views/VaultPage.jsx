@@ -73,10 +73,11 @@ export default function VaultPage() {
     return () => clearInterval(t);
   }, []);
 
-  const stats   = data?.stats;
-  const cycles  = data?.cycleHistory ?? [];
-  const earners = data?.topEarners   ?? [];
-  const recent  = data?.recentPayouts ?? [];
+  const stats       = data?.stats;
+  const cycles      = data?.cycleHistory ?? [];
+  const earners     = data?.topEarners   ?? [];
+  const recent      = data?.recentPayouts ?? [];
+  const topStakers  = data?.topStakers24h ?? [];
 
   return (
     <div className="vault-page">
@@ -226,6 +227,41 @@ export default function VaultPage() {
         </div>
 
       </div>
+
+      {/* ── top stakers last 24h ── */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-title">TOP STAKERS — LAST 24H</div>
+        {loading ? (
+          <div className="placeholder-rows">{Array.from({length:5}).map((_,i)=><div key={i} className="placeholder-row"/>)}</div>
+        ) : topStakers.length === 0 ? (
+          <div className="feed-empty">No staking activity in the last 24h</div>
+        ) : (
+          <div className="earners-table-wrap">
+            <div className="earners-head">
+              <span>#</span><span>ADDRESS</span><span>DIRTY STAKED</span><span>DEPOSITS</span><span></span>
+            </div>
+            <div className="earners-body">
+              {topStakers.map((s, i) => {
+                const max = topStakers[0]?.total ?? 1;
+                return (
+                  <div key={s.addr} className="earners-row">
+                    <span className="earner-rank">#{i+1}</span>
+                    <span className="earner-addr" style={{ cursor:'pointer' }} onClick={() => router.push(`/players/${s.addr}`)}>
+                      {shortAddr(s.addr)}
+                    </span>
+                    <span className="earner-total">{fmt(s.total)}</span>
+                    <span className="earner-ops">{s.deposits}</span>
+                    <div className="earner-bar-wrap">
+                      <div className="earner-bar" style={{ width: `${(s.total/max)*100}%`, background: '#4a9fd8' }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }

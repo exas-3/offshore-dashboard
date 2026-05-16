@@ -23,22 +23,20 @@ process.exit(0);
 EOF
 ```
 
-Production runs on a Hetzner VPS. `fly.toml`, `fly-poller.toml`, `vercel.json`, and `Dockerfile` are leftovers from earlier deployment experiments — ignore them.
-
-Two always-on processes run side by side:
+Production runs on a Hetzner VPS. Two always-on processes run side by side:
 - **Next.js** (`npm start`) — web server + API routes
 - **Poller** (`npm run poller`) — on-chain indexer
-
-`server/index.js` is a legacy Express server from before the Next.js migration. It is not used — do not edit it.
 
 ## Architecture
 
 ### Active vs. legacy code
 
 - `app/` — active. All new work goes here.
-- `src/` — legacy Vite/React views. Dead weight; don't touch it.
+- `src/` — legacy Vite/React frontend. Still serves the sub-pages (companies, monitor, players, whales, vault). Do not delete, but don't add new features here.
 - `server/poller.js` + `server/etherscan.js` + `server/poller-main.js` — active poller code.
-- `server/index.js` + `server/db.js` — legacy Express server. Unused.
+- `scripts/farmer-bot.js` — active Telegram monitor bot.
+- `scripts/fetch-*.js` + `scripts/run-aliases.sh` — alias enrichment pipeline (`npm run aliases`).
+- `scripts/` — one-time migration/fix/backfill scripts. Leave in place for reference.
 
 ### Data flow
 
@@ -77,11 +75,9 @@ PostgreSQL (localhost:5432/offshore_dashboard)
 `lib/db.js` — PostgreSQL via `postgres.js`. **Export is `getDb()`, not `db`**.  
 Usage: `const db = getDb(); const rows = await db\`SELECT ...\``.
 
-`lib/db-sqlite.js` — SQLite fallback when `DATABASE_URL` is not set.
+`lib/index.js` — re-exports everything from `lib/db.js` and `lib/idx-queries.js`. All API routes import from here.
 
-`lib/index.js` — switches between the two based on `DATABASE_URL`. All API routes import from here.
-
-`lib/idx-queries.js` — queries over `idx_logs` / `idx_contracts` written by the offshore-indexer service. PostgreSQL only (no SQLite stub). Views: `v_dex_swaps`, `v_vault_cycles`, `v_company_trades`, `v_v3_swaps`.
+`lib/idx-queries.js` — queries over `idx_logs` / `idx_contracts` written by the offshore-indexer service. Views: `v_dex_swaps`, `v_vault_cycles`, `v_company_trades`, `v_v3_swaps`.
 
 Key tables: `transfers`, `vault_payouts`, `influence_transfers`, `supply_snapshots`, `eth_price_snapshots`, `influence_supply_snapshots`, `token_holders`, `companies`, `staking_deposits`, `meta`, `idx_logs`, `idx_contracts`.
 

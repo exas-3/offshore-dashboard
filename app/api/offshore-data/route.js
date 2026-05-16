@@ -15,9 +15,10 @@ import {
   getSupplyHistoryForChart, getPriceBaseline25h,
 } from '../../../lib/db.js';
 import {
-  fetchDirtyPrice, fetchLatestInfCost, getLatestBlock, fetchEthPrice,
+  fetchDirtyPrice, fetchLatestInfCost, getLatestBlock,
   getCompanyTradeTypes, _companyTypeCache,
 } from '../../../server/etherscan.js';
+import { ethPriceFeed } from '../../../lib/eth-price-feed.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -165,7 +166,7 @@ export async function GET() {
       fetchDirtyPrice().catch(() => null),
       fetchLatestInfCost().catch(() => null),
       getLatestBlock().catch(() => null),
-      fetchEthPrice().catch(() => null),
+      Promise.resolve(ethPriceFeed.getLatest()),
       getEnhancedLeaderboard(15).catch(() => []),
       getDirtyMarketCapHistory().catch(() => []),
       getPriceBaseline25h().catch(() => ({ dirty: null, infCost: null, eth: null })),
@@ -404,7 +405,7 @@ export async function GET() {
     };
 
     // ── liveTrades ────────────────────────────────────────────────────────────
-    const liveTrades = companies.slice(0, 50).map(c => {
+    const liveTrades = companies.map(c => {
       const liq = liqPriceUsd(c.liq_price);
       return {
         id:       shortAddr(c.address),
@@ -416,7 +417,7 @@ export async function GET() {
         liqPrice: liq,
         ethPrice,
         buffer:   Math.round((ethPrice - liq) * 100) / 100,
-        entry:    null,
+        opType:   '—',
       };
     });
 

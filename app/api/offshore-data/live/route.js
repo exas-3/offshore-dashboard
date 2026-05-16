@@ -86,10 +86,17 @@ export async function GET(request) {
         ORDER BY timestamp DESC LIMIT 1
       `.catch(() => []) : Promise.resolve([]),
       db ? db`
-        SELECT address, owner, liq_price, end_time, active, auto_trade
-        FROM companies
-        WHERE active = TRUE
-        ORDER BY end_time ASC NULLS LAST LIMIT 200
+        SELECT c.address, c.owner, c.liq_price, c.end_time, c.active, c.auto_trade,
+               t.op_type
+        FROM companies c
+        LEFT JOIN LATERAL (
+          SELECT op_type FROM transfers
+          WHERE to_addr = c.address AND kind = 'MINT'
+            AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION')
+          ORDER BY timestamp DESC LIMIT 1
+        ) t ON TRUE
+        WHERE c.active = TRUE
+        ORDER BY c.end_time ASC NULLS LAST LIMIT 200
       `.catch(() => []) : Promise.resolve([]),
       db ? db`SELECT COUNT(*)::int AS cnt FROM companies WHERE active = TRUE`.catch(() => []) : Promise.resolve([]),
       // Newly-liquidated positions since last poll
@@ -117,6 +124,7 @@ export async function GET(request) {
         liqPrice: liq,
         ethPrice,
         buffer:   Math.round((ethPrice - liq) * 100) / 100,
+        opType:   c.op_type ? mapOpType(c.op_type) : '—',
       };
     });
 
