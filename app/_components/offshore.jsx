@@ -628,12 +628,14 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
             {(() => {
               const prices = (D.marketCapChart || []).map(r => r.price).filter(Boolean);
               const dataMin = prices.length ? Math.min(...prices) : 0;
+              const dataMax = prices.length ? Math.max(...prices) : 1;
               return (
                 <LineChart
                   data={localDates((D.marketCapChart || []).map(r => ({ ...r, v: r.price })), true)}
                   color="pos"
                   fill
                   yMin={dataMin * 0.95}
+                  yMax={dataMax}
                   valueFmt={(v) => '$' + Number(v).toFixed(4)}
                 />
               );

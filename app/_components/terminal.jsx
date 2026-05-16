@@ -1206,7 +1206,7 @@ export function LineChart({ data, height = 160, color = 'fg', valueFmt = fmt.k, 
 
   const max = yMax ?? Math.max(...data.map((d) => d.v), 1);
   const min = yMin ?? Math.min(...data.map((d) => d.v), 0);
-  const top = max * 1.06;
+  const top = yMax != null ? max : max * 1.06;
   const step = niceStep((top - min) / 4);
   const ticks = [];
   for (let v = Math.floor(min / step) * step; v <= top; v += step) ticks.push(v);
