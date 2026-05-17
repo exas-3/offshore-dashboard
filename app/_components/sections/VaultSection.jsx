@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Region, KV, KVSep, LineChart, Heatmap, GridCell, fmt } from '../terminal.jsx';
-import { CHART_AXIS, TmTooltip, fmtK, median, fmtLocal } from '../trade-helpers.jsx';
+import { Region, KV, KVSep, LineChart, GridCell } from '../terminal.jsx';
+import { CHART_AXIS, TmTooltip, fmtK, median } from '../trade-helpers.jsx';
 
 export function VaultSection({ D, grid, aliases, onWallet }) {
   const { spans, heights, resize } = grid;
@@ -22,21 +22,6 @@ export function VaultSection({ D, grid, aliases, onWallet }) {
 
   return (
     <section id="sec-vault" className="tm-grid-12">
-      <GridCell id="inf-heatmap" span={spans['inf-heatmap']} height={heights['inf-heatmap']} onResize={(r) => resize('inf-heatmap', r)}>
-        <Region title="inf flow heatmap" sub="hourly INF purchased · last 7d">
-          {D.influenceFlow?.heatmap ? (
-            <Heatmap
-              grid={D.influenceFlow.heatmap}
-              days={(D.influenceFlow.heatmapDayTs || []).map(fmtLocal)}
-              label="inf"
-              fmtVal={(v) => fmt.k(v)}
-            />
-          ) : (
-            <span className="dim">no data</span>
-          )}
-        </Region>
-      </GridCell>
-
       <GridCell id="vault" span={spans['vault']} height={heights['vault']} onResize={(r) => resize('vault', r)}>
         <Region title="swiss vault distribution" sub="cycles">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 14, alignItems: 'flex-start' }}>

@@ -32,8 +32,6 @@ const CELL_PAIRS = {
   'dirty-price':       'circ-supply',
   'top-stakers':       'staking-chart',
   'staking-chart':     'top-stakers',
-  'vault':             'inf-heatmap',
-  'inf-heatmap':       'vault',
 };
 
 const DEFAULT_SPANS = {
@@ -47,8 +45,7 @@ const DEFAULT_SPANS = {
   'heatmap':            5,
   'daw':                4,
   'total-players':      3,
-  'vault':              7,
-  'inf-heatmap':        5,
+  'vault':             12,
   'top-stakers':        5,
   'trades':             6,
   'ops':                6,
