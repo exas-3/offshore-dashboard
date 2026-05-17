@@ -168,30 +168,64 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0 }) {
     </Region>
   );
 
-  // ── Region: live companies (4) ────────────────────────────────────────
-  const activeCompanies = (liveData?.companies ?? []).filter(c => c.active && c.endTime > 0);
-  const liveCompanies = (
-    <Region title="live companies" sub={activeCompanies.length ? `${activeCompanies.length} active` : 'none active'}>
-      {activeCompanies.length === 0 ? (
-        <div className="dim" style={{ fontSize: 'var(--t-fs-xs)', padding: '4px 0' }}>none active</div>
-      ) : activeCompanies.map(c => {
-        const liveEth = ethPrice || liveData.currentEthPrice || 0;
-        const buf = liveEth && c.liqPrice
-          ? Math.round((liveEth - (Number(BigInt(c.liqPrice) / 10n ** 12n) / 1e6)) * 100) / 100
-          : null;
-        return (
-          <div key={c.company} className="tm-kv" style={{ marginBottom: 2 }}>
-            <span className="k" style={{ fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs-xs)' }}>
-              {c.company.slice(0, 6)}…{c.company.slice(-4)}
-              {c.autoTradeEnabled && <span className="dim"> auto</span>}
-            </span>
-            <span className={`v ${buf == null ? '' : buf >= 0 ? 'pos' : 'neg'}`} style={{ fontSize: 'var(--t-fs-xs)' }}>
-              {buf == null ? '—' : `${buf >= 0 ? '+' : ''}${buf.toFixed(2)}`}
-              <span className="dim"> {fmtCountdownLocal(c.endTime)}</span>
-            </span>
-          </div>
-        );
-      })}
+  // ── Region: companies (4) — live (active) + chilling (idle) ──────────
+  const allCompanies   = liveData?.companies ?? [];
+  const liveCompanies_ = allCompanies.filter(c => c.active && c.endTime > 0);
+  const chilling       = allCompanies.filter(c => !(c.active && c.endTime > 0));
+  const liveEth        = ethPrice || liveData?.currentEthPrice || 0;
+  const renderLiveRow = (c) => {
+    const buf = liveEth && c.liqPrice
+      ? Math.round((liveEth - (Number(BigInt(c.liqPrice) / 10n ** 12n) / 1e6)) * 100) / 100
+      : null;
+    return (
+      <div key={c.company} className="tm-kv" style={{ marginBottom: 2 }}>
+        <span className="k" style={{ fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs-xs)' }}>
+          <span className="pos" style={{ marginRight: 4 }}>●</span>
+          {c.company.slice(0, 6)}…{c.company.slice(-4)}
+          {c.autoTradeEnabled && <span className="dim"> auto</span>}
+        </span>
+        <span className={`v ${buf == null ? '' : buf >= 0 ? 'pos' : 'neg'}`} style={{ fontSize: 'var(--t-fs-xs)' }}>
+          {buf == null ? '—' : `${buf >= 0 ? '+' : ''}${buf.toFixed(2)}`}
+          <span className="dim"> {fmtCountdownLocal(c.endTime)}</span>
+        </span>
+      </div>
+    );
+  };
+  const renderChillingRow = (c) => {
+    const now = Math.floor(Date.now() / 1000);
+    const cooldownLeft = c.cooldownEnd && c.cooldownEnd > now ? c.cooldownEnd - now : 0;
+    const note = cooldownLeft > 0 ? `cooldown ${fmtCountdownLocal(c.cooldownEnd)}` : 'idle';
+    return (
+      <div key={c.company} className="tm-kv" style={{ marginBottom: 2, opacity: 0.6 }}>
+        <span className="k" style={{ fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs-xs)' }}>
+          <span className="dim" style={{ marginRight: 4 }}>○</span>
+          {c.company.slice(0, 6)}…{c.company.slice(-4)}
+        </span>
+        <span className="v dim" style={{ fontSize: 'var(--t-fs-xs)' }}>{note}</span>
+      </div>
+    );
+  };
+  const companiesRegion = (
+    <Region
+      title="companies"
+      sub={`${liveCompanies_.length} live · ${chilling.length} chilling`}
+    >
+      {liveCompanies_.length === 0 && chilling.length === 0 && (
+        <div className="dim" style={{ fontSize: 'var(--t-fs-xs)', padding: '4px 0' }}>no companies</div>
+      )}
+      {liveCompanies_.length > 0 && (
+        <>
+          <div style={{ fontSize: 'var(--t-fs-xs)', color: 'var(--t-pos)', letterSpacing: '0.06em', margin: '2px 0' }}>live</div>
+          {liveCompanies_.map(renderLiveRow)}
+        </>
+      )}
+      {chilling.length > 0 && (
+        <>
+          {liveCompanies_.length > 0 && <KVSep />}
+          <div style={{ fontSize: 'var(--t-fs-xs)', color: 'var(--t-fg-soft)', letterSpacing: '0.06em', margin: '2px 0' }}>chilling</div>
+          {chilling.map(renderChillingRow)}
+        </>
+      )}
     </Region>
   );
 
@@ -236,7 +270,7 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0 }) {
     <section id="sec-inspect" className="tm-grid-12">
       <GridCell id="indexed-stats"   span={spans['indexed-stats']}   height={heights['indexed-stats']}   onResize={(r) => resize('indexed-stats', r)}>{indexedStats}</GridCell>
       <GridCell id="recent-activity" span={spans['recent-activity']} height={heights['recent-activity']} onResize={(r) => resize('recent-activity', r)}>{recentActivity}</GridCell>
-      <GridCell id="live-companies"  span={spans['live-companies']}  height={heights['live-companies']}  onResize={(r) => resize('live-companies', r)}>{liveCompanies}</GridCell>
+      <GridCell id="live-companies"  span={spans['live-companies']}  height={heights['live-companies']}  onResize={(r) => resize('live-companies', r)}>{companiesRegion}</GridCell>
       <GridCell id="farmed-daily"    span={spans['farmed-daily']}    height={heights['farmed-daily']}    onResize={(r) => resize('farmed-daily', r)}>{farmedDaily}</GridCell>
     </section>
   );
