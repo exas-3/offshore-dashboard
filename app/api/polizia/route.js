@@ -43,7 +43,7 @@ function buildList(pool, ethPrice) {
       endTime:  c.active ? Number(c.end_time) : null,
     }))
     .map(c => ({ ...c, buffer: Math.round((ethPrice - c.liqPrice) * 100) / 100 }))
-    .filter(c => c.buffer >= 0 && c.buffer < 5 && !(c.endTime > 0 && c.endTime <= now))
+    .filter(c => c.buffer >= 0 && c.buffer < 3 && !(c.endTime > 0 && c.endTime <= now))
     .sort((a, b) => a.buffer - b.buffer);
   return { list: eligible.slice(0, 5), total: eligible.length };
 }
