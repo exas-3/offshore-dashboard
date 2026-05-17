@@ -34,17 +34,25 @@ export async function syncLiquidations() {
         const ownerMap = missingPlayer.length > 0 ? await getCompanyOwners(missingPlayer) : new Map();
 
         const rows = liqs.map(l => {
-          const compType = getCompanyType(l.companyAddr);
-          const opType = compType === 1 ? 'DRUG_DEAL'
-                       : compType === 2 ? 'ARMS_DEAL'
-                       : compType === 3 ? 'EXTORTION'
-                       : l.dirtyAmount > 0 ? 'PARTIAL' : 'EXTORTION';
+          // The D47 (OpResult) event fires in every bust tx and carries the trade
+          // type definitively. Prefer that over the company-type selector, which
+          // returns 0 for extortion companies and so mis-tags those busts.
+          const d47OpType = tradeCtx.d47TxMap?.get(l.hash);
+          const compType  = getCompanyType(l.companyAddr);
+          const opType = d47OpType
+                      ?? (compType === 1 ? 'DRUG_DEAL'
+                        : compType === 2 ? 'ARMS_DEAL'
+                        : compType === 3 ? 'EXTORTION'
+                        : l.dirtyAmount > 0 ? 'PARTIAL' : 'EXTORTION');
           const toAddr = l.playerAddr ?? ownerMap.get(l.companyAddr) ?? l.companyAddr;
           return {
             hash: l.hash, logIndex: l.logIndex, blockNum: l.blockNum,
             timestamp: l.timestamp, fromAddr: '0x0000000000000000000000000000000000000000',
             toAddr, rawValue: String(l.dirtyAmount), amount: l.dirtyAmount,
             kind: 'MINT', opType,
+            // syncLiquidations only synthesizes rows for E_EXITED-without-payout,
+            // which is the definition of a busted op.
+            result: 'busted',
           };
         });
         await upsertTransfers(rows);

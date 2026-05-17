@@ -101,14 +101,21 @@ export async function fetchFactoryTradeContext(fromBlock, toBlock) {
     }
   }
   const fullTxs = new Set((completeLogs ?? []).map(l => l.transactionHash.toLowerCase()));
-  const d47Map = new Map();
+  // d47Map keyed by (txHash:logIndex) for syncTransfers; d47TxMap keyed by txHash alone
+  // for callers like syncLiquidations that don't have a specific log_index to anchor on.
+  const d47Map   = new Map();
+  const d47TxMap = new Map();
   for (const l of d47Logs ?? []) {
     const raw   = l.data.slice(2);
     const word0 = parseInt(raw.slice(60, 64), 16);
     const opType = word0 === 750 ? 'DRUG_DEAL' : word0 === 250 ? 'ARMS_DEAL' : word0 === 80 ? 'EXTORTION' : null;
-    if (opType) d47Map.set(l.transactionHash.toLowerCase() + ':' + parseInt(l.logIndex, 16), opType);
+    if (opType) {
+      const txh = l.transactionHash.toLowerCase();
+      d47Map.set(txh + ':' + parseInt(l.logIndex, 16), opType);
+      if (!d47TxMap.has(txh)) d47TxMap.set(txh, opType);
+    }
   }
-  return { companyMap, fullTxs, companyBlockMap, d47Map };
+  return { companyMap, fullTxs, companyBlockMap, d47Map, d47TxMap };
 }
 
 // Fetches exited trade events from the factory for a block range, excluding full successes.

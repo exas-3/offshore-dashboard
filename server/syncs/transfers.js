@@ -38,7 +38,8 @@ export function syncTransfers() {
         const classified = { ...t, rawValue: t.amount.toString(), ...classifyTransfer(t.fromAddr, t.toAddr, t.amount, txInputs.get(t.hash.toLowerCase())) };
         if (classified.kind === 'MINT' && classified.opType === 'PARTIAL') {
           const txh       = t.hash.toLowerCase();
-          const d47OpType = tradeCtx.d47Map?.get(txh + ':' + (t.logIndex - 2));
+          const d47OpType = tradeCtx.d47Map?.get(txh + ':' + (t.logIndex - 2))
+                         ?? tradeCtx.d47TxMap?.get(txh);
           if (d47OpType) {
             classified.opType = d47OpType;
           } else {
@@ -50,6 +51,12 @@ export function syncTransfers() {
               else if (compType === 3) classified.opType = 'EXTORTION';
             }
           }
+        }
+        // Outcome for game-op MINTs: completed payouts are exactly 100/115/130 DIRTY
+        // (location-dependent); anything else is a busted op with proportionate refund.
+        if (classified.kind === 'MINT' && (classified.opType === 'DRUG_DEAL' || classified.opType === 'ARMS_DEAL' || classified.opType === 'EXTORTION')) {
+          const a = Number(classified.amount);
+          classified.result = (a === 100 || a === 115 || a === 130) ? 'completed' : 'busted';
         }
         return classified;
       });

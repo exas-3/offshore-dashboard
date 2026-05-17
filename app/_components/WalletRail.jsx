@@ -240,11 +240,16 @@ export function WalletRail({ address, onAddressChange, ethPrice = 0, newOps = []
                   const amt       = Number(a.amount) || 0;
                   const isIncoming = a.kind === 'MINT' || (a.kind === 'TRANSFER' && a.to_addr === playerLc);
                   const signed    = isIncoming ? amt : -amt;
-                  const label     = OP_LABELS_SHORT[a.op_type] || (a.op_type ? a.op_type.toLowerCase() : a.kind.toLowerCase());
+                  const baseLabel = OP_LABELS_SHORT[a.op_type] || (a.op_type ? a.op_type.toLowerCase() : a.kind.toLowerCase());
+                  const mark      = a.result === 'busted' ? '✗' : a.result === 'completed' ? '✓' : '';
+                  const markCls   = a.result === 'busted' ? 'neg' : a.result === 'completed' ? 'pos' : '';
                   return (
                     <tr key={`${a.hash}:${a.log_index}`}>
                       <td className="dim" style={{ fontSize: 'var(--t-fs-xs)' }}>{relTime(a.timestamp)}</td>
-                      <td style={{ fontSize: 'var(--t-fs-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</td>
+                      <td style={{ fontSize: 'var(--t-fs-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {mark && <span className={markCls} style={{ marginRight: 4 }}>{mark}</span>}
+                        {baseLabel}
+                      </td>
                       <td className={`num ${signed > 0 ? 'pos' : signed < 0 ? 'neg' : 'dim'}`} style={{ fontSize: 'var(--t-fs-xs)' }}>
                         {signed > 0 ? '+' : signed < 0 ? '−' : ''}{fmt.k(Math.abs(signed))}
                       </td>
