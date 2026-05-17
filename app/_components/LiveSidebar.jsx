@@ -124,40 +124,38 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
 
       <div className="tm-live-panel">
         <div className="tm-live-panel-h">
-          <span><b>last</b> started</span>
+          <span><b>new</b> crimes</span>
           <span className="rule" />
           <span className="v">{recentStarts.length}</span>
         </div>
-        {recentStarts.length === 0 ? (
-          <span className="dim" style={{ fontSize: 'var(--t-fs-xs)', padding: '4px 0', display: 'block' }}>no active ops</span>
-        ) : (
-          recentStarts.map(s => {
-            const endsIn = fmtCountdownLocal(s.endTime);
-            const startedAgo = (() => {
-              const ago = Math.floor(Date.now() / 1000) - s.startTime;
-              if (ago < 0)     return 'now';
-              if (ago < 60)    return `${ago}s ago`;
-              if (ago < 3600)  return `${Math.floor(ago / 60)}m ago`;
-              return `${Math.floor(ago / 3600)}h ago`;
-            })();
-            return (
-              <div
-                key={s.company}
-                className="tm-watch safe"
-                style={{ cursor: 'pointer' }}
-                onClick={() => s.walletFull && onWallet && onWallet(s.walletFull)}
-              >
-                <span className="l">
-                  <span className="id">{aliases[s.walletFull] || s.wallet}</span>
-                  <span className="sub">{OP_SHORT[s.opType] || s.opType?.toLowerCase()} · {startedAgo}</span>
-                </span>
-                <span className="r">
-                  <span className="ends">{endsIn}</span>
-                </span>
-              </div>
-            );
-          })
-        )}
+        {recentStarts.slice(0, 5).map(s => {
+          const endsIn = fmtCountdownLocal(s.endTime);
+          const ago = Math.floor(Date.now() / 1000) - s.startTime;
+          const startedAgo =
+              ago < 0    ? 'now'
+            : ago < 60   ? `${ago}s ago`
+            : ago < 3600 ? `${Math.floor(ago / 60)}m ago`
+            :              `${Math.floor(ago / 3600)}h ago`;
+          const opLabel  = OP_SHORT[s.opType] || s.opType?.toLowerCase() || '—';
+          const opCls    = s.opType === 'EXTORTION' ? 'tm-neg' : s.opType === 'ARMS_DEAL' ? 'tm-warn' : 'tm-pos';
+          return (
+            <div
+              key={s.company}
+              className="tm-watch safe"
+              style={{ cursor: 'pointer' }}
+              onClick={() => s.walletFull && onWallet && onWallet(s.walletFull)}
+            >
+              <span className="l">
+                <span className="id">{aliases[s.walletFull] || s.wallet}</span>
+                <span className="sub">started {startedAgo}</span>
+              </span>
+              <span className="r">
+                <span className={`buf ${opCls}`}>{opLabel}</span>
+                <span className="ends">{endsIn}</span>
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       <div className="tm-live-panel">
