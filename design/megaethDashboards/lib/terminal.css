@@ -1078,3 +1078,65 @@
   --t-focus:     #2c5b96;
 }
 .tm[data-theme="paper"] .tm-blink { animation: none; }
+
+/* ── Zone bands ─────────────────────────────────────────────────── */
+.tm-zone-band {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 14px;
+  font-family: var(--t-font);
+  font-size: 10.5px; letter-spacing: 0.18em;
+  text-transform: uppercase; font-weight: 600;
+  position: sticky; top: 0; z-index: 5;
+}
+
+/* CRIMINAL — solid amber, black text. Loud. */
+.tm-zone-band.is-criminal {
+  background: var(--t-fg);
+  color: var(--t-bg);
+}
+.tm-zone-band.is-criminal .badge {
+  background: rgba(0,0,0,0.18);
+  color: var(--t-bg);
+  border: 1px solid rgba(0,0,0,0.30);
+  padding: 1px 7px;
+  font-size: 9.5px; letter-spacing: 0.06em;
+}
+.tm-zone-band.is-criminal .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--t-bg);
+  animation: tm-zone-pulse 1.6s ease-out infinite;
+}
+@keyframes tm-zone-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(0,0,0,0.7); }
+  100% { box-shadow: 0 0 0 6px rgba(0,0,0,0); }
+}
+
+/* PROTOCOL — dim warm fill, cream text. Quiet. */
+.tm-zone-band.is-protocol {
+  background: var(--t-rule-hot);
+  color: var(--t-hdr);
+  border-top: 1px solid var(--t-fg-mut);
+  border-bottom: 1px solid var(--t-rule);
+}
+.tm-zone-band.is-protocol .badge {
+  background: rgba(0,0,0,0.30);
+  color: var(--t-hdr);
+  border: 1px solid var(--t-fg-mut);
+  padding: 1px 7px;
+  font-size: 9.5px; letter-spacing: 0.06em;
+}
+
+.tm-zone-band .ctx {
+  margin-left: auto;
+  font-weight: 400; letter-spacing: 0.04em;
+  text-transform: none; opacity: 0.85;
+  font-size: 10px;
+}
+.tm-zone-band .ctx b { font-weight: 500; opacity: 1; }
+
+/* Tint the criminal zone faintly */
+.tm-zone-criminal {
+  background: linear-gradient(180deg,
+    rgba(255,176,0,0.025),
+    transparent 240px);
+}

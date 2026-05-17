@@ -8,8 +8,18 @@ function nowHMS() {
   const z = (n) => String(n).padStart(2, '0');
   return `${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
 }
+
+const shortAddr = (a) => a ? a.slice(0, 6) + '…' + a.slice(-3) : '';
+
+function relAgo(ts) {
+  const diff = Math.floor(Date.now() / 1000) - Number(ts);
+  if (!ts || !isFinite(diff) || diff < 0) return null;
+  if (diff < 60)    return `${diff}s`;
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  return `${Math.floor(diff / 86400)}d`;
+}
 import { LiveSidebar } from './LiveSidebar.jsx';
-import { OverviewSection } from './sections/OverviewSection.jsx';
 import { TokenSection } from './sections/TokenSection.jsx';
 import { PlayersSection } from './sections/PlayersSection.jsx';
 import { VaultSection } from './sections/VaultSection.jsx';
@@ -82,6 +92,22 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   const [alarmOn, setAlarmOn] = useState(false);
   const alarmOnRef = useRef(false);
   alarmOnRef.current = alarmOn;
+  // Lightweight monitor data for the CRIMINAL zone band (active/underwater
+  // counts). The inspector section owns its own copy + 1s poll for its
+  // detailed views; here we just want a 3 s refresh for the band labels.
+  const [bandLive, setBandLive] = useState(null);
+  useEffect(() => {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(walletAddr)) { setBandLive(null); return; }
+    let live = true;
+    const addr = walletAddr.toLowerCase();
+    const load = () => fetch(`/api/monitor?wallet=${addr}`)
+      .then(r => r.json())
+      .then(d => { if (live && d && !d.error) setBandLive(d); })
+      .catch(() => {});
+    load();
+    const t = setInterval(load, 3_000);
+    return () => { live = false; clearInterval(t); };
+  }, [walletAddr]);
 
   // Two-way URL ↔ walletAddr sync.
   // Whenever walletAddr changes (rail input, table clicks, anything),
@@ -159,6 +185,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   const [liveTicker, setLiveTicker] = useState(() => D.liveTradeTicker || []);
   const [latestNewOps, setLatestNewOps] = useState([]);
   const [recentStarts, setRecentStarts] = useState(() => D.recentStarts || []);
+  const [companiesLive, setCompaniesLive] = useState(() => D.companies);
 
   // Audio + Notification alarm for the currently-watched criminal.
   useEffect(() => {
@@ -259,6 +286,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
           const fresh = d.newLiqs.filter(l => l._ts > lastLiqTsRef.current);
           if (fresh.length > 0) lastLiqTsRef.current = fresh[fresh.length - 1]._ts;
         }
+        if (d.companiesStats) setCompaniesLive(d.companiesStats);
       } catch {
         setCounters((c) => ({
           ...c,
@@ -315,7 +343,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   return (
     <TerminalShell
       mode="standalone"
-      brand={{ name: 'OFFSHORE', sub: 'community dashboard · v0.6.32-beta' }}
+      brand={{ name: 'OFFSHORE', sub: 'community dashboard · v0.6.33-beta' }}
       nav={NAV}
       apps={D.apps}
       activeAppId={activeApp}
@@ -345,14 +373,52 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
       density={density}
     >
       <div className="tm-content">
-        <OverviewSection D={D} counters={counters} infPurchased={inf.purchased} dawPct={dawPct} />
-        {/^0x[0-9a-fA-F]{40}$/.test(walletAddr) && (
-          <>
-            <CriminalChartSection   address={walletAddr} grid={grid} ethPrice={counters.eth} alarmOn={alarmOn} onAlarmToggle={() => setAlarmOn(v => !v)} />
-            <WalletInspectorSection address={walletAddr} grid={grid} ethPrice={counters.eth} />
-          </>
-        )}
-        <TokenSection    D={D} grid={grid} />
+        {/^0x[0-9a-fA-F]{40}$/.test(walletAddr) && (() => {
+          const allComp = bandLive?.companies ?? [];
+          const activeComps = allComp.filter(c => c.active && c.endTime > 0);
+          const underwater = activeComps.filter(c => {
+            if (!c.liqPrice) return false;
+            const liqUsd = Number(BigInt(c.liqPrice) / 10n ** 12n) / 1e6;
+            return counters.eth > 0 && (counters.eth - liqUsd) < 0;
+          }).length;
+          const walletLc = walletAddr.toLowerCase();
+          const lastOp   = ops.find(o => (o.walletFull || '').toLowerCase() === walletLc);
+          const lastOpAgo = lastOp ? relAgo(lastOp._ts) : null;
+          return (
+            <>
+              {/* CRIMINAL — pinned above the personal zone */}
+              <div className="tm-zone-band is-criminal">
+                <span className="dot" />
+                <span>CRIMINAL</span>
+                <span className="badge">{shortAddr(walletAddr)}</span>
+                <span className="ctx">
+                  <b>{activeComps.length}</b> active ·{' '}
+                  <b>{underwater}</b> underwater ·{' '}
+                  last op <b>{lastOpAgo ?? '—'}</b> ago
+                </span>
+              </div>
+              <div className="tm-zone-criminal">
+                <CriminalChartSection   address={walletAddr} grid={grid} ethPrice={counters.eth} alarmOn={alarmOn} onAlarmToggle={() => setAlarmOn(v => !v)} />
+                <WalletInspectorSection address={walletAddr} grid={grid} ethPrice={counters.eth} />
+              </div>
+            </>
+          );
+        })()}
+
+        {/* PROTOCOL — pinned above the rest */}
+        <div className="tm-zone-band is-protocol">
+          <span>PROTOCOL</span>
+          <span className="ctx">
+            burn outpacing emission <b>{D.hero.burnedRatio}×</b> ·{' '}
+            burned <b>{D.hero.burnedAllTime}</b> $dirty ·{' '}
+            inf bought <b>{inf.purchased?.toLocaleString() ?? '—'}</b> ·{' '}
+            daily active <b>{counters.daw?.toLocaleString() ?? '—'}</b>
+            {dawPct > 0 ? ` (▾ ${dawPct}%)` : ' (peak)'} ·{' '}
+            world <b>{D.currentWorldTime || 'Q4 2012'}</b>
+          </span>
+        </div>
+
+        <TokenSection    D={{ ...D, companies: companiesLive || D.companies }} grid={grid} />
         <PlayersSection  D={D} grid={grid} />
         <VaultSection    D={D} grid={grid} />
         <TradesSection   grid={grid} liveTrades={liveTrades} ops={ops} search={search} ethPrice={counters.eth} aliases={aliases} onWallet={openWallet} />

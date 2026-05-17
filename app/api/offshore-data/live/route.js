@@ -46,7 +46,7 @@ export async function GET(request) {
     const now   = Math.floor(Date.now() / 1000);
     const db    = getDb();
 
-    const [dirtyPrice, infCost, latestBlock, tps, ethFromDb, dawRow, opsRow, latestOpRow, newOpsRows, latestEventRow, companiesRow, activeOpsRow, recentStartsRows, newLiqsRows] = await Promise.all([
+    const [dirtyPrice, infCost, latestBlock, tps, ethFromDb, dawRow, opsRow, latestOpRow, newOpsRows, latestEventRow, companiesRow, activeOpsRow, companiesStatsRow, recentStartsRows, newLiqsRows] = await Promise.all([
       getCachedDirtyPrice().catch(() => null),
       getCachedInfCost().catch(() => null),
       getLatestBlock().catch(() => null),
@@ -110,6 +110,12 @@ export async function GET(request) {
         ORDER BY c.end_time ASC NULLS LAST
       `.catch(() => []) : Promise.resolve([]),
       db ? db`SELECT COUNT(*)::int AS cnt FROM companies WHERE active = TRUE`.catch(() => []) : Promise.resolve([]),
+      db ? db`
+        SELECT COUNT(*)::int AS total,
+               COUNT(DISTINCT owner)::int AS unique_owners,
+               COUNT(*) FILTER (WHERE active AND auto_trade)::int AS auto_on
+        FROM companies
+      `.catch(() => []) : Promise.resolve([]),
       // Ops that started in the last 5 minutes: start_time = end_time - duration per trade_type.
       db ? db`
         SELECT * FROM (
@@ -241,6 +247,18 @@ export async function GET(request) {
       daw:         Number(dawRow[0]?.cnt ?? 0),
       opsMin:      Number(opsRow[0]?.cnt ?? 0),
       activeOps:   Number(activeOpsRow[0]?.cnt ?? 0),
+      companiesStats: (() => {
+        const total       = Number(companiesStatsRow[0]?.total ?? 0);
+        const autoOn      = Number(companiesStatsRow[0]?.auto_on ?? 0);
+        const activeCount = Number(activeOpsRow[0]?.cnt ?? 0);
+        return {
+          totalCompanies:      total,
+          uniqueOwners:        Number(companiesStatsRow[0]?.unique_owners ?? 0),
+          activeTrades:        activeCount,
+          autoTradeOn:         autoOn,
+          autoTradeShareLabel: total > 0 ? `${Math.round(autoOn / total * 100)}% of all` : '0% of all',
+        };
+      })(),
       liveTrades,
       latestOp,
       newOps,
