@@ -344,19 +344,25 @@ export function CriminalChartSection({ address, grid, ethPrice = 0, alarmOn = fa
                   </g>
                 ))}
 
-                {/* start-time verticals (header colour, dotted) */}
-                {activeOps.filter(o => o.startTime && o.startTime >= xMin && o.startTime <= xMax).map((o, i) => (
-                  <g key={`start-${o.company}-${i}`}>
-                    <line
-                      x1={xScale(o.startTime)} x2={xScale(o.startTime)}
-                      y1={PAD.t} y2={h - PAD.b}
-                      stroke="var(--t-hdr)" strokeWidth="1" strokeDasharray="2 4" opacity="0.7"
-                    />
-                    <text x={xScale(o.startTime) + 3} y={h - PAD.b - 4} fill="var(--t-hdr)" fontSize="9" fontFamily="var(--t-font)">
-                      {fmtMin(Math.max(0, now - o.startTime))}
-                    </text>
-                  </g>
-                ))}
+                {/* start markers — small circle on each op's liq line at
+                    the trade's start time, with the elapsed-since label. */}
+                {activeOps
+                  .filter(o => o.startTime && o.startTime >= xMin && o.startTime <= xMax
+                            && o.liqUsd >= yMin && o.liqUsd <= yMax)
+                  .map((o, i) => (
+                    <g key={`start-${o.company}-${i}`}>
+                      <circle
+                        cx={xScale(o.startTime)} cy={yScale(o.liqUsd)}
+                        r={3}
+                        fill="var(--t-hdr)" stroke="var(--t-bg)" strokeWidth="1"
+                        opacity="0.95"
+                      />
+                      <text x={xScale(o.startTime) + 6} y={yScale(o.liqUsd) - 4}
+                            fill="var(--t-hdr)" fontSize="9" fontFamily="var(--t-font)">
+                        {fmtMin(Math.max(0, now - o.startTime))}
+                      </text>
+                    </g>
+                  ))}
 
                 {/* end-time verticals (green) */}
                 {activeOps.filter(o => o.endTime >= xMin && o.endTime <= xMax).map((o, i) => (

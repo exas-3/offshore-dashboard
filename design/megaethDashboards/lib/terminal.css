@@ -1163,14 +1163,40 @@
   z-index: 1;
 }
 
-/* ── Watch row: companies sits alongside criminal-watch on wide screens.
-   On narrower viewports, both span the full row with the chart on top
-   and companies stacked below. */
-@media (max-width: 1100px) {
-  #sec-watch [data-cell-id="watch-chart"],
-  #sec-watch [data-cell-id="watch-companies"] {
-    grid-column: span 12 !important;
+/* ── Wallet zone responsive layout ──────────────────────────────────────
+   Two breakpoints:
+   - Wide (>1100 px): chart(9) + companies(3) on row 1; indexed(4) +
+     activity(4) + farmed(4) on row 2.
+   - Medium (700-1100 px): chart spans full row; companies + farmed-daily
+     share row 2 (6 each); indexed + activity share row 3 (6 each). We
+     promote the inner sections to display:contents so their cells flow
+     into a single 12-col grid on .tm-zone-criminal.
+   - Narrow (<=700 px): every cell spans 12. */
+@media (max-width: 1100px) and (min-width: 701px) {
+  .tm-zone-criminal {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    column-gap: 0;
   }
-  #sec-watch [data-cell-id="watch-chart"]     { order: 0; }
-  #sec-watch [data-cell-id="watch-companies"] { order: 1; }
+  .tm-zone-criminal > section.tm-grid-12 { display: contents; }
+
+  [data-cell-id="watch-chart"]     { grid-column: span 12 !important; order: 0; }
+  [data-cell-id="watch-companies"] { grid-column: span 6  !important; order: 1; }
+  [data-cell-id="farmed-daily"]    { grid-column: span 6  !important; order: 2; }
+  [data-cell-id="indexed-stats"]   { grid-column: span 6  !important; order: 3; }
+  [data-cell-id="recent-activity"] { grid-column: span 6  !important; order: 4; }
+}
+@media (max-width: 700px) {
+  .tm-zone-criminal {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    column-gap: 0;
+  }
+  .tm-zone-criminal > section.tm-grid-12 { display: contents; }
+
+  [data-cell-id="watch-chart"]     { grid-column: span 12 !important; order: 0; }
+  [data-cell-id="watch-companies"] { grid-column: span 12 !important; order: 1; }
+  [data-cell-id="indexed-stats"]   { grid-column: span 12 !important; order: 2; }
+  [data-cell-id="recent-activity"] { grid-column: span 12 !important; order: 3; }
+  [data-cell-id="farmed-daily"]    { grid-column: span 12 !important; order: 4; }
 }
