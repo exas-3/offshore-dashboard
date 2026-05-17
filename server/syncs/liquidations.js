@@ -5,6 +5,7 @@ import {
 } from '../etherscan.js';
 import { E_EXITED } from '../etherscan/factory-events.js';
 import { getWsClient } from '../etherscan/ws-client.js';
+import { bufferedFlush } from '../etherscan/buffered-flush.js';
 import { getCompanyOwners, getLastLiqBlock, setLastLiqBlock, upsertTransfers } from '../../lib/index.js';
 
 export const LIQ_INTERVAL_MS = 60_000;
@@ -85,24 +86,17 @@ export async function syncLiquidations() {
 // through processLiquidationBatch over the affected block range. The
 // batch helper itself re-fetches E_EXITED + E_PAYOUT via eth_getLogs to
 // filter paid exits — we don't try to use the WS log payload directly.
-
-let wsBlocks = new Set();
-let wsFlushTimer = null;
-const WS_FLUSH_MS = 1500;
-
-async function flushWsBuffer() {
-  const blocks = wsBlocks; wsBlocks = new Set(); wsFlushTimer = null;
-  if (blocks.size === 0) return;
-  const arr   = [...blocks];
-  const start = Math.min(...arr);
-  const end   = Math.max(...arr);
-  try {
+const wsBuffer = bufferedFlush({
+  label:   'poller] liquidations (ws)',
+  flushMs: 1500,
+  keyFn:   (b) => b, // de-dupe by block number
+  onFlush: async (blocks) => {
+    const start = Math.min(...blocks);
+    const end   = Math.max(...blocks);
     const n = await processLiquidationBatch(start, end);
     if (n) console.log(`[poller] liquidations (ws) +${n} | blocks ${start}..${end}`);
-  } catch (err) {
-    console.error('[poller] liquidations (ws) flush error:', err.message);
-  }
-}
+  },
+});
 
 export function startLiquidationsWs() {
   const client = getWsClient();
@@ -110,10 +104,7 @@ export function startLiquidationsWs() {
     name: 'liquidations',
     filter: { address: FACTORY.toLowerCase(), topics: [E_EXITED] },
     onLog: (rawLog) => {
-      try { wsBlocks.add(parseInt(rawLog.blockNumber, 16)); } catch { return; }
-      if (!wsFlushTimer) {
-        wsFlushTimer = setTimeout(() => { flushWsBuffer().catch(() => {}); }, WS_FLUSH_MS);
-      }
+      try { wsBuffer.push(parseInt(rawLog.blockNumber, 16)); } catch {}
     },
   });
 }

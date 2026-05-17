@@ -19,6 +19,7 @@ import {
 import { FACTORY } from '../etherscan/constants.js';
 import { E_TRADE_STARTED } from '../etherscan/factory-events.js';
 import { getWsClient } from '../etherscan/ws-client.js';
+import { bufferedFlush } from '../etherscan/buffered-flush.js';
 import {
   upsertCompanies,
   getLastTradeStartBlock,
@@ -52,19 +53,16 @@ async function resolveAndUpsert(startedMap, label) {
 // Coalesce a burst of TradeStarted logs in the same tick into one upsert
 // batch — avoids spamming getTradeStates / storage reads per individual
 // event. 200 ms flush window catches everything from the same block.
-let wsBuffer = new Map();
-let flushTimer = null;
-function bufferStarted(companyAddr, playerAddr) {
-  if (!wsBuffer.has(companyAddr)) wsBuffer.set(companyAddr, playerAddr);
-  if (!flushTimer) {
-    flushTimer = setTimeout(async () => {
-      const batch = wsBuffer; wsBuffer = new Map(); flushTimer = null;
-      try { await resolveAndUpsert(batch, 'ws'); } catch (err) {
-        console.error('[poller] company-starts (ws) flush error:', err.message);
-      }
-    }, 200);
-  }
-}
+const wsBuffer = bufferedFlush({
+  label:   'poller] company-starts (ws)',
+  flushMs: 200,
+  keyFn:   (e) => e.company,
+  onFlush: async (events) => {
+    const map = new Map();
+    for (const e of events) if (!map.has(e.company)) map.set(e.company, e.player);
+    await resolveAndUpsert(map, 'ws');
+  },
+});
 
 export function startCompanyStartsWs() {
   const client = getWsClient();
@@ -74,7 +72,7 @@ export function startCompanyStartsWs() {
     onLog: (log) => {
       const company = ('0x' + log.topics[1].slice(26)).toLowerCase();
       const player  = ('0x' + log.topics[2].slice(26)).toLowerCase();
-      bufferStarted(company, player);
+      wsBuffer.push({ company, player });
     },
   });
 }

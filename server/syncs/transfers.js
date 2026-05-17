@@ -2,8 +2,10 @@ import {
   fetchTransferLogs, parseTransferLog, fetchTxInputs, fetchFactoryTradeContext,
   getCompanyTradeTypesFromStorage, classifyTransfer,
   fetchSupplyAtBlock, DIRTY, USDM, DEX_POOLS,
+  TRADE_DURATIONS, resultFromAmount,
 } from '../etherscan.js';
 import { getWsClient } from '../etherscan/ws-client.js';
+import { bufferedFlush } from '../etherscan/buffered-flush.js';
 import {
   getLastBlock, setLastBlock, upsertTransfers,
   getDaysNeedingSupplyBackfill, getHoursNeedingSupplyBackfill, saveTokenInfoSnapshot,
@@ -60,9 +62,8 @@ async function processTransferBatch({ start, end, prefetched }) {
     // Outcome for game-op MINTs: completed payouts are exactly 100/115/130
     // DIRTY (location-dependent); anything else is a busted op with a
     // proportionate refund.
-    if (classified.kind === 'MINT' && (classified.opType === 'DRUG_DEAL' || classified.opType === 'ARMS_DEAL' || classified.opType === 'EXTORTION')) {
-      const a = Number(classified.amount);
-      classified.result = (a === 100 || a === 115 || a === 130) ? 'completed' : 'busted';
+    if (classified.kind === 'MINT' && TRADE_DURATIONS[classified.opType] != null) {
+      classified.result = resultFromAmount(classified.amount);
     }
     return classified;
   });
@@ -121,37 +122,20 @@ export function syncTransfers() {
 
 // ── WS path ───────────────────────────────────────────────────────────────
 // Subscribe to live DIRTY Transfer events. Buffer them in a 1.5 s window
-// and flush through the same processTransferBatch with the buffered logs
-// as prefetched input — so we avoid a redundant eth_getLogs and just pay
-// the necessary RPC for tx inputs / factory ctx / USDM / storage reads.
-
-let wsBuffer = [];
-let wsFlushTimer = null;
-const WS_FLUSH_MS = 1500;
-
-async function flushWsBuffer() {
-  const batch = wsBuffer; wsBuffer = []; wsFlushTimer = null;
-  if (!batch.length) return;
-  // De-duplicate by (hash, logIndex) — WS can occasionally re-deliver on
-  // reconnect / gap-fill; upsert is idempotent but skipping here saves RPC.
-  const seen = new Set();
-  const unique = [];
-  for (const l of batch) {
-    const k = `${l.hash.toLowerCase()}:${l.logIndex}`;
-    if (seen.has(k)) continue;
-    seen.add(k);
-    unique.push(l);
-  }
-  const blocks = unique.map(l => l.blockNum);
-  const start  = Math.min(...blocks);
-  const end    = Math.max(...blocks);
-  try {
-    const n = await processTransferBatch({ start, end, prefetched: unique });
+// and flush through processTransferBatch with the buffered logs as
+// prefetched input — saves a redundant eth_getLogs call.
+const wsBuffer = bufferedFlush({
+  label:   'poller] DIRTY (ws)',
+  flushMs: 1500,
+  keyFn:   (l) => `${l.hash.toLowerCase()}:${l.logIndex}`,
+  onFlush: async (logs) => {
+    const blocks = logs.map(l => l.blockNum);
+    const start  = Math.min(...blocks);
+    const end    = Math.max(...blocks);
+    const n = await processTransferBatch({ start, end, prefetched: logs });
     if (n) console.log(`[poller] DIRTY (ws): ${n} rows (blocks ${start}..${end})`);
-  } catch (err) {
-    console.error('[poller] DIRTY (ws) flush error:', err.message);
-  }
-}
+  },
+});
 
 export function startTransfersWs() {
   const client = getWsClient();
@@ -163,10 +147,6 @@ export function startTransfersWs() {
         wsBuffer.push(parseTransferLog(rawLog));
       } catch (err) {
         console.warn('[poller] DIRTY (ws) parse failed:', err.message);
-        return;
-      }
-      if (!wsFlushTimer) {
-        wsFlushTimer = setTimeout(() => { flushWsBuffer().catch(() => {}); }, WS_FLUSH_MS);
       }
     },
   });

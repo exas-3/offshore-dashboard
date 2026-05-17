@@ -2,6 +2,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Region, KVSep, GridCell } from '../terminal.jsx';
 import { fmtCountdownLocal } from '../trade-helpers.jsx';
+import { useEthCandles } from '../hooks/use-eth-candles.js';
+import { useChartViewport, useChartWheelZoom } from '../hooks/use-chart-viewport.js';
 
 // Live SVG chart of ETH price with the selected wallet's active-op liq-price
 // horizontal markers and op-end vertical markers. Visible only when a wallet
@@ -10,13 +12,8 @@ import { fmtCountdownLocal } from '../trade-helpers.jsx';
 // Axes:  X = time (past → future, "now" centred-ish); Y = ETH price (auto-scaled)
 // Wheel = zoom (5m ↔ 2h total span). Drag = pan in time.
 
-const SPAN_MIN = 5 * 60;          // 5 minutes
-const SPAN_MAX = 2 * 60 * 60;     // 2 hours
-// In auto mode the right edge of the chart sits a bit past the furthest active
-// op's endTime; past portion is PAST_FRAC of the future portion. Once the user
-// scrolls/drags we just use a symmetric (1-FUTURE_FRAC, FUTURE_FRAC) split.
-const PAST_FRAC = 0.4;
-const FUTURE_FRAC = 0.6;
+// Viewport math (SPAN_MIN / SPAN_MAX / PAST_FRAC / FUTURE_FRAC) lives in
+// hooks/use-chart-viewport.js. This file just composes hooks + SVG.
 const HEIGHT = 320;
 
 function liqPriceUsd(raw) {
@@ -110,18 +107,13 @@ export function CriminalChartSection({ address, grid, ethPrice = 0, alarmOn = fa
   const { spans, heights, resize } = grid;
   const isFullAddr = /^0x[0-9a-fA-F]{40}$/.test(address || '');
 
-  const [serverCandles, setServerCandles] = useState([]); // [{ts, open, high, low, close}] from /api/eth-candles
   const companies = liveData?.companies ?? [];
-  const [tick, setTick]                 = useState(0);
-  const [userSpan, setUserSpan]         = useState(null); // null = auto
-  const [panSec, setPanSec]             = useState(0);    // offset added to "now" anchor
-  const dragRef = useRef(null);
+  const [tick, setTick] = useState(0);
   const wrapRef = useRef(null);
   const svgRef  = useRef(null);
-  const liveBufRef = useRef([]);  // [{ts, price}] — 1s-resolution samples from the ethPrice prop
-  const [boxW,  setBoxW]                = useState(900);
+  const [boxW,  setBoxW] = useState(900);
 
-  // 1s tick so countdown / "now" line move smoothly
+  // 1s tick so countdown / "now" line move smoothly.
   useEffect(() => {
     const t = setInterval(() => setTick(n => n + 1), 1000);
     return () => clearInterval(t);
@@ -137,69 +129,18 @@ export function CriminalChartSection({ address, grid, ethPrice = 0, alarmOn = fa
     return () => ro.disconnect();
   }, []);
 
-  // Candles from the server cache (lib/eth-candles.js). The bucket is picked
-  // from the current chart span; the request re-fires when the bucket changes.
-  // No local 1s buffer needed — the server cache already accumulates OHLC at
-  // 1s feed resolution and exposes 2s/5s/15s/1m granularities.
-
-  // Companies come from the parent's single /api/monitor poll; derive
-  // active ops + USD liq price here.
+  // Active ops with USD liq price + start time, derived from the parent's
+  // single /api/monitor poll.
   const activeOps = useMemo(() => companies
     .filter(c => c.active && c.endTime > 0)
     .map(c => ({ ...c, liqUsd: liqPriceUsd(c.liqPrice), startTime: c.startTime ?? null })), [companies]);
 
-  // Default window puts the furthest active endTime near the right edge:
-  //   futureSec = max(endTime - now) + 10% buffer
-  //   pastSec   = PAST_FRAC of futureSec
-  // Once the user scrolls/drags we switch to a symmetric (PAST_FRAC, FUTURE_FRAC)
-  // split of the chosen span.
-  const now      = Math.floor(Date.now() / 1000);
-  const maxEndIn = activeOps.length ? Math.max(...activeOps.map(o => Math.max(0, o.endTime - now))) : 0;
-  const userOverride = userSpan != null || panSec !== 0;
-  let xMin, xMax, span;
-  if (userOverride) {
-    span = userSpan ?? Math.min(SPAN_MAX, Math.max(SPAN_MIN, maxEndIn * 1.4 + 10 * 60));
-    const anchor = now + panSec;
-    xMin = anchor - span * PAST_FRAC;
-    xMax = anchor + span * FUTURE_FRAC;
-  } else {
-    const futureSec = Math.max(maxEndIn * 1.1, 5 * 60);  // at least 5m future if no active ops
-    const pastSec   = Math.max(futureSec * PAST_FRAC, 5 * 60);
-    span = Math.min(SPAN_MAX, Math.max(SPAN_MIN, futureSec + pastSec));
-    xMax = now + futureSec;
-    xMin = xMax - span;
-  }
+  const now = Math.floor(Date.now() / 1000);
+  const viewport = useChartViewport({ activeOps, now });
+  const { span, xMin, xMax, panSec, userSpan, userOverride, setPanSec, dragRef, resetView } = viewport;
+  useChartWheelZoom(wrapRef, viewport);
 
-  // Pick the server bucket size that matches the visible span.
-  // Server provides 5s (last 30m), 15s (last 1h), 1m (last 2h).
-  const bucketName = useMemo(() => {
-    if (span <= 15 * 60) return '5s';   // ≤ 15m → 5s
-    if (span <= 60 * 60) return '15s';  // ≤ 1h  → 15s
-    return '1m';                        // > 1h  → 1m
-  }, [span]);
-  const bucketSec = { '5s': 5, '15s': 15, '1m': 60 }[bucketName];
-
-  // Poll the candles endpoint for the chosen bucket. Cadence matches the
-  // bucket size so we never refresh faster than candles are produced.
-  useEffect(() => {
-    let live = true;
-    const interval = bucketSec * 1000;
-    const load = () => fetch(`/api/eth-candles?bucket=${bucketName}`, { cache: 'no-cache' })
-      .then(r => r.json())
-      .then(d => { if (live && Array.isArray(d.candles)) setServerCandles(d.candles); })
-      .catch(() => {});
-    load();
-    const t = setInterval(load, Math.min(5000, interval));
-    return () => { live = false; clearInterval(t); };
-  }, [bucketName, bucketSec]);
-
-  // Visible candles. Server already trims to the bucket's maxAge; we further
-  // clip to the chart window. tick is in the dep list so the last candle's
-  // "in-progress" state visually advances each second between fetches.
-  const candles = useMemo(() => {
-    void tick;
-    return serverCandles.filter(c => c.ts >= xMin - bucketSec && c.ts <= xMax);
-  }, [serverCandles, xMin, xMax, bucketSec, tick]);
+  const { candles, bucketName, bucketSec } = useEthCandles({ span, xMin, xMax, tick });
 
   // Y range — visible-min - $0.5 to visible-max + $0.5. Considers candle wicks
   // and the active ops' liq prices so all stay on-screen.
@@ -227,29 +168,7 @@ export function CriminalChartSection({ address, grid, ethPrice = 0, alarmOn = fa
   const candleW = Math.max(2, (bucketSec / (xMax - xMin)) * pw * 0.7);
 
   // ── Interactions ────────────────────────────────────────────────────────
-  // Wheel-to-zoom. React's onWheel is registered as passive in newer versions
-  // so preventDefault() inside an onWheel handler is a no-op. Attach via
-  // addEventListener({ passive: false }) on the wrapper div (not the SVG —
-  // some Blink builds route wheel events differently for inline SVG elements,
-  // which is why this stopped working in plain Chromium but kept working in
-  // Brave). Capture phase so we beat any bubbling scroll handlers.
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const handler = (e) => {
-      // deltaMode 1 = LINE (Firefox sometimes). Normalize to roughly pixels.
-      const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
-      e.preventDefault();
-      e.stopPropagation();
-      const factor = delta > 0 ? 1.15 : 1 / 1.15;
-      setUserSpan(prev => {
-        const base = prev ?? span;
-        return Math.min(SPAN_MAX, Math.max(SPAN_MIN, base * factor));
-      });
-    };
-    el.addEventListener('wheel', handler, { passive: false, capture: true });
-    return () => el.removeEventListener('wheel', handler, { capture: true });
-  }, [span]);
+  // Wheel-to-zoom lives in useChartWheelZoom (attached above on wrapRef).
   function onPointerDown(e) {
     dragRef.current = { startX: e.clientX, startPan: panSec, spanAtStart: span, w };
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -264,7 +183,6 @@ export function CriminalChartSection({ address, grid, ethPrice = 0, alarmOn = fa
     dragRef.current = null;
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
   }
-  function resetView() { setUserSpan(null); setPanSec(0); }
 
   // ── Render ──────────────────────────────────────────────────────────────
   const xNow = xScale(now);

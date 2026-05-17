@@ -1,5 +1,6 @@
 import { DIRTY, INFLUENCE, USDM, VAULT, FACTORY, BATCH_RESOLVER, GENESIS } from './constants.js';
 import { fromWei, rpcPost, rpcBatch } from './rpc-client.js';
+import { durationToOpType } from './op-types.js';
 
 const ZERO             = '0x0000000000000000000000000000000000000000';
 const TRANSFER_TOPIC   = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
@@ -195,8 +196,7 @@ export async function getCompanyTradeTypesFromStorage(companyAddrs, blockMap = n
       try {
         const start = Number(BigInt(s4));
         const end   = Number(BigInt(s5));
-        const dur   = end - start;
-        const type  = dur === 300 ? 'EXTORTION' : dur === 1800 ? 'ARMS_DEAL' : dur === 5400 ? 'DRUG_DEAL' : null;
+        const type  = durationToOpType(end - start);
         if (type) out.set(chunk[j].toLowerCase(), type);
       } catch { /* skip */ }
     }

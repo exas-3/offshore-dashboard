@@ -87,10 +87,11 @@ export function fmtCountdown(endTime) {
   return `${Math.floor(diff / 3600)}h ${String(m % 60).padStart(2,'0')}m`;
 }
 
+// DEPRECATED: kept for back-compat with any leftover imports. The
+// canonical mapOpType now lives in server/etherscan/op-types.js. Both
+// implementations stayed in sync, but new code should import from the
+// server module so we don't drift again.
 export function mapOpType(opType) {
-  // PARTIAL / FAIL are legacy classifier fallbacks — we no longer collapse
-  // them to a generic "op" label. Surfacing them raw makes the leftover
-  // rows visible so they get reclassified instead of silently hiding.
   const m = {
     DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion',
     SCRAP: 'scrap', BUY_ASSET: 'buy-asset',

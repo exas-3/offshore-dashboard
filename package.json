@@ -8,7 +8,8 @@
     "start": "next start",
     "poller": "node --env-file=.env server/poller-main.js",
     "aliases": "bash scripts/run-aliases.sh",
-    "start:prod": "next start"
+    "start:prod": "next start",
+    "test": "node --test --test-reporter=spec server/etherscan/classification.test.js"
   },
   "dependencies": {
     "next": "^15.3.2",

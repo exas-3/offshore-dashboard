@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Region, KV, KVSep, BarRow2, GridCell, fmt } from '../terminal.jsx';
 import { OP_LABELS_SHORT } from '../trade-helpers.jsx';
+import { durationToOpType } from '../../../lib/chain-constants.js';
 
 function relTime(ts) {
   const diff = Math.floor(Date.now() / 1000) - Number(ts);
@@ -62,8 +63,7 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0, liveData =
     const out = [];
     for (const c of liveData.companies) {
       if (!c.active || !(c.endTime > 0) || !(c.startTime > 0)) continue;
-      const dur = Number(c.endTime) - Number(c.startTime);
-      const opType = dur === 300 ? 'EXTORTION' : dur === 1800 ? 'ARMS_DEAL' : dur === 5400 ? 'DRUG_DEAL' : null;
+      const opType = durationToOpType(Number(c.endTime) - Number(c.startTime));
       if (!opType) continue;
       out.push({
         hash:      c.company,

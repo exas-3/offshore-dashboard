@@ -15,11 +15,12 @@ import {
 } from '../../../lib/index.js';
 import {
   fetchDirtyPrice, fetchLatestInfCost, getLatestBlock,
+  TRADE_DURATIONS, EARN_OPS, COMPLETE_AMOUNTS, mapOpType, tickerKind, tickerLabel, resultFromAmount,
 } from '../../../server/etherscan.js';
 import { ethPriceFeed } from '../../../lib/eth-price-feed.js';
 import {
   CORS, getCycleStart, cycleQuarter,
-  fmtDate, fmtDateHour, fmtCycleTime, fmtM, shortAddr, liqPriceUsd, fmtCountdown, mapOpType,
+  fmtDate, fmtDateHour, fmtCycleTime, fmtM, shortAddr, liqPriceUsd, fmtCountdown,
 } from './helpers.js';
 
 // ── Cache ──────────────────────────────────────────────────────────────────────
@@ -323,7 +324,6 @@ export async function GET() {
 
     // ── recentStarts ──────────────────────────────────────────────────────────
     // Ops that started in the last 5 minutes (start_time = end_time - duration).
-    const TRADE_DUR = { EXTORTION: 300, ARMS_DEAL: 1800, DRUG_DEAL: 5400 };
     const nowSec = Math.floor(Date.now() / 1000);
     const recentStarts = [...companies]
       .filter(c => c.active && c.op_type && c.end_time > 0)
@@ -332,7 +332,7 @@ export async function GET() {
         wallet:     shortAddr(c.owner),
         walletFull: c.owner,
         opType:     c.op_type,
-        startTime:  Number(c.end_time) - (TRADE_DUR[c.op_type] ?? 5400),
+        startTime:  Number(c.end_time) - (TRADE_DURATIONS[c.op_type] ?? 5400),
         endTime:    Number(c.end_time),
         liqPrice:   liqPriceUsd(c.liq_price),
       }))
@@ -400,9 +400,6 @@ export async function GET() {
       ORDER BY timestamp DESC LIMIT 60
     `.catch(() => []) : [];
 
-    const tickerKind  = { DEX_SELL:'sell', DEX_BUY:'buy', DRUG_DEAL:'op', ARMS_DEAL:'op', EXTORTION:'op', SCRAP:'op', BUY_ASSET:'op', LEVEL_UP:'op', THIRD_ENTERPRISE:'op', STAKE:'stake' };
-    const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE', STAKE:'STAKE' };
-
     const liveTradeTicker = rawTicker.map(e => ({
       hash:     e.hash ?? null,
       kind:     tickerKind[e.etype]  || 'op',
@@ -417,9 +414,6 @@ export async function GET() {
     }));
 
     // ── ops seed for the animated feed ────────────────────────────────────────
-    const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL', 'FAIL']);
-    const COMPLETE_AMOUNTS = new Set([100, 115, 130]);
-
     // Deduplicate: same wallet + same tx → collapse into one entry (sum amounts)
     const opDedupMap = new Map();
     for (const t of recentTransfers) {
@@ -442,9 +436,7 @@ export async function GET() {
         wallet: shortAddr(t.kind === 'MINT' ? t.to_addr : t.from_addr),
         walletFull: (t.kind === 'MINT' ? t.to_addr : t.from_addr),
         op:     mapOpType(t.op_type),
-        result: EARN_OPS.has(t.op_type)
-          ? (COMPLETE_AMOUNTS.has(Math.round(t._rawAmount)) ? 'completed' : 'busted')
-          : 'ok',
+        result: EARN_OPS.has(t.op_type) ? resultFromAmount(t._rawAmount) : 'ok',
         dirty:  t.kind === 'MINT'
           ? Math.round(t._rawAmount * 100) / 100
           : -Math.round(t._rawAmount * 100) / 100,

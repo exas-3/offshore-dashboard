@@ -2,7 +2,10 @@ export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { getDb } from '../../../../lib/index.js';
 import { getLatestEthPrice } from '../../../../lib/index.js';
-import { fetchDirtyPrice, fetchLatestInfCost, getLatestBlock, fetchTps } from '../../../../server/etherscan.js';
+import {
+  fetchDirtyPrice, fetchLatestInfCost, getLatestBlock, fetchTps,
+  mapOpType, EARN_OPS, tickerKind, tickerLabel, resultFromAmount,
+} from '../../../../server/etherscan.js';
 import { ethPriceFeed } from '../../../../lib/eth-price-feed.js';
 
 const CORS = { 'Access-Control-Allow-Origin': '*' };
@@ -11,21 +14,6 @@ function shortAddr(addr) {
   if (!addr || addr.length < 10) return addr ?? '';
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
-
-function mapOpType(opType) {
-  // PARTIAL / FAIL are legacy classifier fallbacks — surface them raw so
-  // leftover rows are visible. Mirror app/api/offshore-data/helpers.js.
-  const m = {
-    DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion',
-    SCRAP: 'scrap', BUY_ASSET: 'buy-asset',
-    LEVEL_UP: 'level-up', THIRD_ENTERPRISE: 'buy-asset',
-    LP_ADD: 'lp add', LP_REMOVE: 'lp remove',
-  };
-  return m[opType] ?? opType.toLowerCase().replace(/_/g, '-');
-}
-
-const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL', 'FAIL']);
-const COMPLETE_AMOUNTS = new Set([100, 115, 130]);
 
 let _dirtyPrice = null, _dirtyPriceTs = 0;
 async function getCachedDirtyPrice() {
@@ -168,9 +156,7 @@ export async function GET(request) {
     const latestOp = op ? {
       wallet: shortAddr(op.to_addr),
       op:     mapOpType(op.op_type),
-      result: EARN_OPS.has(op.op_type)
-        ? (COMPLETE_AMOUNTS.has(Math.round(Number(op.amount))) ? 'completed' : 'busted')
-        : 'ok',
+      result: EARN_OPS.has(op.op_type) ? resultFromAmount(op.amount) : 'ok',
       dirty:  Math.round(Number(op.amount) * 100) / 100,
       inf:    typeof infCost === 'number' ? infCost : 12.41,
     } : null;
@@ -194,9 +180,7 @@ export async function GET(request) {
       wallet: shortAddr(r.kind === 'MINT' ? r.addr : r.from_addr2),
       walletFull: (r.kind === 'MINT' ? r.addr : r.from_addr2),
       op:     mapOpType(r.op_type),
-      result: EARN_OPS.has(r.op_type)
-        ? (COMPLETE_AMOUNTS.has(Math.round(r._rawAmount)) ? 'completed' : 'busted')
-        : 'ok',
+      result: EARN_OPS.has(r.op_type) ? resultFromAmount(r._rawAmount) : 'ok',
       dirty:  r.kind === 'MINT'
         ? Math.round(r._rawAmount * 100) / 100
         : -Math.round(r._rawAmount * 100) / 100,
@@ -204,9 +188,6 @@ export async function GET(request) {
       inf:    ic,
       _ts:    Number(r.timestamp),
     }));
-
-    const tickerKind  = { DEX_SELL:'sell', DEX_BUY:'buy', DRUG_DEAL:'op', ARMS_DEAL:'op', EXTORTION:'op', SCRAP:'op', BUY_ASSET:'op', LEVEL_UP:'op', THIRD_ENTERPRISE:'op', STAKE:'stake' };
-    const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE', STAKE:'STAKE' };
 
     const ev = latestEventRow[0];
     const latestEvent = ev ? {

@@ -1,5 +1,6 @@
 import { fetchTransferLogs, parseTransferLog, INFLUENCE } from '../etherscan.js';
 import { getWsClient } from '../etherscan/ws-client.js';
+import { bufferedFlush } from '../etherscan/buffered-flush.js';
 import { getLastInfluenceBlock, setLastInfluenceBlock, upsertInfluenceTransfers } from '../../lib/index.js';
 import { runBlockSync } from './_run.js';
 
@@ -24,29 +25,15 @@ export function syncInfluence() {
 // ── WS path ───────────────────────────────────────────────────────────────
 // INFLUENCE Transfer events have no classification step — parse + upsert.
 // 1.5 s flush window batches a burst from the same block before the DB hit.
-
-let wsBuffer = [];
-let wsFlushTimer = null;
-const WS_FLUSH_MS = 1500;
-
-async function flushWsBuffer() {
-  const batch = wsBuffer; wsBuffer = []; wsFlushTimer = null;
-  if (!batch.length) return;
-  const seen = new Set();
-  const unique = [];
-  for (const r of batch) {
-    const k = `${r.hash.toLowerCase()}:${r.logIndex}`;
-    if (seen.has(k)) continue;
-    seen.add(k);
-    unique.push(r);
-  }
-  try {
-    await upsertInfluenceTransfers(unique);
-    console.log(`[poller] influence (ws): ${unique.length} rows`);
-  } catch (err) {
-    console.error('[poller] influence (ws) flush error:', err.message);
-  }
-}
+const wsBuffer = bufferedFlush({
+  label:   'poller] influence (ws)',
+  flushMs: 1500,
+  keyFn:   (r) => `${r.hash.toLowerCase()}:${r.logIndex}`,
+  onFlush: async (rows) => {
+    await upsertInfluenceTransfers(rows);
+    console.log(`[poller] influence (ws): ${rows.length} rows`);
+  },
+});
 
 export function startInfluenceWs() {
   const client = getWsClient();
@@ -54,10 +41,7 @@ export function startInfluenceWs() {
     name: 'influence-transfers',
     filter: { address: INFLUENCE.toLowerCase(), topics: [TRANSFER_TOPIC] },
     onLog: (rawLog) => {
-      try { wsBuffer.push(parseTransferLog(rawLog)); } catch { return; }
-      if (!wsFlushTimer) {
-        wsFlushTimer = setTimeout(() => { flushWsBuffer().catch(() => {}); }, WS_FLUSH_MS);
-      }
+      try { wsBuffer.push(parseTransferLog(rawLog)); } catch {}
     },
   });
 }
