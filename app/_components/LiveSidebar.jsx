@@ -129,15 +129,13 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
           <span className="v">{recentStarts.length}</span>
         </div>
         {recentStarts.slice(0, 5).map(s => {
-          const endsIn = fmtCountdownLocal(s.endTime);
-          const ago = Math.floor(Date.now() / 1000) - s.startTime;
-          const startedAgo =
-              ago < 0    ? 'now'
-            : ago < 60   ? `${ago}s ago`
-            : ago < 3600 ? `${Math.floor(ago / 60)}m ago`
-            :              `${Math.floor(ago / 3600)}h ago`;
-          const opLabel  = OP_SHORT[s.opType] || s.opType?.toLowerCase() || '—';
-          const opCls    = s.opType === 'EXTORTION' ? 'tm-neg' : s.opType === 'ARMS_DEAL' ? 'tm-warn' : 'tm-pos';
+          const endsIn  = fmtCountdownLocal(s.endTime);
+          const opLabel = OP_SHORT[s.opType] || s.opType?.toLowerCase() || '—';
+          const opCls   = s.opType === 'EXTORTION' ? 'neg' : s.opType === 'ARMS_DEAL' ? 'warn' : 'pos';
+          const buffer  = (counters.eth && s.liqPrice)
+            ? Math.round((counters.eth - s.liqPrice) * 100) / 100
+            : null;
+          const bufCls  = buffer == null ? '' : buffer < 1 ? 'tm-neg' : buffer < 2 ? 'tm-warn' : 'tm-pos';
           return (
             <div
               key={s.company}
@@ -147,10 +145,10 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
             >
               <span className="l">
                 <span className="id">{aliases[s.walletFull] || s.wallet}</span>
-                <span className="sub">started {startedAgo}</span>
+                <span className={`sub ${opCls}`}>{opLabel}</span>
               </span>
               <span className="r">
-                <span className={`buf ${opCls}`}>{opLabel}</span>
+                <span className={`buf ${bufCls}`}>{buffer == null ? '—' : `+${buffer.toFixed(2)}`}</span>
                 <span className="ends">{endsIn}</span>
               </span>
             </div>

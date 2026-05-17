@@ -331,6 +331,7 @@ export async function GET() {
         opType:     c.op_type,
         startTime:  Number(c.end_time) - (TRADE_DUR[c.op_type] ?? 5400),
         endTime:    Number(c.end_time),
+        liqPrice:   liqPriceUsd(c.liq_price),
       }))
       .sort((a, b) => b.startTime - a.startTime)
       .slice(0, 5);

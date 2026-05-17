@@ -112,7 +112,7 @@ export async function GET(request) {
       db ? db`SELECT COUNT(*)::int AS cnt FROM companies WHERE active = TRUE`.catch(() => []) : Promise.resolve([]),
       // Last 5 operations that started: start_time = end_time - duration per trade_type.
       db ? db`
-        SELECT address, owner, end_time, trade_type,
+        SELECT address, owner, end_time, trade_type, liq_price,
                (end_time - (CASE trade_type
                               WHEN 'EXTORTION' THEN 300
                               WHEN 'ARMS_DEAL' THEN 1800
@@ -225,6 +225,7 @@ export async function GET(request) {
       opType:     r.trade_type,
       startTime:  Number(r.start_time),
       endTime:    Number(r.end_time),
+      liqPrice:   liqPriceUsd(r.liq_price),
     }));
 
     return new NextResponse(JSON.stringify({
