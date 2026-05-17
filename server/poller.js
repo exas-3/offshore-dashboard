@@ -10,7 +10,8 @@ import { syncSnapshots } from './syncs/snapshots.js';
 import { syncHolders } from './syncs/holders.js';
 import { syncVault } from './syncs/vault.js';
 import { syncCompanies } from './syncs/companies.js';
-import { syncCompanyStarts, COMPANY_STARTS_INTERVAL_MS } from './syncs/company-starts.js';
+import { syncCompanyStarts, startCompanyStartsWs, COMPANY_STARTS_INTERVAL_MS } from './syncs/company-starts.js';
+import { getWsClient } from './etherscan/ws-client.js';
 import { syncPartialSweep, PARTIAL_SWEEP_INTERVAL_MS } from './syncs/partial-sweep.js';
 import { syncLiquidations, LIQ_INTERVAL_MS } from './syncs/liquidations.js';
 import { syncStaking, syncStakingClaims, syncStakingRotations } from './syncs/staking.js';
@@ -138,6 +139,10 @@ export async function startPoller() {
   syncCompanies();
   syncCompanyStarts();
   syncPartialSweep();
+  // Bring up the WS client and register the live TradeStarted subscription.
+  // No-op if ALCHEMY_WS_URL isn't set — polling fallback alone keeps running.
+  startCompanyStartsWs();
+  getWsClient().start();
   setInterval(syncInfluence,        TX_INTERVAL_MS);
   setInterval(syncTransfers,        TX_INTERVAL_MS);
   setInterval(syncVault,            TX_INTERVAL_MS);
