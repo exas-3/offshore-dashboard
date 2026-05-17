@@ -12,6 +12,13 @@ function relTime(ts) {
   return `${Math.floor(diff / 86400)}d`;
 }
 
+function fmtMadeMan(ts) {
+  if (!ts) return '—';
+  const d = new Date(Number(ts) * 1000);
+  const z = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+
 export function WalletInspectorSection({ address, grid, ethPrice = 0 }) {
   const { spans, heights, resize } = grid;
   const isFullAddr = /^0x[0-9a-fA-F]{40}$/.test(address);
@@ -29,19 +36,35 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0 }) {
   }, []);
 
   useEffect(() => {
-    setLoading(true);
+    let live = true;
     const addr = address.toLowerCase();
-    Promise.all([
-      fetch(`/api/players/${addr}`).then(r => r.json()).catch(() => null),
-      fetch(`/api/monitor?wallet=${addr}`).then(r => r.json()).catch(() => null),
-    ]).then(([db, live]) => {
-      setDbData(db?.error ? null : db);
-      if (live && !live.error) {
-        compAddrsRef.current = (live.companies ?? []).map(c => c.company);
-        setLiveData(live);
-      }
-      setLoading(false);
+    const loadPlayers = (showLoader) => {
+      if (showLoader) setLoading(true);
+      return fetch(`/api/players/${addr}`)
+        .then(r => r.json())
+        .then(db => {
+          if (live) setDbData(db?.error ? null : db);
+        })
+        .catch(() => {});
+    };
+    const loadMonitor = () =>
+      fetch(`/api/monitor?wallet=${addr}`)
+        .then(r => r.json())
+        .then(d => {
+          if (live && d && !d.error) {
+            compAddrsRef.current = (d.companies ?? []).map(c => c.company);
+            setLiveData(d);
+          }
+        })
+        .catch(() => {});
+
+    Promise.all([loadPlayers(true), loadMonitor()]).then(() => {
+      if (live) setLoading(false);
     });
+
+    // Keep recent activity / aggregates in sync with the live ops feed.
+    const t = setInterval(() => loadPlayers(false), 10_000);
+    return () => { live = false; clearInterval(t); };
   }, [address]);
 
   useEffect(() => {
@@ -64,6 +87,8 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0 }) {
   // ── Region: indexed stats (4) ─────────────────────────────────────────
   const indexedStats = dbData?.stats ? (
     <Region title="indexed stats">
+      <KV k="made man" v={fmtMadeMan(dbData.stats.first_active)} sub={dbData.stats.first_active ? `${relTime(dbData.stats.first_active)} ago` : null} cls="hdr" />
+      <KVSep />
       {liveData?.influenceBalance != null && (
         <>
           <KV k="inf bal"   v={fmt.k(liveData.influenceBalance)} />
