@@ -151,13 +151,18 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0, liveData =
                     {inProgress ? '—' : `${signed > 0 ? '+' : signed < 0 ? '−' : ''}${fmt.k(Math.abs(signed))}`}
                   </td>
                   <td>
-                    {inProgress ? (
-                      <span className="dim" style={{ fontSize: 'var(--t-fs-xs)' }}>{a.hash.slice(0, 6)}</span>
-                    ) : (
-                      <a href={`https://mega.etherscan.io/tx/${a.hash}`} target="_blank" rel="noopener noreferrer" className="dim" style={{ fontSize: 'var(--t-fs-xs)', textDecoration: 'none' }}>
-                        {a.hash.slice(-6)}↗
-                      </a>
-                    )}
+                    <a
+                      href={inProgress
+                        ? `https://mega.etherscan.io/address/${a.hash}`
+                        : `https://mega.etherscan.io/tx/${a.hash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="dim"
+                      style={{ fontSize: 'var(--t-fs-xs)', textDecoration: 'none' }}
+                      title={inProgress ? `company ${a.hash}` : a.hash}
+                    >
+                      {a.hash.slice(-6)}↗
+                    </a>
                   </td>
                 </tr>
               );

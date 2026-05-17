@@ -1,8 +1,10 @@
 import {
   fetchTransferLogs, fetchTxInputs, fetchFactoryTradeContext,
   getCompanyTradeTypesFromStorage, classifyTransfer,
-  fetchSupplyAtBlock, DIRTY,
+  fetchSupplyAtBlock, DIRTY, USDM, DEX_POOLS,
 } from '../etherscan.js';
+
+const POOLS_LC = new Set(DEX_POOLS.map(p => p.toLowerCase()));
 import {
   getLastBlock, setLastBlock, upsertTransfers,
   getDaysNeedingSupplyBackfill, getHoursNeedingSupplyBackfill, saveTokenInfoSnapshot,
@@ -25,10 +27,20 @@ export function syncTransfers() {
       const mintHashes = [...new Set(
         logs.filter(l => l.fromAddr === ZERO_TX).map(l => l.hash.toLowerCase())
       )];
-      const [txInputs, tradeCtx] = await Promise.all([
+      // Pull USDM Transfers in the same block range — net DIRTY/USDM delta
+      // per user tells swap (opposite signs) apart from LP add/remove (same
+      // signs).
+      const [txInputs, tradeCtx, usdmLogs] = await Promise.all([
         fetchTxInputs(mintHashes).catch(() => new Map()),
         fetchFactoryTradeContext(start, end).catch(() => ({ companyMap: new Map(), fullTxs: new Set(), companyBlockMap: new Map(), d47Map: new Map() })),
+        fetchTransferLogs(USDM, start, end).catch(() => []),
       ]);
+      const usdmByTx = new Map();
+      for (const u of usdmLogs) {
+        const h = u.hash.toLowerCase();
+        if (!usdmByTx.has(h)) usdmByTx.set(h, []);
+        usdmByTx.get(h).push(u);
+      }
 
       // Resolve trade types for every company that emitted a DirtyPaid /
       // TradeExited event in this range. We read slots 4/5 at blockNum-1 so
@@ -56,6 +68,40 @@ export function syncTransfers() {
         }
         return classified;
       });
+
+      // Post-pass: tell DEX swap apart from LP add/remove. For each row
+      // currently tagged DEX_BUY / DEX_SELL, compute the user's net DIRTY +
+      // USDM delta within the same tx; same signs → LP_ADD / LP_REMOVE;
+      // opposite signs → genuine swap (keep tag).
+      const dirtyByTx = new Map();
+      for (const r of rows) {
+        if (r.kind !== 'TRANSFER') continue;
+        if (r.opType !== 'DEX_BUY' && r.opType !== 'DEX_SELL') continue;
+        const h = r.hash.toLowerCase();
+        if (!dirtyByTx.has(h)) dirtyByTx.set(h, []);
+        dirtyByTx.get(h).push(r);
+      }
+      for (const r of rows) {
+        if (r.kind !== 'TRANSFER') continue;
+        if (r.opType !== 'DEX_BUY' && r.opType !== 'DEX_SELL') continue;
+        const user = (r.opType === 'DEX_BUY' ? r.toAddr : r.fromAddr).toLowerCase();
+        if (POOLS_LC.has(user)) continue; // user is another pool — inter-pool hop, skip
+        const txh = r.hash.toLowerCase();
+        let dDirty = 0;
+        for (const d of dirtyByTx.get(txh) || []) {
+          if (d.toAddr.toLowerCase()   === user) dDirty += Number(d.amount);
+          if (d.fromAddr.toLowerCase() === user) dDirty -= Number(d.amount);
+        }
+        let dUsdm = 0;
+        for (const u of usdmByTx.get(txh) || []) {
+          if (u.toAddr.toLowerCase()   === user) dUsdm += Number(u.amount);
+          if (u.fromAddr.toLowerCase() === user) dUsdm -= Number(u.amount);
+        }
+        if (dDirty > 0 && dUsdm > 0) r.opType = 'LP_REMOVE';
+        else if (dDirty < 0 && dUsdm < 0) r.opType = 'LP_ADD';
+        // else: opposite signs (or zero USDM delta) → genuine swap, leave as-is.
+      }
+
       await upsertTransfers(rows);
       return rows.length;
     },

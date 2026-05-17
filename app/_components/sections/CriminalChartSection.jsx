@@ -37,9 +37,17 @@ function fmtClock(ts) {
 
 function renderCompaniesCard({ liveData, ethPrice, spans, heights, resize }) {
   const allCompanies = liveData?.companies ?? [];
-  const liveOnes  = allCompanies.filter(c => c.active && c.endTime > 0);
   const chilling  = allCompanies.filter(c => !(c.active && c.endTime > 0));
   const liveEth   = ethPrice || liveData?.currentEthPrice || 0;
+  // Sort active companies by buffer ascending (smallest = closest to
+  // liquidation first). Missing liqPrice / no eth price → sink to bottom.
+  const bufferOf = (c) => {
+    if (!liveEth || !c.liqPrice) return Infinity;
+    return liveEth - (Number(BigInt(c.liqPrice) / 10n ** 12n) / 1e6);
+  };
+  const liveOnes = allCompanies
+    .filter(c => c.active && c.endTime > 0)
+    .sort((a, b) => bufferOf(a) - bufferOf(b));
 
   const renderLive = (c) => {
     const buf = liveEth && c.liqPrice

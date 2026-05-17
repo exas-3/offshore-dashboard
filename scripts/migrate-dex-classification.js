@@ -21,7 +21,7 @@ const db = postgres(DB_URL, {
 const RPC = 'https://mainnet.megaeth.com/rpc';
 
 const DEX_POOLS = [
-  '0xf9f676066eb7baeed93e859bc26a41663f277a8',
+  '0xf9f676066eb7baeeed93e859bc26a41663f277a8',
   '0x6bd9eef21c2419feffafbf4850153a3b3a74a5e1',
 ];
 

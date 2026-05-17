@@ -95,6 +95,7 @@ export function mapOpType(opType) {
     DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion',
     SCRAP: 'scrap', BUY_ASSET: 'buy-asset',
     LEVEL_UP: 'level-up', THIRD_ENTERPRISE: 'buy-asset',
+    LP_ADD: 'lp add', LP_REMOVE: 'lp remove',
   };
   return m[opType] ?? opType.toLowerCase().replace(/_/g, '-');
 }

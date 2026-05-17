@@ -11,6 +11,7 @@ export const OP_LABELS_SHORT = {
   THIRD_ENTERPRISE: '3rd ent.',
   LEVEL_UP: 'level up', BUY_ASSET: 'buy asset', SCRAP: 'scrap',
   DEX_BUY: 'dex buy', DEX_SELL: 'dex sell', BURN: 'burn',
+  LP_ADD: 'lp add', LP_REMOVE: 'lp remove',
   STAKE_DEPOSIT: 'stake', STAKE_WITHDRAW: 'unstake', TRANSFER: 'transfer',
 };
 

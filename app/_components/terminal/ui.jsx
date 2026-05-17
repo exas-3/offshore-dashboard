@@ -162,23 +162,6 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
     <div className="tm" data-theme={theme} data-density={density} data-mode={mode}
       style={{ gridTemplateColumns: sideOpen ? '192px 1fr' : '50px 1fr', transition: 'grid-template-columns 0.18s ease' }}>
       <div className="tm-ticker">
-        {(ticker || []).map((c, i) => (
-          <span
-            className="tm-ticker-cell"
-            key={i}
-            onMouseEnter={c.tooltip ? e => setTickerTooltip({ idx: i, rect: e.currentTarget.getBoundingClientRect() }) : undefined}
-            onMouseLeave={c.tooltip ? () => setTickerTooltip(null) : undefined}
-          >
-            <span className="tm-ticker-k">{c.k}</span>
-            <span className={`tm-ticker-v ${c.cls || ''}`}>{c.v}</span>
-            {c.trend != null && (
-              <span className={c.trend >= 0 ? 'pos' : 'neg'}>
-                {c.trend >= 0 ? '▲' : '▼'}{Math.abs(c.trend).toFixed(2)}{c.trendUnit || '%'}
-              </span>
-            )}
-          </span>
-        ))}
-        <span className="tm-ticker-clock">{now}</span>
         {onThemeChange ? (
           <>
             <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
@@ -194,14 +177,14 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
                   padding: '0 9px', cursor: 'pointer',
                   letterSpacing: '0.06em', height: 18,
                   display: 'inline-flex', alignItems: 'center',
-                  marginLeft: 6,
+                  marginRight: 6,
                 }}
               >
                 ⚙
               </button>
               {showTweakHint && (
                 <div style={{
-                  position: 'absolute', top: 'calc(100% + 7px)', right: 0,
+                  position: 'absolute', top: 'calc(100% + 7px)', left: 0,
                   background: 'var(--t-fg)', color: 'var(--t-bg)',
                   fontSize: 10, fontFamily: 'var(--t-font)',
                   padding: '4px 8px', whiteSpace: 'nowrap',
@@ -209,7 +192,7 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
                   letterSpacing: '0.05em',
                 }}>
                   <span style={{
-                    position: 'absolute', top: -4, right: 10,
+                    position: 'absolute', top: -4, left: 10,
                     width: 0, height: 0,
                     borderLeft: '4px solid transparent',
                     borderRight: '4px solid transparent',
@@ -231,6 +214,23 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
             )}
           </>
         ) : null}
+        {(ticker || []).map((c, i) => (
+          <span
+            className="tm-ticker-cell"
+            key={i}
+            onMouseEnter={c.tooltip ? e => setTickerTooltip({ idx: i, rect: e.currentTarget.getBoundingClientRect() }) : undefined}
+            onMouseLeave={c.tooltip ? () => setTickerTooltip(null) : undefined}
+          >
+            <span className="tm-ticker-k">{c.k}</span>
+            <span className={`tm-ticker-v ${c.cls || ''}`}>{c.v}</span>
+            {c.trend != null && (
+              <span className={c.trend >= 0 ? 'pos' : 'neg'}>
+                {c.trend >= 0 ? '▲' : '▼'}{Math.abs(c.trend).toFixed(2)}{c.trendUnit || '%'}
+              </span>
+            )}
+          </span>
+        ))}
+        <span className="tm-ticker-clock">{now}</span>
       </div>
 
       <aside className="tm-side">
