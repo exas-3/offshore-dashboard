@@ -20,23 +20,36 @@ export async function GET() {
     // ok:   amount IN (100, 115, 130) — the only valid completion payouts
     // bust: any other amount (busts of all op types refund ~7 DIRTY)
     // PARTIAL = still-unresolved MINTs (old rows where idx_logs lacks the D47 event)
-    const rows = await db`
-      SELECT
-        op_type,
-        (amount IN (100, 115, 130)) AS is_ok,
-        COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 60})   AS m1,
-        COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 300})  AS m5,
-        COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 900})  AS m15,
-        COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 1800}) AS m30,
-        COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 3600}) AS m60
-      FROM transfers
-      WHERE kind = 'MINT'
-        AND op_type IN ('DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL')
-        AND timestamp::bigint >= ${now - 3600}
-      GROUP BY op_type, is_ok
-    `;
+    const [rows, activeRows] = await Promise.all([
+      db`
+        SELECT
+          op_type,
+          (amount IN (100, 115, 130)) AS is_ok,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 60})   AS m1,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 300})  AS m5,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 900})  AS m15,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 1800}) AS m30,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 3600}) AS m60
+        FROM transfers
+        WHERE kind = 'MINT'
+          AND op_type IN ('DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL')
+          AND timestamp::bigint >= ${now - 3600}
+        GROUP BY op_type, is_ok
+      `,
+      // currently-active counts come from companies.trade_type (populated by syncCompanies)
+      db`
+        SELECT trade_type, COUNT(*)::int AS cnt
+        FROM companies
+        WHERE active = TRUE AND trade_type IS NOT NULL
+        GROUP BY trade_type
+      `,
+    ]);
 
-    const result = { drugs: EMPTY_WIN(), arms: EMPTY_WIN(), extortion: EMPTY_WIN() };
+    const result = {
+      drugs:     { ...EMPTY_WIN(), active: 0 },
+      arms:      { ...EMPTY_WIN(), active: 0 },
+      extortion: { ...EMPTY_WIN(), active: 0 },
+    };
     const keyMap = { DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion', PARTIAL: null };
 
     for (const row of rows) {
@@ -45,6 +58,10 @@ export async function GET() {
       if (key) {
         for (const w of WINDOWS) result[key][w][field] += Number(row[w] ?? 0);
       }
+    }
+    for (const row of activeRows) {
+      const key = keyMap[row.trade_type];
+      if (key) result[key].active = Number(row.cnt ?? 0);
     }
 
     _cache = result;

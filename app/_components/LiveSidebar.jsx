@@ -67,8 +67,8 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
     return () => { live = false; };
   }, []);
 
-  const WINDOWS = ['m1', 'm5', 'm15', 'm30', 'm60'];
-  const WIN_LABELS = { m1: '1m', m5: '5m', m15: '15m', m30: '30m', m60: '60m' };
+  const WINDOWS = ['active', 'm1', 'm5', 'm15', 'm30', 'm60'];
+  const WIN_LABELS = { active: 'active', m1: '1m', m5: '5m', m15: '15m', m30: '30m', m60: '60m' };
   const OPS_COLS = ['extortion', 'arms', 'drugs'];
   const OPS_LABELS = { extortion: 'ext', arms: 'arms', drugs: 'drug' };
 
@@ -208,6 +208,14 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
               <tr key={w}>
                 <td style={{ color: 'var(--t-fg-mut)', paddingRight: 6, paddingBottom: 1 }}>{WIN_LABELS[w]}</td>
                 {OPS_COLS.map(c => {
+                  if (w === 'active') {
+                    const n = opsMatrix?.[c]?.active ?? 0;
+                    return (
+                      <td key={c} style={{ textAlign: 'right', paddingBottom: 1, whiteSpace: 'nowrap' }}>
+                        <span style={{ color: n > 0 ? 'var(--t-hdr)' : 'var(--t-fg-mut)' }}>{n}</span>
+                      </td>
+                    );
+                  }
                   const cell = opsMatrix?.[c]?.[w] ?? { ok: 0, bust: 0 };
                   const ok   = typeof cell === 'object' ? cell.ok   : cell;
                   const bust = typeof cell === 'object' ? cell.bust : 0;
