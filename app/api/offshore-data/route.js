@@ -36,7 +36,9 @@ export async function GET() {
     }
 
     const now = Math.floor(Date.now() / 1000);
-    const heatmapStart = Math.floor((now - 7 * 86400) / 86400) * 86400;
+    // Heatmap window is hour-aligned and rolls every hour, not at UTC midnight.
+    // Last row's last cell is always the current (in-progress) hour.
+    const heatmapStart = (Math.floor(now / 3600) - 167) * 3600;
     const db = getDb();
 
     // ── All queries in parallel ──────────────────────────────────────────────
@@ -81,8 +83,8 @@ export async function GET() {
            walletFarmedEarned, walletFarmedSpent, infHistRows, opsMatrixRows] = db ? await Promise.all([
       db`
         SELECT
-          FLOOR((timestamp - ${heatmapStart}) / 86400)::int AS day_idx,
-          FLOOR((timestamp::bigint % 86400) / 3600)::int    AS hour_idx,
+          FLOOR((timestamp - ${heatmapStart}) / 86400)::int                  AS day_idx,
+          FLOOR(((timestamp - ${heatmapStart})::bigint % 86400) / 3600)::int AS hour_idx,
           COUNT(*)::int AS cnt
         FROM transfers
         WHERE kind = 'MINT' AND timestamp >= ${heatmapStart}

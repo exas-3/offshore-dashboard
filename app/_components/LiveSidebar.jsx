@@ -129,8 +129,14 @@ export function LiveSidebar({ D, counters, ops, watch, trades, onWallet, aliases
         <div className="tm-opfeed">
           {ops.slice(0, 6).map((o, i) => {
             const fadeCls = i >= 3 ? `fade${i >= 5 ? '-3' : i >= 4 ? '-2' : ''}` : '';
+            const addr    = o.walletFull;
             return (
-              <div key={`${o.time}-${i}`} className={`tm-opfeed-row ${fadeCls}`}>
+              <div
+                key={`${o.time}-${i}`}
+                className={`tm-opfeed-row ${fadeCls}`}
+                style={{ cursor: addr ? 'pointer' : 'default' }}
+                onClick={() => addr && onWallet && onWallet(addr)}
+              >
                 <span className="l">
                   <span className="t">{aliases[o.walletFull] || o.wallet}</span>
                   <span className="op">{o.op}</span>

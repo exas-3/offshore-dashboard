@@ -61,7 +61,6 @@ export function VaultSection({ D, grid, aliases, onWallet }) {
                     <th>#</th>
                     <th>wallet</th>
                     <th className="num">$dirty staked</th>
-                    <th className="num">deposits</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -74,7 +73,6 @@ export function VaultSection({ D, grid, aliases, onWallet }) {
                         </span>
                       </td>
                       <td className="num pos">{s.total >= 1000 ? (s.total / 1000).toFixed(1) + 'k' : s.total.toLocaleString()}</td>
-                      <td className="num">{s.deposits}</td>
                     </tr>
                   ))}
                 </tbody>
