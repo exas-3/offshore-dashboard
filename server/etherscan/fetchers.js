@@ -301,10 +301,36 @@ export async function fetchLatestInfCost() {
   return fromWei(BigInt(last.data).toString());
 }
 
-const STAKING_ADDR    = '0x3620bbeded3bcf1b3409098dc152b0eecf66ea8e';
-const E_STAKED        = '0x1449c6dd7851abc30abf37f57715f492010519147cc2652fbc38202c18a6ee90';
-const E_STAKE_CLAIMED = '0xd8cc75b8a0ba011aba2385703af6a0e5593ceae53e9951a7358f657ddf3f8dac';
-const E_ROTATION_ADV  = '0xb34543600b07719e55a8a9e5f1e792c722675345036bea2c3058954db14066fc';
+const STAKING_ADDR           = '0x3620bbeded3bcf1b3409098dc152b0eecf66ea8e';
+export const E_STAKED        = '0x1449c6dd7851abc30abf37f57715f492010519147cc2652fbc38202c18a6ee90';
+export const E_STAKE_CLAIMED = '0xd8cc75b8a0ba011aba2385703af6a0e5593ceae53e9951a7358f657ddf3f8dac';
+export const E_ROTATION_ADV  = '0xb34543600b07719e55a8a9e5f1e792c722675345036bea2c3058954db14066fc';
+
+// Per-log parsers — exported so the WS path can reuse them (same shape
+// as fetcher output → same upsert call downstream).
+export function parseStakedLog(l) {
+  return {
+    hash:       l.transactionHash,
+    logIndex:   parseInt(l.logIndex, 16),
+    blockNum:   parseInt(l.blockNumber, 16),
+    timestamp:  parseInt(l.blockNumber, 16) + GENESIS,
+    userAddr:   ('0x' + l.topics[1].slice(26)).toLowerCase(),
+    rotationId: parseInt(l.topics[2], 16),
+    amount:     Number(BigInt(l.data)) / 1e18,
+  };
+}
+export function parseClaimLog(l) {
+  // Same shape as Staked: user addr + rotation id + amount.
+  return parseStakedLog(l);
+}
+export function parseRotationLog(l) {
+  return {
+    hash:       l.transactionHash,
+    blockNum:   parseInt(l.blockNumber, 16),
+    rotationId: parseInt(l.topics[1], 16),
+    endTime:    Number(BigInt(l.data)),
+  };
+}
 
 export async function fetchStakingEvents(fromBlock, toBlock) {
   const logs = await rpcPost('eth_getLogs', [{
@@ -313,15 +339,7 @@ export async function fetchStakingEvents(fromBlock, toBlock) {
     fromBlock: '0x' + fromBlock.toString(16),
     toBlock:   '0x' + toBlock.toString(16),
   }]);
-  return (logs || []).map(l => ({
-    hash:       l.transactionHash,
-    logIndex:   parseInt(l.logIndex, 16),
-    blockNum:   parseInt(l.blockNumber, 16),
-    timestamp:  parseInt(l.blockNumber, 16) + GENESIS,
-    userAddr:   ('0x' + l.topics[1].slice(26)).toLowerCase(),
-    rotationId: parseInt(l.topics[2], 16),
-    amount:     Number(BigInt(l.data)) / 1e18,
-  }));
+  return (logs || []).map(parseStakedLog);
 }
 
 export async function fetchStakingClaimEvents(fromBlock, toBlock) {
@@ -331,15 +349,7 @@ export async function fetchStakingClaimEvents(fromBlock, toBlock) {
     fromBlock: '0x' + fromBlock.toString(16),
     toBlock:   '0x' + toBlock.toString(16),
   }]);
-  return (logs || []).map(l => ({
-    hash:       l.transactionHash,
-    logIndex:   parseInt(l.logIndex, 16),
-    blockNum:   parseInt(l.blockNumber, 16),
-    timestamp:  parseInt(l.blockNumber, 16) + GENESIS,
-    userAddr:   ('0x' + l.topics[1].slice(26)).toLowerCase(),
-    rotationId: parseInt(l.topics[2], 16),
-    amount:     Number(BigInt(l.data)) / 1e18,
-  }));
+  return (logs || []).map(parseClaimLog);
 }
 
 export async function fetchStakingRotationEvents(fromBlock, toBlock) {
@@ -349,12 +359,7 @@ export async function fetchStakingRotationEvents(fromBlock, toBlock) {
     fromBlock: '0x' + fromBlock.toString(16),
     toBlock:   '0x' + toBlock.toString(16),
   }]);
-  return (logs || []).map(l => ({
-    hash:       l.transactionHash,
-    blockNum:   parseInt(l.blockNumber, 16),
-    rotationId: parseInt(l.topics[1], 16),
-    endTime:    Number(BigInt(l.data)),
-  }));
+  return (logs || []).map(parseRotationLog);
 }
 
 const REDSTONE_ORACLE = '0xc555c100DB24dF36D406243642C169CC5A937f09';

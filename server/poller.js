@@ -8,13 +8,13 @@ import { syncTransfers, startTransfersWs, backfillSupplyHistory } from './syncs/
 import { syncInfluence, startInfluenceWs } from './syncs/influence.js';
 import { syncSnapshots } from './syncs/snapshots.js';
 import { syncHolders } from './syncs/holders.js';
-import { syncVault } from './syncs/vault.js';
+import { syncVault, startVaultWs } from './syncs/vault.js';
 import { syncCompanies } from './syncs/companies.js';
 import { syncCompanyStarts, startCompanyStartsWs, COMPANY_STARTS_INTERVAL_MS } from './syncs/company-starts.js';
 import { getWsClient } from './etherscan/ws-client.js';
 import { syncPartialSweep, PARTIAL_SWEEP_INTERVAL_MS } from './syncs/partial-sweep.js';
 import { syncLiquidations, startLiquidationsWs, LIQ_INTERVAL_MS } from './syncs/liquidations.js';
-import { syncStaking, syncStakingClaims, syncStakingRotations } from './syncs/staking.js';
+import { syncStaking, syncStakingClaims, syncStakingRotations, startStakingWs } from './syncs/staking.js';
 
 // Job status (mutated by the long-running reconcile/reclassify jobs, read by admin routes).
 // Lives here because both the mutators and the API consumers run in the Next.js process.
@@ -148,6 +148,8 @@ export async function startPoller() {
   startTransfersWs();
   startLiquidationsWs();
   startInfluenceWs();
+  startVaultWs();
+  startStakingWs();
   getWsClient().start();
   setInterval(syncInfluence,        TX_INTERVAL_MS);
   setInterval(syncTransfers,        TX_INTERVAL_MS);
