@@ -22,8 +22,9 @@ export {
 // game MINTs is resolved via the factory's D47 (OpResult) event instead;
 // see server/etherscan/factory-events.js::fetchFactoryTradeContext.
 export const FUNCTION_OP_TYPES = {
-  '0x046d03d1': 'SCRAP',       // scrapInventoryItem(uint256) — in-game: Exfiltrate
-  '0x1afc17b0': 'SCRAP',       // scrapInventoryItems(uint256[],uint256[])
-  '0xf4f98ad5': 'BUY_ASSET',   // buy asset
-  '0x4ea1ecf9': 'LEVEL_UP',    // level up company
+  '0x046d03d1': 'SCRAP',            // scrapInventoryItem(uint256) — in-game: Exfiltrate
+  '0x1afc17b0': 'SCRAP',            // scrapInventoryItems(uint256[],uint256[])
+  '0xf4f98ad5': 'BUY_ASSET',        // buy asset
+  '0x4ea1ecf9': 'LEVEL_UP',         // level up company
+  '0x25c3fa62': 'THIRD_ENTERPRISE', // third-enterprise purchase (burns DIRTY to 0x0)
 };

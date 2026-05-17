@@ -48,8 +48,9 @@ export function classifyTransfer(from, to, amount, txInput = null) {
     if (txInput) {
       const sel = txInput.slice(0, 10).toLowerCase();
       const knownOp = FUNCTION_OP_TYPES[sel];
-      if (knownOp === 'BUY_ASSET') return { kind: 'SPEND', opType: 'BUY_ASSET' };
-      if (knownOp === 'LEVEL_UP')  return { kind: 'SPEND', opType: 'LEVEL_UP'  };
+      if (knownOp === 'BUY_ASSET')        return { kind: 'SPEND', opType: 'BUY_ASSET' };
+      if (knownOp === 'LEVEL_UP')         return { kind: 'SPEND', opType: 'LEVEL_UP'  };
+      if (knownOp === 'THIRD_ENTERPRISE') return { kind: 'SPEND', opType: 'THIRD_ENTERPRISE' };
     }
     // Amount-based fallback for txs whose selector we don't recognise.
     if (amount > 0 && amount % 200 < 0.5 && amount <= 6000)
