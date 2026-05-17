@@ -167,22 +167,28 @@ export function CriminalChartSection({ address, grid, ethPrice = 0 }) {
   const candleW = Math.max(2, (bucketSec / (xMax - xMin)) * pw * 0.7);
 
   // ── Interactions ────────────────────────────────────────────────────────
-  // React's onWheel is registered as passive in newer versions, so
-  // e.preventDefault() inside it is a no-op and the page keeps scrolling.
-  // Attach via addEventListener with passive:false on the SVG element.
+  // Wheel-to-zoom. React's onWheel is registered as passive in newer versions
+  // so preventDefault() inside an onWheel handler is a no-op. Attach via
+  // addEventListener({ passive: false }) on the wrapper div (not the SVG —
+  // some Blink builds route wheel events differently for inline SVG elements,
+  // which is why this stopped working in plain Chromium but kept working in
+  // Brave). Capture phase so we beat any bubbling scroll handlers.
   useEffect(() => {
-    const el = svgRef.current;
+    const el = wrapRef.current;
     if (!el) return;
     const handler = (e) => {
+      // deltaMode 1 = LINE (Firefox sometimes). Normalize to roughly pixels.
+      const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
       e.preventDefault();
-      const factor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
+      e.stopPropagation();
+      const factor = delta > 0 ? 1.15 : 1 / 1.15;
       setUserSpan(prev => {
         const base = prev ?? span;
         return Math.min(SPAN_MAX, Math.max(SPAN_MIN, base * factor));
       });
     };
-    el.addEventListener('wheel', handler, { passive: false });
-    return () => el.removeEventListener('wheel', handler);
+    el.addEventListener('wheel', handler, { passive: false, capture: true });
+    return () => el.removeEventListener('wheel', handler, { capture: true });
   }, [span]);
   function onPointerDown(e) {
     dragRef.current = { startX: e.clientX, startPan: panSec, spanAtStart: span, w };
