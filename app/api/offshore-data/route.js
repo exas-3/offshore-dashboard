@@ -376,25 +376,25 @@ export async function GET() {
     // pool→pool), both classified DEX_*. DISTINCT ON (hash) collapses those
     // per tx, keeping the largest-amount leg.
     const rawTicker = db ? await db`
-      (SELECT DISTINCT ON (hash) hash, 'DEX_SELL' AS etype, from_addr AS addr, amount, timestamp
+      (SELECT DISTINCT ON (hash) hash, 'DEX_SELL' AS etype, from_addr AS addr, amount, timestamp, NULL::text AS result
         FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_SELL' AND amount >= 1000
         ORDER BY hash, amount DESC)
       UNION ALL
-      (SELECT DISTINCT ON (hash) hash, 'DEX_BUY' AS etype, to_addr, amount, timestamp
+      (SELECT DISTINCT ON (hash) hash, 'DEX_BUY' AS etype, to_addr, amount, timestamp, NULL::text
         FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_BUY' AND amount >= 1000
         ORDER BY hash, amount DESC)
       UNION ALL
-      (SELECT hash, op_type AS etype, to_addr AS addr, amount, timestamp
+      (SELECT hash, op_type AS etype, to_addr AS addr, amount, timestamp, result
         FROM transfers WHERE kind='MINT'
           AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP')
         ORDER BY timestamp DESC LIMIT 20)
       UNION ALL
-      (SELECT hash, op_type AS etype, from_addr AS addr, amount, timestamp
+      (SELECT hash, op_type AS etype, from_addr AS addr, amount, timestamp, NULL::text
         FROM transfers WHERE kind='SPEND'
           AND op_type IN ('BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE')
         ORDER BY timestamp DESC LIMIT 10)
       UNION ALL
-      (SELECT NULL::text AS hash, 'STAKE' AS etype, user_addr AS addr, amount::numeric, timestamp
+      (SELECT NULL::text AS hash, 'STAKE' AS etype, user_addr AS addr, amount::numeric, timestamp, NULL::text
         FROM staking_deposits
         ORDER BY timestamp DESC LIMIT 10)
       ORDER BY timestamp DESC LIMIT 60
@@ -407,6 +407,7 @@ export async function GET() {
       hash:     e.hash ?? null,
       kind:     tickerKind[e.etype]  || 'op',
       label:    tickerLabel[e.etype] || e.etype,
+      result:   e.result ?? null,
       amount:   fmtM(Number(e.amount)),
       _amount:  Number(e.amount),
       token:    '$DIRTY',

@@ -942,6 +942,12 @@
 .tm-toast.op    { border-left: 3px solid var(--t-hdr); }
 .tm-toast.stake       { border-left: 3px solid var(--t-warn); }
 .tm-toast.liquidation { border-left: 3px solid var(--t-neg); }
+/* Op outcome overrides the generic left-rail colour: completed → green,
+   busted → red. Applies on top of the .op (or any) base class. */
+.tm-toast.is-completed { border-left: 3px solid var(--t-pos); }
+.tm-toast.is-busted    { border-left: 3px solid var(--t-neg); }
+.tm-toast.is-completed .kind { color: var(--t-pos); border: 1px solid var(--t-pos); }
+.tm-toast.is-busted    .kind { color: var(--t-neg); border: 1px solid var(--t-neg); }
 .tm-toast .kind { font-size: var(--t-fs-xs); letter-spacing: 0.08em; padding: 1px 6px; }
 .tm-toast.buy .kind         { color: var(--t-pos);  border: 1px solid var(--t-pos); }
 .tm-toast.sell .kind        { color: var(--t-neg);  border: 1px solid var(--t-neg); }
@@ -950,7 +956,27 @@
 .tm-toast.liquidation .kind { color: var(--t-neg);  border: 1px solid var(--t-neg); }
 .tm-toast .amt { color: var(--t-num); font-weight: 500; }
 .tm-toast .amt em { font-style: normal; color: var(--t-fg-mut); margin-left: 4px; }
-.tm-toast .addr { color: var(--t-fg-mut); margin-left: auto; font-size: var(--t-fs-xs); }
+.tm-toast .addr {
+  color: var(--t-fg-mut);
+  margin-left: auto;
+  font-size: var(--t-fs-xs);
+  text-decoration: none;
+}
+a.tm-toast-noop, .tm-toast a.addr {
+  cursor: pointer;
+  transition: color 0.12s;
+}
+.tm-toast a.addr:hover { color: var(--t-fg); text-decoration: underline; }
+.tm-toast .x {
+  cursor: pointer;
+  color: var(--t-fg-mut);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px 2px;
+  margin-left: 4px;
+  user-select: none;
+}
+.tm-toast .x:hover { color: var(--t-fg); }
 @keyframes tm-toast-in {
   from { transform: translateX(40px); opacity: 0; }
   to   { transform: translateX(0); opacity: 1; }

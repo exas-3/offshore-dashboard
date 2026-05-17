@@ -451,7 +451,7 @@ export function Sortable({ label, k, sortKey, sortDir, on }) {
 
 // ── Toasts ─────────────────────────────────────────────────────────────────
 
-export function Toasts({ items, ttl = 8000 }) {
+export function Toasts({ items, ttl = 4000 }) {
   const [stack, setStack] = useState([]);
   const seenRef  = useRef(null);
   const mountRef = useRef(false);
@@ -474,15 +474,42 @@ export function Toasts({ items, ttl = 8000 }) {
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [items]);
 
+  function dismiss(id) {
+    setStack((s) => s.map((x) => x.id === id ? { ...x, out: true } : x));
+    setTimeout(() => setStack((s) => s.filter((x) => x.id !== id)), 380);
+  }
+
   return (
     <div className="tm-toasts">
-      {stack.map((t) => (
-        <div key={t.id} className={`tm-toast ${(t.kind || 'op').toLowerCase()}${t.out ? ' is-out' : ''}`}>
-          <span className="kind">{t.label || t.kind}</span>
-          <span className="amt">{t.amount} <em>{t.token}</em></span>
-          <span className="addr">{t.addr}</span>
-        </div>
-      ))}
+      {stack.map((t) => {
+        // Result-based colour: 'completed' → success (green), 'busted' → fail (red).
+        // Falls back to the kind class for non-op toasts (buy / sell / stake).
+        const resultCls = t.result === 'completed' ? 'is-completed'
+                        : t.result === 'busted'    ? 'is-busted'
+                        : '';
+        return (
+          <div key={t.id} className={`tm-toast ${(t.kind || 'op').toLowerCase()} ${resultCls}${t.out ? ' is-out' : ''}`}>
+            <span className="kind">{t.label || t.kind}</span>
+            <span className="amt">{t.amount} <em>{t.token}</em></span>
+            {t.addrFull ? (
+              <a
+                className="addr"
+                href={`/criminal/${t.addrFull.toLowerCase()}`}
+                onClick={(e) => { e.stopPropagation(); }}
+                title={t.addrFull}
+              >{t.addr}</a>
+            ) : (
+              <span className="addr">{t.addr}</span>
+            )}
+            <span
+              className="x"
+              role="button"
+              aria-label="dismiss"
+              onClick={(e) => { e.stopPropagation(); dismiss(t.id); }}
+            >×</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
