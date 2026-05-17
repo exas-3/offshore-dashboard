@@ -340,9 +340,20 @@ export function CriminalChartSection({ address, grid, ethPrice = 0 }) {
               const d = new Date(now * 1000);
               const z = (n) => String(n).padStart(2, '0');
               const clock = `${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
+              // Position the clock under the "now" vertical line. Clamp into
+              // [PAD.l, w - PAD.r] so it stays on screen when the user has
+              // panned away from now.
+              const left = Math.max(PAD.l, Math.min(w - PAD.r, xNow));
               return (
-                <div style={{ textAlign: 'center', color: 'var(--t-fg-soft)', fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs-xs)', paddingTop: 4 }}>
-                  {clock}
+                <div style={{ position: 'relative', height: 14, marginTop: 2, width: w }}>
+                  <div style={{
+                    position: 'absolute',
+                    left,
+                    transform: 'translateX(-50%)',
+                    color: 'var(--t-hdr)',
+                    fontFamily: 'var(--t-font)',
+                    fontSize: 'var(--t-fs-xs)',
+                  }}>{clock}</div>
                 </div>
               );
             })()}
