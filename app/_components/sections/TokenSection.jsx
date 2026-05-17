@@ -13,7 +13,7 @@ export function TokenSection({ D, grid }) {
   const [econGran, setEconGran] = useState(() =>
     typeof window !== 'undefined' && window.innerWidth <= 720 ? 'daily' : 'hourly'
   );
-  const [infGran, setInfGran] = useState('daily');
+  const [infGran, setInfGran] = useState('hourly');
 
   const inf = D.influenceFlow.totals;
   const infMinted      = (inf.purchased || 0) + (inf.refunded || 0);

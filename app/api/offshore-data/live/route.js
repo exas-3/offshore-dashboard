@@ -46,7 +46,7 @@ export async function GET(request) {
     const now   = Math.floor(Date.now() / 1000);
     const db    = getDb();
 
-    const [dirtyPrice, infCost, latestBlock, tps, ethFromDb, dawRow, opsRow, latestOpRow, newOpsRows, latestEventRow, companiesRow, activeOpsRow, newLiqsRows] = await Promise.all([
+    const [dirtyPrice, infCost, latestBlock, tps, ethFromDb, dawRow, opsRow, latestOpRow, newOpsRows, latestEventRow, companiesRow, activeOpsRow, newLiqsRows, recentStartsRows] = await Promise.all([
       getCachedDirtyPrice().catch(() => null),
       getCachedInfCost().catch(() => null),
       getLatestBlock().catch(() => null),
@@ -110,6 +110,18 @@ export async function GET(request) {
         ORDER BY c.end_time ASC NULLS LAST
       `.catch(() => []) : Promise.resolve([]),
       db ? db`SELECT COUNT(*)::int AS cnt FROM companies WHERE active = TRUE`.catch(() => []) : Promise.resolve([]),
+      // Last 5 operations that started: start_time = end_time - duration per trade_type.
+      db ? db`
+        SELECT address, owner, end_time, trade_type,
+               (end_time - (CASE trade_type
+                              WHEN 'EXTORTION' THEN 300
+                              WHEN 'ARMS_DEAL' THEN 1800
+                              WHEN 'DRUG_DEAL' THEN 5400
+                              ELSE 5400 END)) AS start_time
+        FROM companies
+        WHERE active = TRUE AND trade_type IS NOT NULL AND end_time > 0
+        ORDER BY start_time DESC LIMIT 5
+      `.catch(() => []) : Promise.resolve([]),
       // Newly-liquidated positions since last poll
       db && since > 0 ? db`
         SELECT owner AS addr, liq_price, deactivated_at AS timestamp
@@ -206,6 +218,15 @@ export async function GET(request) {
       _ts:      Number(r.timestamp),
     }));
 
+    const recentStarts = (recentStartsRows || []).map(r => ({
+      company:    r.address,
+      wallet:     shortAddr(r.owner),
+      walletFull: r.owner,
+      opType:     r.trade_type,
+      startTime:  Number(r.start_time),
+      endTime:    Number(r.end_time),
+    }));
+
     return new NextResponse(JSON.stringify({
       block:       latestBlock ?? null,
       tps:         tps ?? null,
@@ -221,6 +242,7 @@ export async function GET(request) {
       newOps,
       newLiqs,
       latestEvent,
+      recentStarts,
     }), { headers: { 'Content-Type': 'application/json', ...CORS } });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500, headers: CORS });

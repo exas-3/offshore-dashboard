@@ -22,7 +22,9 @@ function Counter({ k, v, cls, tickKey }) {
   );
 }
 
-export function LiveSidebar({ D, counters, ops, watch, trades, onWallet, aliases = {} }) {
+const OP_SHORT = { DRUG_DEAL: 'drug', ARMS_DEAL: 'arms', EXTORTION: 'ext' };
+
+export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = [], onWallet, aliases = {} }) {
   const [opsMatrix, setOpsMatrix] = useState(() => D.opsMatrix ?? null);
   const [tick, setTick] = useState(0);
 
@@ -118,6 +120,44 @@ export function LiveSidebar({ D, counters, ops, watch, trades, onWallet, aliases
             <span className="r"><span className="buf tm-neg">BUST</span></span>
           </div>
         ))}
+      </div>
+
+      <div className="tm-live-panel">
+        <div className="tm-live-panel-h">
+          <span><b>last</b> started</span>
+          <span className="rule" />
+          <span className="v">{recentStarts.length}</span>
+        </div>
+        {recentStarts.length === 0 ? (
+          <span className="dim" style={{ fontSize: 'var(--t-fs-xs)', padding: '4px 0', display: 'block' }}>no active ops</span>
+        ) : (
+          recentStarts.map(s => {
+            const endsIn = fmtCountdownLocal(s.endTime);
+            const startedAgo = (() => {
+              const ago = Math.floor(Date.now() / 1000) - s.startTime;
+              if (ago < 0)     return 'now';
+              if (ago < 60)    return `${ago}s ago`;
+              if (ago < 3600)  return `${Math.floor(ago / 60)}m ago`;
+              return `${Math.floor(ago / 3600)}h ago`;
+            })();
+            return (
+              <div
+                key={s.company}
+                className="tm-watch safe"
+                style={{ cursor: 'pointer' }}
+                onClick={() => s.walletFull && onWallet && onWallet(s.walletFull)}
+              >
+                <span className="l">
+                  <span className="id">{aliases[s.walletFull] || s.wallet}</span>
+                  <span className="sub">{OP_SHORT[s.opType] || s.opType?.toLowerCase()} · {startedAgo}</span>
+                </span>
+                <span className="r">
+                  <span className="ends">{endsIn}</span>
+                </span>
+              </div>
+            );
+          })
+        )}
       </div>
 
       <div className="tm-live-panel">

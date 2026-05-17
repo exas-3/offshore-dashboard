@@ -123,6 +123,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   const [watchRaw, setWatchRaw] = useState(() => D.liveTrades || []);
   const [liveTicker, setLiveTicker] = useState(() => D.liveTradeTicker || []);
   const [latestNewOps, setLatestNewOps] = useState([]);
+  const [recentStarts, setRecentStarts] = useState(() => D.recentStarts || []);
 
   const lastOpTsRef  = useRef(
     (D.recentOps && D.recentOps.length > 0) ? (D.recentOps[0]._ts || 0) : 0
@@ -186,6 +187,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
           setWatchRaw(d.liveTrades);
           setLiveTrades(d.liveTrades);
         }
+        if (d.recentStarts) setRecentStarts(d.recentStarts);
         if (d.latestEvent && d.latestEvent._ts > lastEventTs) {
           lastEventTs = d.latestEvent._ts;
           setLiveTicker((prev) => {
@@ -270,7 +272,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
       onSearch={setSearch}
       sideFooter={sideFoot}
       rail={rail}
-      sideContent={<LiveSidebar D={D} counters={counters} ops={ops} watch={watch} trades={liveTicker} onWallet={openWallet} aliases={aliases} />}
+      sideContent={<LiveSidebar D={D} counters={counters} ops={ops} watch={watch} trades={liveTicker} recentStarts={recentStarts} onWallet={openWallet} aliases={aliases} />}
       railLabel="criminal"
       theme={theme}
       onThemeChange={onThemeChange}
