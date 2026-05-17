@@ -241,8 +241,6 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   const sideFoot = [
     { k: 'rpc',   v: 'live', cls: 'pos' },
     { k: 'block', v: counters.block.toLocaleString() },
-    { k: 'gas',   v: counters.gas.toFixed(4) },
-    { k: 'tps',   v: counters.tps > 0 ? counters.tps.toLocaleString() : '—' },
   ];
 
   const rail = showRail ? (
