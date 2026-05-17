@@ -375,7 +375,7 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
   return (
     <TerminalShell
       mode="standalone"
-      brand={{ name: 'OFFSHORE', sub: 'community dashboard · v0.6.37-beta' }}
+      brand={{ name: 'OFFSHORE', sub: 'community dashboard · v0.6.38-beta' }}
       nav={NAV}
       apps={D.apps}
       activeAppId={activeApp}

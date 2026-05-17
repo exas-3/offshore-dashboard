@@ -28,6 +28,28 @@ export async function fetchTps(numBlocks = 6) {
   return _tpsCache;
 }
 
+// Parse a raw chain log (from eth_getLogs OR eth_subscribe) into the shape
+// the sync pipeline expects. Same parsing on both paths keeps the
+// downstream code identical regardless of how the log arrived.
+export function parseTransferLog(log) {
+  const blockNum = parseInt(log.blockNumber, 16);
+  const logIndex = parseInt(log.logIndex, 16);
+  const from     = ('0x' + log.topics[1].slice(26)).toLowerCase();
+  const to       = ('0x' + log.topics[2].slice(26)).toLowerCase();
+  const amount   = fromWei(BigInt(log.data).toString());
+  const kind     = from === ZERO ? 'MINT' : to === ZERO ? 'BURN' : 'TRANSFER';
+  return {
+    hash:      log.transactionHash,
+    logIndex,
+    blockNum,
+    timestamp: blockNum + GENESIS,
+    fromAddr:  from,
+    toAddr:    to,
+    amount,
+    kind,
+  };
+}
+
 // ERC-20 Transfer logs for [fromBlock, toBlock].
 export async function fetchTransferLogs(tokenAddress, fromBlock, toBlock) {
   const logs = await rpcPost('eth_getLogs', [{
@@ -36,25 +58,7 @@ export async function fetchTransferLogs(tokenAddress, fromBlock, toBlock) {
     fromBlock: '0x' + fromBlock.toString(16),
     toBlock:   '0x' + toBlock.toString(16),
   }]);
-
-  return logs.map(log => {
-    const blockNum = parseInt(log.blockNumber, 16);
-    const logIndex = parseInt(log.logIndex, 16);
-    const from     = ('0x' + log.topics[1].slice(26)).toLowerCase();
-    const to       = ('0x' + log.topics[2].slice(26)).toLowerCase();
-    const amount   = fromWei(BigInt(log.data).toString());
-    const kind     = from === ZERO ? 'MINT' : to === ZERO ? 'BURN' : 'TRANSFER';
-    return {
-      hash:      log.transactionHash,
-      logIndex,
-      blockNum,
-      timestamp: blockNum + GENESIS,
-      fromAddr:  from,
-      toAddr:    to,
-      amount,
-      kind,
-    };
-  });
+  return logs.map(parseTransferLog);
 }
 
 export async function fetchTokenBalance(tokenAddr, walletAddr) {

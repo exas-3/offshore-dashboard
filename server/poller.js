@@ -4,7 +4,7 @@ import {
 import {
   getDistinctMintHashes, batchUpdateMintOpTypes, upsertTransfers,
 } from '../lib/index.js';
-import { syncTransfers, backfillSupplyHistory } from './syncs/transfers.js';
+import { syncTransfers, startTransfersWs, backfillSupplyHistory } from './syncs/transfers.js';
 import { syncInfluence } from './syncs/influence.js';
 import { syncSnapshots } from './syncs/snapshots.js';
 import { syncHolders } from './syncs/holders.js';
@@ -20,7 +20,10 @@ import { syncStaking, syncStakingClaims, syncStakingRotations } from './syncs/st
 // Lives here because both the mutators and the API consumers run in the Next.js process.
 export const reconcileStatus = { running: false, done: 0, total: 0, added: 0, error: null };
 
-const TX_INTERVAL_MS        = 15_000;
+// TX polling: was 15s when polling-only. With WS as the fast path, this
+// runs as a safety-net catch-up — 60s leaves plenty of room to fill any
+// brief WS-disconnect gaps without piling RPC.
+const TX_INTERVAL_MS        = 60_000;
 const SNAPSHOT_INTERVAL_MS  = 60_000;
 const HOLDERS_INTERVAL_MS   = 15 * 60_000;
 const COMPANIES_INTERVAL_MS = 2 * 60_000;
@@ -139,9 +142,10 @@ export async function startPoller() {
   syncCompanies();
   syncCompanyStarts();
   syncPartialSweep();
-  // Bring up the WS client and register the live TradeStarted subscription.
+  // Bring up the WS client and register live subscriptions.
   // No-op if ALCHEMY_WS_URL isn't set — polling fallback alone keeps running.
   startCompanyStartsWs();
+  startTransfersWs();
   getWsClient().start();
   setInterval(syncInfluence,        TX_INTERVAL_MS);
   setInterval(syncTransfers,        TX_INTERVAL_MS);
