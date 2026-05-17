@@ -112,7 +112,7 @@ Classified at index time into `kind` + `op_type` by **destination-first** logic 
 
 | kind | trigger | op_types |
 |------|---------|----------|
-| `MINT` | from = `0x0` | `DRUG_DEAL`, `ARMS_DEAL`, `EXTORTION`, `PARTIAL`, `SCRAP`, `FAIL` (legacy) |
+| `MINT` | from = `0x0` | `DRUG_DEAL`, `ARMS_DEAL`, `EXTORTION`, `SCRAP` |
 | `SPEND` / `BURN` | to = `0x0` (selector-aware) | `BUY_ASSET`, `LEVEL_UP`, `THIRD_ENTERPRISE`, `BURN` |
 | `TRANSFER` | DEX pool involved | `DEX_BUY`, `DEX_SELL` |
 | `TRANSFER` | staking contract involved | `STAKE_DEPOSIT`, `STAKE_WITHDRAW` |
@@ -120,10 +120,26 @@ Classified at index time into `kind` + `op_type` by **destination-first** logic 
 
 Selector-based SPEND only fires when the Transfer's destination is the zero address — otherwise the row falls through to a TRANSFER classification. This avoids the old bug where any DIRTY transfer inside a `levelUp()`/`buyAsset()` tx was tagged SPEND regardless of where the tokens went.
 
-**MINT op_type resolution for game ops:** uses the factory's D47 (OpResult) event topic `0xd47648dbe7...`, **not** the company `tradeType()` selector (`0x6fd47b44`) — that selector returns 2 for every company and produced ~30% mis-tagging historically. `word0` of D47's data is 750/250/80 for drug/arms/extortion. `fetchFactoryTradeContext` returns a `d47TxMap` keyed by tx hash for sync paths to consume.
+#### Game-op MINTs: source of truth is the trade time-window, not the payout amount
+
+Every game op (drug/arms/extortion) executes on a **company contract** that runs one trade at a time. The company's storage holds:
+- slot 4 = trade start ts
+- slot 5 = trade end ts
+
+`end - start` is exactly **300 s = EXTORTION**, **1800 s = ARMS_DEAL**, **5400 s = DRUG_DEAL**. This is the canonical type signal — it's set when the trade starts and stays consistent through the trade window. `getCompanyTradeTypesFromStorage` (`server/etherscan/fetchers.js`) and `companies.trade_type` in the DB are populated from this.
+
+For the sync path, `server/etherscan/factory-events.js::fetchFactoryTradeContext` pulls factory event logs in batches and exposes:
+- `d47Map` / `d47TxMap` — keyed by `txHash[:logIndex]`, returns the trade type (`word0` of the D47 OpResult event: 750→DRUG, 250→ARMS, 80→EXTORTION). Used as the live identifier during sync.
+- `companyMap` — `txHash:logIndex → company` from DirtyPaid / TradeExited events. Lets a sync path read the company's `tradeType()` selector at `blockNum-1` (still inside the active trade window) as a fallback.
+
+**Do NOT use the bare `tradeType()` selector or payout amount to infer the trade type.** Selector value drift was the source of ~30 % mis-tagging historically; payout amounts (100 / 115 / 130 DIRTY) only tell you *that* an op completed, not which kind.
+
+**`PARTIAL` is legacy / transient.** It's the destination-first classifier's fallback when neither the D47 event nor the company-type lookup resolved at sync time. Any remaining `PARTIAL` row is a backfill candidate — its tx interacts with exactly one factory event (`DirtyPaid` or `TradeExited`) that names the company, and reading that company's storage slots / `tradeType()` at `blockNum-1` produces the real type. `scripts/reclassify-partials.mjs` walks the existing rows; new sync writes should not produce PARTIAL — if they do, the D47 fetch failed and the row should be re-resolved on the next sweep, not displayed.
+
+The UI label maps (`mapOpType` in `app/api/offshore-data/helpers.js`, `OP_LABELS_SHORT` in `app/_components/trade-helpers.jsx`) treat `PARTIAL` / `FAIL` as unknown and render the row's `op_type` raw rather than collapsing to a generic `"op"` — so any leftover legacy row is visible and reportable.
 
 **`result` column on `transfers`** (text, values `'completed' | 'busted' | NULL`):
-- populated for MINTs of `DRUG_DEAL`/`ARMS_DEAL`/`EXTORTION`
+- populated for MINTs of `DRUG_DEAL` / `ARMS_DEAL` / `EXTORTION`
 - `completed` ⟺ amount ∈ {100, 115, 130}; everything else (including the ~7-DIRTY consolation refund for busts) is `'busted'`
 
 ### Company trade type

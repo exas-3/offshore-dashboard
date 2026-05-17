@@ -1140,3 +1140,37 @@
     rgba(255,176,0,0.025),
     transparent 240px);
 }
+
+/* Heatmap row-scroll: matches .tm-main-scroll site scrollbar style. */
+.tm-heatmap-scroll::-webkit-scrollbar { width: 10px; background: var(--t-bg); }
+.tm-heatmap-scroll::-webkit-scrollbar-thumb { background: var(--t-rule); border: 2px solid var(--t-bg); }
+
+/* ── Watermark on every region body (table / chart container). ──────────
+   Anti-screenshot signature pinned to the bottom-right of each region,
+   non-interactive, theme-aware. Use .no-watermark on the body to suppress
+   it on small text-only regions if needed. */
+.tm-region-body { position: relative; }
+.tm-region-body:not(.no-watermark)::after {
+  content: 'offshoredashboard.xyz';
+  position: absolute;
+  right: 6px; bottom: 4px;
+  pointer-events: none;
+  font-family: var(--t-font);
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  color: var(--t-fg-soft);
+  opacity: 0.35;
+  z-index: 1;
+}
+
+/* ── Watch row: companies sits alongside criminal-watch on wide screens.
+   On narrower viewports, both span the full row with the chart on top
+   and companies stacked below. */
+@media (max-width: 1100px) {
+  #sec-watch [data-cell-id="watch-chart"],
+  #sec-watch [data-cell-id="watch-companies"] {
+    grid-column: span 12 !important;
+  }
+  #sec-watch [data-cell-id="watch-chart"]     { order: 0; }
+  #sec-watch [data-cell-id="watch-companies"] { order: 1; }
+}

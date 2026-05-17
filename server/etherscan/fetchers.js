@@ -163,16 +163,23 @@ export async function getTradeStates(companyAddrs, timeoutMs = 20000) {
 // Returns Map<companyAddrLower, 'DRUG_DEAL'|'ARMS_DEAL'|'EXTORTION'|null>.
 // The on-chain `tradeType()` selector (0x6fd47b44) returns 2 for every company so
 // it cannot be used; per-trade type lookups via storage slots are the reliable path.
-export async function getCompanyTradeTypesFromStorage(companyAddrs, timeoutMs = 20000) {
+export async function getCompanyTradeTypesFromStorage(companyAddrs, blockMap = null, timeoutMs = 20000) {
+  // Back-compat shim: if a number is passed as 2nd arg, treat it as timeoutMs.
+  if (typeof blockMap === 'number') { timeoutMs = blockMap; blockMap = null; }
   if (!companyAddrs.length) return new Map();
   const out = new Map();
   const CHUNK = 50;  // 2 calls per company → ~100 reqs/chunk
+  const blockTagFor = (addr) => {
+    const bn = blockMap?.get?.(addr.toLowerCase());
+    return bn ? '0x' + (Number(bn) - 1).toString(16) : 'latest';
+  };
   for (let i = 0; i < companyAddrs.length; i += CHUNK) {
     const chunk = companyAddrs.slice(i, i + CHUNK);
     const reqs = [];
     chunk.forEach((addr, j) => {
-      reqs.push({ method: 'eth_getStorageAt', params: [addr, '0x4', 'latest'], id: j * 2     });
-      reqs.push({ method: 'eth_getStorageAt', params: [addr, '0x5', 'latest'], id: j * 2 + 1 });
+      const tag = blockTagFor(addr);
+      reqs.push({ method: 'eth_getStorageAt', params: [addr, '0x4', tag], id: j * 2     });
+      reqs.push({ method: 'eth_getStorageAt', params: [addr, '0x5', tag], id: j * 2 + 1 });
     });
     const res = await rpcBatch(reqs, timeoutMs).catch(() => []);
     const byId = new Map();

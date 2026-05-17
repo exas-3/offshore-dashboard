@@ -26,9 +26,9 @@ export default function Page({ initialAddress = '' } = {}) {
   const [data, setData] = useState(null);
   const [theme, setTheme] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('offshore-theme') || 'paper';
+      return localStorage.getItem('offshore-theme') || 'amber';
     }
-    return 'paper';
+    return 'amber';
   });
 
   useEffect(() => { setFavicon(theme); }, [theme]);

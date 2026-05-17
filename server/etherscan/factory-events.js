@@ -10,7 +10,34 @@ const E_EXITED       = '0xf20fbbc5dd518513b4b0381c1904c0751ca7493753ec53a73e651e
 const E_PAYOUT       = '0xa082f97b8bead66307ae367bd14b2366e03c2e963493a9f269501d884cd1a502';
 const E_COMPLETE     = '0x55458b8d3210ff0a2d3612a4b3639021fd38d66d563562a98ca8b7d5e7930f70';
 const E_D47          = '0xd47648dbe74844d41eea0e3e6bf1d3f6f03cd31691e10e6edc7376d52b934dbd';
+// Trade-start event: emitted on factory at the moment a player starts a new
+// trade on a company. topic1 = company, topic2 = player, data = stake (uint256).
+// The event doesn't carry the trade type itself; we read the company's
+// storage slots 4/5 right after the event fires to resolve duration → type.
+export const E_TRADE_STARTED = '0x767d03cd29c82cd4501c62502b07069d2c1158df0c0ed0f73b8565cb1bfadc19';
 const SEL_TRADE_TYPE = '0x6fd47b44';
+
+// Fetch every (company, player) pair that had a TradeStarted event in the
+// given block range. Returns Map<companyAddrLower, playerAddrLower>. Player
+// == company owner for this protocol, so this is also the canonical owner
+// signal for the light upsert path.
+export async function fetchStartedCompanies(fromBlock, toBlock) {
+  const logs = await rpcPost('eth_getLogs', [{
+    address: FACTORY_ADDR,
+    topics:  [E_TRADE_STARTED],
+    fromBlock: '0x' + fromBlock.toString(16),
+    toBlock:   '0x' + toBlock.toString(16),
+  }]);
+  const out = new Map();
+  for (const l of logs ?? []) {
+    const t1 = l.topics?.[1], t2 = l.topics?.[2];
+    if (!t1 || !t2) continue;
+    const company = ('0x' + t1.slice(26)).toLowerCase();
+    const player  = ('0x' + t2.slice(26)).toLowerCase();
+    if (!out.has(company)) out.set(company, player);
+  }
+  return out;
+}
 
 // Batch-fetch transaction input data for a list of tx hashes.
 // Returns Map<hash lowercase, inputHex>

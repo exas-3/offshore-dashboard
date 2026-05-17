@@ -1,7 +1,7 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Region, KV, KVSep, BarRow2, GridCell, fmt } from '../terminal.jsx';
-import { fmtCountdownLocal, OP_LABELS_SHORT } from '../trade-helpers.jsx';
+import { OP_LABELS_SHORT } from '../trade-helpers.jsx';
 
 function relTime(ts) {
   const diff = Math.floor(Date.now() / 1000) - Number(ts);
@@ -19,22 +19,23 @@ function fmtMadeMan(ts) {
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;
 }
 
-export function WalletInspectorSection({ address, grid, ethPrice = 0 }) {
+export function WalletInspectorSection({ address, grid, ethPrice = 0, liveData = null }) {
   const { spans, heights, resize } = grid;
   const isFullAddr = /^0x[0-9a-fA-F]{40}$/.test(address);
   if (!isFullAddr) return null;
 
   const [dbData,   setDbData]   = useState(null);
-  const [liveData, setLiveData] = useState(null);
   const [loading,  setLoading]  = useState(false);
   const [, setTick]             = useState(0);
-  const compAddrsRef = useRef([]);
 
   useEffect(() => {
     const t = setInterval(() => setTick(n => n + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
+  // /api/players gives us the transfers history + aggregates. Live monitor
+  // data (companies, balances) arrives via the `liveData` prop driven by the
+  // single parent-level poll in offshore.jsx (3 s).
   useEffect(() => {
     let live = true;
     const addr = address.toLowerCase();
@@ -44,45 +45,45 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0 }) {
         .then(r => r.json())
         .then(db => {
           if (live) setDbData(db?.error ? null : db);
+          if (live && showLoader) setLoading(false);
         })
-        .catch(() => {});
+        .catch(() => { if (live && showLoader) setLoading(false); });
     };
-    const loadMonitor = () =>
-      fetch(`/api/monitor?wallet=${addr}`)
-        .then(r => r.json())
-        .then(d => {
-          if (live && d && !d.error) {
-            compAddrsRef.current = (d.companies ?? []).map(c => c.company);
-            setLiveData(d);
-          }
-        })
-        .catch(() => {});
-
-    Promise.all([loadPlayers(true), loadMonitor()]).then(() => {
-      if (live) setLoading(false);
-    });
-
-    // Keep recent activity / aggregates in sync with the live ops feed.
+    loadPlayers(true);
     const t = setInterval(() => loadPlayers(false), 10_000);
     return () => { live = false; clearInterval(t); };
   }, [address]);
 
-  useEffect(() => {
-    const poll = () => {
-      const addrs = compAddrsRef.current;
-      if (!addrs.length) return;
-      fetch(`/api/monitor/states?addrs=${addrs.join(',')}`)
-        .then(r => r.json())
-        .then(d => {
-          if (!d?.error && d.companies) {
-            setLiveData(prev => prev ? { ...prev, companies: d.companies } : prev);
-          }
-        })
-        .catch(() => {});
-    };
-    const t = setInterval(poll, 1_000);
-    return () => clearInterval(t);
-  }, [address]);
+  // Synthetic "in-progress" activity rows derived from the live companies
+  // array — duration → op_type lets the recent-activity table surface a
+  // freshly-started op in ≤3 s without waiting for syncCompanyStarts.
+  const syntheticInProgress = useMemo(() => {
+    if (!liveData?.companies) return [];
+    const out = [];
+    for (const c of liveData.companies) {
+      if (!c.active || !(c.endTime > 0) || !(c.startTime > 0)) continue;
+      const dur = Number(c.endTime) - Number(c.startTime);
+      const opType = dur === 300 ? 'EXTORTION' : dur === 1800 ? 'ARMS_DEAL' : dur === 5400 ? 'DRUG_DEAL' : null;
+      if (!opType) continue;
+      out.push({
+        hash:      c.company,
+        log_index: 0,
+        timestamp: c.startTime,
+        from_addr: '0x0000000000000000000000000000000000000000',
+        to_addr:   address.toLowerCase(),
+        amount:    null,
+        kind:      'MINT',
+        op_type:   opType,
+        result:    'in-progress',
+      });
+    }
+    return out;
+  }, [liveData, address]);
+  const activityRows = useMemo(() => {
+    const all = [...(dbData?.activity ?? []), ...syntheticInProgress];
+    all.sort((a, b) => Number(b.timestamp) - Number(a.timestamp) || Number(b.log_index) - Number(a.log_index));
+    return all;
+  }, [dbData, syntheticInProgress]);
 
   // ── Region: indexed stats (4) ─────────────────────────────────────────
   const indexedStats = dbData?.stats ? (
@@ -117,9 +118,9 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0 }) {
   );
 
   // ── Region: recent activity (8) ───────────────────────────────────────
-  const recentActivity = dbData?.activity?.length > 0 ? (
-    <Region title="recent activity" sub={`${dbData.activity.length} txs`}>
-      <div className="tm-scroll-bl" style={{ maxHeight: 400, overflowY: 'auto' }}>
+  const recentActivity = activityRows.length > 0 ? (
+    <Region title="recent activity" sub={`${activityRows.length} txs`}>
+      <div className="tm-scroll-bl" style={{ maxHeight: 350, overflowY: 'auto' }}>
         <table className="tm-tab tm-tab-bl" style={{ width: '100%', tableLayout: 'fixed' }}>
           <thead style={{ position: 'sticky', top: 0, background: 'var(--t-bg)', zIndex: 1 }}>
             <tr>
@@ -130,14 +131,15 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0 }) {
             </tr>
           </thead>
           <tbody>
-            {dbData.activity.map(a => {
-              const playerLc  = address.toLowerCase();
-              const amt       = Number(a.amount) || 0;
+            {activityRows.map(a => {
+              const playerLc   = address.toLowerCase();
+              const inProgress = a.result === 'in-progress';
+              const amt        = Number(a.amount) || 0;
               const isIncoming = a.kind === 'MINT' || (a.kind === 'TRANSFER' && a.to_addr === playerLc);
-              const signed    = isIncoming ? amt : -amt;
-              const baseLabel = OP_LABELS_SHORT[a.op_type] || (a.op_type ? a.op_type.toLowerCase() : a.kind.toLowerCase());
-              const mark      = a.result === 'busted' ? '✗' : a.result === 'completed' ? '✓' : '';
-              const markCls   = a.result === 'busted' ? 'neg' : a.result === 'completed' ? 'pos' : '';
+              const signed     = isIncoming ? amt : -amt;
+              const baseLabel  = OP_LABELS_SHORT[a.op_type] || (a.op_type ? a.op_type.toLowerCase() : a.kind.toLowerCase());
+              const mark       = inProgress ? '⏳' : a.result === 'busted' ? '✗' : a.result === 'completed' ? '✓' : '';
+              const markCls    = inProgress ? 'warn' : a.result === 'busted' ? 'neg' : a.result === 'completed' ? 'pos' : '';
               return (
                 <tr key={`${a.hash}:${a.log_index}`}>
                   <td className="dim" style={{ fontSize: 'var(--t-fs-xs)' }}>{relTime(a.timestamp)}</td>
@@ -145,13 +147,17 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0 }) {
                     {mark && <span className={markCls} style={{ marginRight: 4 }}>{mark}</span>}
                     {baseLabel}
                   </td>
-                  <td className={`num ${signed > 0 ? 'pos' : signed < 0 ? 'neg' : 'dim'}`} style={{ fontSize: 'var(--t-fs-xs)' }}>
-                    {signed > 0 ? '+' : signed < 0 ? '−' : ''}{fmt.k(Math.abs(signed))}
+                  <td className={`num ${inProgress ? 'dim' : signed > 0 ? 'pos' : signed < 0 ? 'neg' : 'dim'}`} style={{ fontSize: 'var(--t-fs-xs)' }}>
+                    {inProgress ? '—' : `${signed > 0 ? '+' : signed < 0 ? '−' : ''}${fmt.k(Math.abs(signed))}`}
                   </td>
                   <td>
-                    <a href={`https://mega.etherscan.io/tx/${a.hash}`} target="_blank" rel="noopener noreferrer" className="dim" style={{ fontSize: 'var(--t-fs-xs)', textDecoration: 'none' }}>
-                      {a.hash.slice(-6)}↗
-                    </a>
+                    {inProgress ? (
+                      <span className="dim" style={{ fontSize: 'var(--t-fs-xs)' }}>{a.hash.slice(0, 6)}</span>
+                    ) : (
+                      <a href={`https://mega.etherscan.io/tx/${a.hash}`} target="_blank" rel="noopener noreferrer" className="dim" style={{ fontSize: 'var(--t-fs-xs)', textDecoration: 'none' }}>
+                        {a.hash.slice(-6)}↗
+                      </a>
+                    )}
                   </td>
                 </tr>
               );
@@ -165,67 +171,6 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0 }) {
       <div className="dim" style={{ fontSize: 'var(--t-fs-xs)', padding: '4px 0' }}>
         {loading ? 'loading…' : 'no activity'}
       </div>
-    </Region>
-  );
-
-  // ── Region: companies (4) — live (active) + chilling (idle) ──────────
-  const allCompanies   = liveData?.companies ?? [];
-  const liveCompanies_ = allCompanies.filter(c => c.active && c.endTime > 0);
-  const chilling       = allCompanies.filter(c => !(c.active && c.endTime > 0));
-  const liveEth        = ethPrice || liveData?.currentEthPrice || 0;
-  const renderLiveRow = (c) => {
-    const buf = liveEth && c.liqPrice
-      ? Math.round((liveEth - (Number(BigInt(c.liqPrice) / 10n ** 12n) / 1e6)) * 100) / 100
-      : null;
-    return (
-      <div key={c.company} className="tm-kv" style={{ marginBottom: 2 }}>
-        <span className="k" style={{ fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs-xs)' }}>
-          <span className="pos" style={{ marginRight: 4 }}>●</span>
-          {c.company.slice(0, 6)}…{c.company.slice(-4)}
-          {c.autoTradeEnabled && <span className="dim"> auto</span>}
-        </span>
-        <span className={`v ${buf == null ? '' : buf >= 0 ? 'pos' : 'neg'}`} style={{ fontSize: 'var(--t-fs-xs)' }}>
-          {buf == null ? '—' : `${buf >= 0 ? '+' : ''}${buf.toFixed(2)}`}
-          <span className="dim"> {fmtCountdownLocal(c.endTime)}</span>
-        </span>
-      </div>
-    );
-  };
-  const renderChillingRow = (c) => {
-    const now = Math.floor(Date.now() / 1000);
-    const cooldownLeft = c.cooldownEnd && c.cooldownEnd > now ? c.cooldownEnd - now : 0;
-    const note = cooldownLeft > 0 ? `cooldown ${fmtCountdownLocal(c.cooldownEnd)}` : 'idle';
-    return (
-      <div key={c.company} className="tm-kv" style={{ marginBottom: 2, opacity: 0.6 }}>
-        <span className="k" style={{ fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs-xs)' }}>
-          <span className="dim" style={{ marginRight: 4 }}>○</span>
-          {c.company.slice(0, 6)}…{c.company.slice(-4)}
-        </span>
-        <span className="v dim" style={{ fontSize: 'var(--t-fs-xs)' }}>{note}</span>
-      </div>
-    );
-  };
-  const companiesRegion = (
-    <Region
-      title="companies"
-      sub={`${liveCompanies_.length} live · ${chilling.length} chilling`}
-    >
-      {liveCompanies_.length === 0 && chilling.length === 0 && (
-        <div className="dim" style={{ fontSize: 'var(--t-fs-xs)', padding: '4px 0' }}>no companies</div>
-      )}
-      {liveCompanies_.length > 0 && (
-        <>
-          <div style={{ fontSize: 'var(--t-fs-xs)', color: 'var(--t-pos)', letterSpacing: '0.06em', margin: '2px 0' }}>live</div>
-          {liveCompanies_.map(renderLiveRow)}
-        </>
-      )}
-      {chilling.length > 0 && (
-        <>
-          {liveCompanies_.length > 0 && <KVSep />}
-          <div style={{ fontSize: 'var(--t-fs-xs)', color: 'var(--t-fg-soft)', letterSpacing: '0.06em', margin: '2px 0' }}>chilling</div>
-          {chilling.map(renderChillingRow)}
-        </>
-      )}
     </Region>
   );
 
@@ -270,7 +215,6 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0 }) {
     <section id="sec-inspect" className="tm-grid-12">
       <GridCell id="indexed-stats"   span={spans['indexed-stats']}   height={heights['indexed-stats']}   onResize={(r) => resize('indexed-stats', r)}>{indexedStats}</GridCell>
       <GridCell id="recent-activity" span={spans['recent-activity']} height={heights['recent-activity']} onResize={(r) => resize('recent-activity', r)}>{recentActivity}</GridCell>
-      <GridCell id="live-companies"  span={spans['live-companies']}  height={heights['live-companies']}  onResize={(r) => resize('live-companies', r)}>{companiesRegion}</GridCell>
       <GridCell id="farmed-daily"    span={spans['farmed-daily']}    height={heights['farmed-daily']}    onResize={(r) => resize('farmed-daily', r)}>{farmedDaily}</GridCell>
     </section>
   );

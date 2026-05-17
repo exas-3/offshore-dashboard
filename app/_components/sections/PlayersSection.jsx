@@ -19,8 +19,8 @@ export function PlayersSection({ D, grid }) {
   return (
     <section id="sec-players" className="tm-grid-12">
       <GridCell id="heatmap" span={spans['heatmap']} height={heights['heatmap']} onResize={(r) => resize('heatmap', r)}>
-        <Region title="ops activity heatmap" sub="last 7d · local">
-          <Heatmap grid={D.heatmap} days={D.heatmapDayTs ? D.heatmapDayTs.map(fmtLocal) : D.heatmapDays} />
+        <Region title="ops activity heatmap" sub="last 7d UTC · incl. today">
+          <Heatmap grid={D.heatmap} days={D.heatmapDayTs ? D.heatmapDayTs.map(fmtLocal) : D.heatmapDays} maxRows={10} />
         </Region>
       </GridCell>
 

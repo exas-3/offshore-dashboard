@@ -59,11 +59,11 @@ const DEFAULT_SPANS = {
   'total-players':      3,
   'vault':             12,
   'top-stakers':        5,
-  'watch-chart':       12,
-  'indexed-stats':      3,
-  'recent-activity':    3,
-  'live-companies':     3,
-  'farmed-daily':       3,
+  'watch-chart':        9,
+  'watch-companies':    3,
+  'indexed-stats':      4,
+  'recent-activity':    4,
+  'farmed-daily':       4,
   'trades':             6,
   'ops':                6,
   'company-state':      5,
@@ -79,7 +79,23 @@ const NAV = [
   { id: 'trades',   label: 'trades' },
 ];
 
-export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme = 'purple', density = 'regular', onThemeChange, initialAddress = '' }) {
+export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = true, theme = 'amber', density = 'regular', onThemeChange, initialAddress = '' }) {
+  // Mirror the initial server payload into state, then refresh it from
+  // /api/offshore-data every 60 s so aggregate stats (hero, charts,
+  // influence totals, leaderboard, etc.) don't drift on long sessions.
+  // The 800 ms live tick already handles counters / ops / trades /
+  // companiesStats — this is the slower backstop for everything else.
+  const [D, setD] = useState(initialD);
+  useEffect(() => {
+    let live = true;
+    const refresh = () => fetch('/api/offshore-data')
+      .then(r => r.json())
+      .then(d => { if (live && d && !d.error) setD(d); })
+      .catch(() => {});
+    const t = setInterval(refresh, 60_000);
+    return () => { live = false; clearInterval(t); };
+  }, []);
+
   // ── Shell state ──────────────────────────────────────────────────────────
   const [activeApp, setActiveApp] = useState('offshore');
   const [search, setSearch] = useState('');
@@ -92,10 +108,19 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   const [alarmOn, setAlarmOn] = useState(false);
   const alarmOnRef = useRef(false);
   alarmOnRef.current = alarmOn;
+  const [showSmallScreenNote, setShowSmallScreenNote] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (sessionStorage.getItem('offshoreNoteDismissed') === '1') return;
+    const check = () => setShowSmallScreenNote(window.innerWidth < 1200);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
   // Lightweight monitor data for the CRIMINAL zone band (active/underwater
   // counts). The inspector section owns its own copy + 1s poll for its
   // detailed views; here we just want a 3 s refresh for the band labels.
-  const [bandLive, setBandLive] = useState(null);
+  const [liveData, setBandLive] = useState(null);
   useEffect(() => {
     if (!/^0x[0-9a-fA-F]{40}$/.test(walletAddr)) { setBandLive(null); return; }
     let live = true;
@@ -150,6 +175,13 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
 
   function openWallet(fullAddr) {
     setWalletAddr(fullAddr);
+    // Smooth-scroll the main scroll container back to the top so the user
+    // lands on the criminal-watch chart that just appeared.
+    if (typeof document !== 'undefined') {
+      const main = document.querySelector('.tm-main-scroll');
+      if (main) main.scrollTo({ top: 0, behavior: 'smooth' });
+      else window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   }
 
   // ── Aliases (every 2 min) ────────────────────────────────────────────────
@@ -343,7 +375,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   return (
     <TerminalShell
       mode="standalone"
-      brand={{ name: 'OFFSHORE', sub: 'community dashboard · v0.6.33-beta' }}
+      brand={{ name: 'OFFSHORE', sub: 'community dashboard · v0.6.34-beta' }}
       nav={NAV}
       apps={D.apps}
       activeAppId={activeApp}
@@ -373,8 +405,25 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
       density={density}
     >
       <div className="tm-content">
+        {showSmallScreenNote && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '4px 12px',
+            fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs-xs)',
+            color: 'var(--t-fg-soft)',
+            background: 'var(--t-bg-soft, transparent)',
+            borderBottom: '1px dotted var(--t-rule)',
+          }}>
+            <span style={{ opacity: 0.85 }}>optimized for desktop · small / lower screens may break layout</span>
+            <span
+              title="dismiss"
+              onClick={() => { setShowSmallScreenNote(false); try { sessionStorage.setItem('offshoreNoteDismissed', '1'); } catch {} }}
+              style={{ cursor: 'pointer', marginLeft: 'auto', padding: '0 4px', color: 'var(--t-fg-mut)' }}
+            >×</span>
+          </div>
+        )}
         {/^0x[0-9a-fA-F]{40}$/.test(walletAddr) && (() => {
-          const allComp = bandLive?.companies ?? [];
+          const allComp = liveData?.companies ?? [];
           const activeComps = allComp.filter(c => c.active && c.endTime > 0);
           const underwater = activeComps.filter(c => {
             if (!c.liqPrice) return false;
@@ -398,8 +447,8 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
                 </span>
               </div>
               <div className="tm-zone-criminal">
-                <CriminalChartSection   address={walletAddr} grid={grid} ethPrice={counters.eth} alarmOn={alarmOn} onAlarmToggle={() => setAlarmOn(v => !v)} />
-                <WalletInspectorSection address={walletAddr} grid={grid} ethPrice={counters.eth} />
+                <CriminalChartSection   address={walletAddr} grid={grid} ethPrice={counters.eth} alarmOn={alarmOn} onAlarmToggle={() => setAlarmOn(v => !v)} liveData={liveData} />
+                <WalletInspectorSection address={walletAddr} grid={grid} ethPrice={counters.eth} liveData={liveData} />
               </div>
             </>
           );

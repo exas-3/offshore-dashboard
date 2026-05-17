@@ -574,15 +574,21 @@ export function Spark({ data, w = 80, h = 20, color = 'var(--t-fg)' }) {
 
 // ── Heatmap ────────────────────────────────────────────────────────────────
 
-const HEAT_MIX = [5, 18, 36, 56, 76, 100];
+const HEAT_MIX = [5, 12, 22, 32, 42, 52, 62, 72, 84, 100];
 const CELL_H   = 14;
 
-export function Heatmap({ grid, days, max, label = 'ops', fmtVal = String }) {
+export function Heatmap({ grid, days, max, label = 'ops', fmtVal = String, maxRows }) {
   const m = max || Math.max(...grid.flat(), 1);
   const wrapRef = useRef(null);
+  const scrollRef = useRef(null);
   const { w: measuredW } = useContainerSize(wrapRef);
   const [hover, setHover] = useState(null);
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
+  // When more rows arrive (or the grid first mounts) keep the latest day in
+  // view by pinning the scroll position to the bottom of the rows pane.
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [grid.length]);
 
   function intensity(v) {
     if (v === 0) return 0;
@@ -599,32 +605,41 @@ export function Heatmap({ grid, days, max, label = 'ops', fmtVal = String }) {
   const rowStyle   = { display: 'flex', alignItems: 'center', gap: GAP, marginBottom: 1 };
   const labelStyle = { width: LABEL_W, flexShrink: 0, color: 'var(--t-fg-soft)', fontSize: 'var(--t-fs-sm)' };
 
+  const scrollStyle = maxRows
+    ? { maxHeight: maxRows * (CELL_H + 1), overflowY: 'auto', overflowX: 'hidden' }
+    : undefined;
+
   return (
     <div ref={wrapRef} style={{ fontFamily: 'var(--t-font)', userSelect: 'none' }}>
-      {grid.map((row, di) => (
-        <div key={di} style={rowStyle}>
-          <span style={labelStyle}>{days[di]}</span>
-          {row.map((v, hi) => {
-            const ci = intensity(v);
-            const isHov = hover?.di === di && hover?.hi === hi;
-            const color = isHov
-              ? 'var(--t-hdr)'
-              : `color-mix(in srgb, var(--t-fg) ${HEAT_MIX[ci]}%, var(--t-bg))`;
-            return (
-              <div key={hi} style={{
-                width: cellW, flex: '0 0 auto', height: CELL_H, overflow: 'hidden',
-                fontSize: CELL_H, lineHeight: `${CELL_H}px`,
-                whiteSpace: 'nowrap', color,
-                cursor: 'crosshair',
-              }}
-                onMouseEnter={(e) => { setHover({ di, hi, v }); setMouse({ x: e.clientX, y: e.clientY }); }}
-                onMouseMove={(e) => setMouse({ x: e.clientX, y: e.clientY })}
-                onMouseLeave={() => setHover(null)}
-              >{'█'.repeat(12)}</div>
-            );
-          })}
-        </div>
-      ))}
+      <div ref={scrollRef} className="tm-heatmap-scroll" style={scrollStyle}>
+        {grid.map((row, di) => (
+          <div key={di} style={rowStyle}>
+            <span style={labelStyle}>{days[di]}</span>
+            {row.map((v, hi) => {
+              if (!v) {
+                return <div key={hi} style={{ width: cellW, flex: '0 0 auto', height: CELL_H }} />;
+              }
+              const ci = intensity(v);
+              const isHov = hover?.di === di && hover?.hi === hi;
+              const color = isHov
+                ? 'var(--t-hdr)'
+                : `color-mix(in srgb, var(--t-fg) ${HEAT_MIX[ci]}%, var(--t-bg))`;
+              return (
+                <div key={hi} style={{
+                  width: cellW, flex: '0 0 auto', height: CELL_H, overflow: 'hidden',
+                  fontSize: CELL_H, lineHeight: `${CELL_H}px`,
+                  whiteSpace: 'nowrap', color,
+                  cursor: 'crosshair',
+                }}
+                  onMouseEnter={(e) => { setHover({ di, hi, v }); setMouse({ x: e.clientX, y: e.clientY }); }}
+                  onMouseMove={(e) => setMouse({ x: e.clientX, y: e.clientY })}
+                  onMouseLeave={() => setHover(null)}
+                >{'█'.repeat(12)}</div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: GAP, marginTop: 2, width: rowsW }}>
         <span style={{ width: LABEL_W, flexShrink: 0 }} />
         {Array.from({ length: HOURS }, (_, h) => (

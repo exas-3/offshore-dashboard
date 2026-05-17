@@ -37,9 +37,11 @@ export async function GET() {
     }
 
     const now = Math.floor(Date.now() / 1000);
-    // Heatmap window is hour-aligned and rolls every hour, not at UTC midnight.
-    // Last row's last cell is always the current (in-progress) hour.
-    const heatmapStart = (Math.floor(now / 3600) - 167) * 3600;
+    // Heatmap shows full history: every UTC day from the first recorded MINT
+    // to today. Day-range is derived from the heatmapRows query result
+    // (minDayId .. todayDayId).
+    const todayDayId      = Math.floor(now / 86400);
+    const todayUtcMidnight = todayDayId * 86400;
     const db = getDb();
 
     // ── All queries in parallel ──────────────────────────────────────────────
@@ -85,11 +87,11 @@ export async function GET() {
            walletFarmedEarned, walletFarmedSpent, infHistRows, opsMatrixRows] = db ? await Promise.all([
       db`
         SELECT
-          FLOOR((timestamp - ${heatmapStart}) / 86400)::int                  AS day_idx,
-          FLOOR(((timestamp - ${heatmapStart})::bigint % 86400) / 3600)::int AS hour_idx,
+          FLOOR(timestamp / 86400)::int                  AS day_idx,
+          FLOOR((timestamp::bigint % 86400) / 3600)::int AS hour_idx,
           COUNT(*)::int AS cnt
         FROM transfers
-        WHERE kind = 'MINT' AND timestamp >= ${heatmapStart}
+        WHERE kind = 'MINT'
         GROUP BY 1, 2
       `.catch(() => []),
       db`
@@ -356,12 +358,17 @@ export async function GET() {
     });
 
     // ── heatmap ───────────────────────────────────────────────────────────────
-    const heatmapGrid = Array.from({ length: 7 }, () => Array(24).fill(0));
+    const dayIds = heatmapRows.map(r => Number(r.day_idx));
+    const minDayId = dayIds.length ? Math.min(...dayIds) : todayDayId;
+    const heatmapDayCount = todayDayId - minDayId + 1;
+    const heatmapStart    = minDayId * 86400;
+    const heatmapGrid = Array.from({ length: heatmapDayCount }, () => Array(24).fill(0));
     for (const r of heatmapRows) {
-      const di = Number(r.day_idx), hi = Number(r.hour_idx);
-      if (di >= 0 && di < 7 && hi >= 0 && hi < 24) heatmapGrid[di][hi] = Number(r.cnt);
+      const di = Number(r.day_idx) - minDayId;
+      const hi = Number(r.hour_idx);
+      if (di >= 0 && di < heatmapDayCount && hi >= 0 && hi < 24) heatmapGrid[di][hi] = Number(r.cnt);
     }
-    const heatmapDayTs = Array.from({ length: 7 }, (_, i) => heatmapStart + i * 86400);
+    const heatmapDayTs = Array.from({ length: heatmapDayCount }, (_, i) => heatmapStart + i * 86400);
     const heatmapDays = heatmapDayTs.map(fmtDate);
 
     // ── liveTradeTicker — real mixed event feed ───────────────────────────────
@@ -393,8 +400,8 @@ export async function GET() {
       ORDER BY timestamp DESC LIMIT 60
     `.catch(() => []) : [];
 
-    const tickerKind  = { DEX_SELL:'sell', DEX_BUY:'buy', DRUG_DEAL:'op', ARMS_DEAL:'op', EXTORTION:'op', PARTIAL:'op', FAIL:'op', SCRAP:'op', BUY_ASSET:'op', LEVEL_UP:'op', THIRD_ENTERPRISE:'op', STAKE:'stake' };
-    const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', PARTIAL:'OP', FAIL:'OP', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE', STAKE:'STAKE' };
+    const tickerKind  = { DEX_SELL:'sell', DEX_BUY:'buy', DRUG_DEAL:'op', ARMS_DEAL:'op', EXTORTION:'op', SCRAP:'op', BUY_ASSET:'op', LEVEL_UP:'op', THIRD_ENTERPRISE:'op', STAKE:'stake' };
+    const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE', STAKE:'STAKE' };
 
     const liveTradeTicker = rawTicker.map(e => ({
       hash:     e.hash ?? null,

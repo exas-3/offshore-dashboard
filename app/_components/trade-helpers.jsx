@@ -2,9 +2,13 @@
 
 export const CHART_AXIS = { fill: 'var(--t-fg-mut)', fontSize: 10, fontFamily: 'var(--t-font)' };
 
+// PARTIAL / FAIL deliberately omitted — they are legacy classifier
+// fallbacks; a row that still carries one of those op_types should render
+// its raw value so the leftover is visible for reclassification, not
+// disguised as a friendly "partial" / "fail" label.
 export const OP_LABELS_SHORT = {
   DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion',
-  THIRD_ENTERPRISE: '3rd ent.', PARTIAL: 'partial', FAIL: 'fail',
+  THIRD_ENTERPRISE: '3rd ent.',
   LEVEL_UP: 'level up', BUY_ASSET: 'buy asset', SCRAP: 'scrap',
   DEX_BUY: 'dex buy', DEX_SELL: 'dex sell', BURN: 'burn',
   STAKE_DEPOSIT: 'stake', STAKE_WITHDRAW: 'unstake', TRANSFER: 'transfer',
@@ -116,14 +120,29 @@ export function median(arr) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
+// US visitors see M/D; everyone else sees D/M. Detection is by the
+// browser's IANA time zone — independent of UI language. Covers the US
+// mainland tz, Alaska, Hawaii, and the historical IN/ND naming.
+const US_TZ = /^America\/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Anchorage|Adak|Boise|Detroit|Juneau|Sitka|Yakutat|Nome|Metlakatla|Indiana\/.+|Kentucky\/.+|North_Dakota\/.+|Menominee)$|^Pacific\/Honolulu$/;
+function isUsLocale() {
+  if (typeof Intl === 'undefined') return false;
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    return US_TZ.test(tz);
+  } catch { return false; }
+}
+
 export function fmtLocal(ts) {
   const d = new Date(Number(ts) * 1000);
-  return `${d.getMonth() + 1}/${d.getDate()}`;
+  const m = d.getMonth() + 1, day = d.getDate();
+  return isUsLocale() ? `${m}/${day}` : `${day}/${m}`;
 }
 
 export function fmtLocalHour(ts) {
   const d = new Date(Number(ts) * 1000);
-  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}h`;
+  const m = d.getMonth() + 1, day = d.getDate();
+  const h = String(d.getHours()).padStart(2, '0');
+  return isUsLocale() ? `${m}/${day} ${h}h` : `${day}/${m} ${h}h`;
 }
 
 export function localDates(arr, hourly = false) {

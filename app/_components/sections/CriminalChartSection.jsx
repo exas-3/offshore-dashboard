@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Region, GridCell } from '../terminal.jsx';
+import { Region, KVSep, GridCell } from '../terminal.jsx';
+import { fmtCountdownLocal } from '../trade-helpers.jsx';
 
 // Live SVG chart of ETH price with the selected wallet's active-op liq-price
 // horizontal markers and op-end vertical markers. Visible only when a wallet
@@ -34,12 +35,75 @@ function fmtClock(ts) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-export function CriminalChartSection({ address, grid, ethPrice = 0, alarmOn = false, onAlarmToggle }) {
+function renderCompaniesCard({ liveData, ethPrice, spans, heights, resize }) {
+  const allCompanies = liveData?.companies ?? [];
+  const liveOnes  = allCompanies.filter(c => c.active && c.endTime > 0);
+  const chilling  = allCompanies.filter(c => !(c.active && c.endTime > 0));
+  const liveEth   = ethPrice || liveData?.currentEthPrice || 0;
+
+  const renderLive = (c) => {
+    const buf = liveEth && c.liqPrice
+      ? Math.round((liveEth - (Number(BigInt(c.liqPrice) / 10n ** 12n) / 1e6)) * 100) / 100
+      : null;
+    return (
+      <div key={c.company} className="tm-kv" style={{ marginBottom: 2 }}>
+        <span className="k" style={{ fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs-xs)' }}>
+          <span className="pos" style={{ marginRight: 4 }}>●</span>
+          {c.company.slice(0, 6)}…{c.company.slice(-4)}
+          {c.autoTradeEnabled && <span className="dim"> auto</span>}
+        </span>
+        <span className={`v ${buf == null ? '' : buf >= 0 ? 'pos' : 'neg'}`} style={{ fontSize: 'var(--t-fs-xs)' }}>
+          {buf == null ? '—' : `${buf >= 0 ? '+' : ''}${buf.toFixed(2)}`}
+          <span className="dim"> {fmtCountdownLocal(c.endTime)}</span>
+        </span>
+      </div>
+    );
+  };
+  const renderChilling = (c) => {
+    const now = Math.floor(Date.now() / 1000);
+    const cdLeft = c.cooldownEnd && c.cooldownEnd > now ? c.cooldownEnd - now : 0;
+    const note = cdLeft > 0 ? `cooldown ${fmtCountdownLocal(c.cooldownEnd)}` : 'idle';
+    return (
+      <div key={c.company} className="tm-kv" style={{ marginBottom: 2, opacity: 0.6 }}>
+        <span className="k" style={{ fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs-xs)' }}>
+          <span className="dim" style={{ marginRight: 4 }}>○</span>
+          {c.company.slice(0, 6)}…{c.company.slice(-4)}
+        </span>
+        <span className="v dim" style={{ fontSize: 'var(--t-fs-xs)' }}>{note}</span>
+      </div>
+    );
+  };
+
+  return (
+    <GridCell id="watch-companies" span={spans['watch-companies']} height={heights['watch-companies']} onResize={(r) => resize('watch-companies', r)}>
+      <Region title="companies" sub={`${liveOnes.length} live · ${chilling.length} chilling`}>
+        {liveOnes.length === 0 && chilling.length === 0 && (
+          <div className="dim" style={{ fontSize: 'var(--t-fs-xs)', padding: '4px 0' }}>no companies</div>
+        )}
+        {liveOnes.length > 0 && (
+          <>
+            <div style={{ fontSize: 'var(--t-fs-xs)', color: 'var(--t-pos)', letterSpacing: '0.06em', margin: '2px 0' }}>live</div>
+            {liveOnes.map(renderLive)}
+          </>
+        )}
+        {chilling.length > 0 && (
+          <>
+            {liveOnes.length > 0 && <KVSep />}
+            <div style={{ fontSize: 'var(--t-fs-xs)', color: 'var(--t-fg-soft)', letterSpacing: '0.06em', margin: '2px 0' }}>chilling</div>
+            {chilling.map(renderChilling)}
+          </>
+        )}
+      </Region>
+    </GridCell>
+  );
+}
+
+export function CriminalChartSection({ address, grid, ethPrice = 0, alarmOn = false, onAlarmToggle, liveData = null }) {
   const { spans, heights, resize } = grid;
   const isFullAddr = /^0x[0-9a-fA-F]{40}$/.test(address || '');
 
   const [serverCandles, setServerCandles] = useState([]); // [{ts, open, high, low, close}] from /api/eth-candles
-  const [companies, setCompanies]         = useState([]); // [{company, active, liqPrice, endTime}]
+  const companies = liveData?.companies ?? [];
   const [tick, setTick]                 = useState(0);
   const [userSpan, setUserSpan]         = useState(null); // null = auto
   const [panSec, setPanSec]             = useState(0);    // offset added to "now" anchor
@@ -70,20 +134,8 @@ export function CriminalChartSection({ address, grid, ethPrice = 0, alarmOn = fa
   // No local 1s buffer needed — the server cache already accumulates OHLC at
   // 1s feed resolution and exposes 2s/5s/15s/1m granularities.
 
-  // active companies for the loaded wallet
-  useEffect(() => {
-    if (!isFullAddr) { setCompanies([]); return; }
-    let live = true;
-    const load = () => fetch(`/api/monitor?wallet=${address.toLowerCase()}`, { cache: 'no-cache' })
-      .then(r => r.json())
-      .then(d => { if (live && d && !d.error) setCompanies(d.companies || []); })
-      .catch(() => {});
-    load();
-    const t = setInterval(load, 3_000);
-    return () => { live = false; clearInterval(t); };
-  }, [address, isFullAddr]);
-
-  // Derived: parsed active ops with usd liq price
+  // Companies come from the parent's single /api/monitor poll; derive
+  // active ops + USD liq price here.
   const activeOps = useMemo(() => companies
     .filter(c => c.active && c.endTime > 0)
     .map(c => ({ ...c, liqUsd: liqPriceUsd(c.liqPrice), startTime: c.startTime ?? null })), [companies]);
@@ -375,6 +427,7 @@ export function CriminalChartSection({ address, grid, ethPrice = 0, alarmOn = fa
           </div>
         </Region>
       </GridCell>
+      {renderCompaniesCard({ liveData, ethPrice, spans, heights, resize })}
     </section>
   );
 }

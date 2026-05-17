@@ -1,6 +1,6 @@
 import {
   fetchTransferLogs, fetchTxInputs, fetchFactoryTradeContext,
-  getCompanyTradeTypes, getCompanyType, classifyTransfer,
+  getCompanyTradeTypesFromStorage, classifyTransfer,
   fetchSupplyAtBlock, DIRTY,
 } from '../etherscan.js';
 import {
@@ -29,31 +29,27 @@ export function syncTransfers() {
         fetchTxInputs(mintHashes).catch(() => new Map()),
         fetchFactoryTradeContext(start, end).catch(() => ({ companyMap: new Map(), fullTxs: new Set(), companyBlockMap: new Map(), d47Map: new Map() })),
       ]);
-      const companyAddrs = [...new Set([...tradeCtx.companyBlockMap.keys()])];
-      if (companyAddrs.length > 0) {
-        await getCompanyTradeTypes(companyAddrs, tradeCtx.companyBlockMap).catch(() => {});
-      }
+
+      // Resolve trade types for every company that emitted a DirtyPaid /
+      // TradeExited event in this range. We read slots 4/5 at blockNum-1 so
+      // the company is still inside its active trade window. Duration →
+      // op_type is unambiguous (300/1800/5400 → EXTORTION/ARMS/DRUG).
+      const companyAddrs = [...tradeCtx.companyBlockMap.keys()];
+      const typeMap = companyAddrs.length
+        ? await getCompanyTradeTypesFromStorage(companyAddrs, tradeCtx.companyBlockMap).catch(() => new Map())
+        : new Map();
 
       const rows = logs.map(t => {
         const classified = { ...t, rawValue: t.amount.toString(), ...classifyTransfer(t.fromAddr, t.toAddr, t.amount, txInputs.get(t.hash.toLowerCase())) };
         if (classified.kind === 'MINT' && classified.opType === 'PARTIAL') {
-          const txh       = t.hash.toLowerCase();
-          const d47OpType = tradeCtx.d47Map?.get(txh + ':' + (t.logIndex - 2))
-                         ?? tradeCtx.d47TxMap?.get(txh);
-          if (d47OpType) {
-            classified.opType = d47OpType;
-          } else {
-            const company = tradeCtx.companyMap.get(txh + ':' + t.logIndex);
-            if (company) {
-              const compType = getCompanyType(company);
-              if      (compType === 1) classified.opType = 'DRUG_DEAL';
-              else if (compType === 2) classified.opType = 'ARMS_DEAL';
-              else if (compType === 3) classified.opType = 'EXTORTION';
-            }
-          }
+          const txh = t.hash.toLowerCase();
+          const company = tradeCtx.companyMap.get(txh + ':' + t.logIndex);
+          const resolved = company ? typeMap.get(company.toLowerCase()) : null;
+          if (resolved) classified.opType = resolved;
         }
-        // Outcome for game-op MINTs: completed payouts are exactly 100/115/130 DIRTY
-        // (location-dependent); anything else is a busted op with proportionate refund.
+        // Outcome for game-op MINTs: completed payouts are exactly 100/115/130
+        // DIRTY (location-dependent); anything else is a busted op with a
+        // proportionate refund.
         if (classified.kind === 'MINT' && (classified.opType === 'DRUG_DEAL' || classified.opType === 'ARMS_DEAL' || classified.opType === 'EXTORTION')) {
           const a = Number(classified.amount);
           classified.result = (a === 100 || a === 115 || a === 130) ? 'completed' : 'busted';

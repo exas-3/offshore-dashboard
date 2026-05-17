@@ -10,6 +10,8 @@ import { syncSnapshots } from './syncs/snapshots.js';
 import { syncHolders } from './syncs/holders.js';
 import { syncVault } from './syncs/vault.js';
 import { syncCompanies } from './syncs/companies.js';
+import { syncCompanyStarts, COMPANY_STARTS_INTERVAL_MS } from './syncs/company-starts.js';
+import { syncPartialSweep, PARTIAL_SWEEP_INTERVAL_MS } from './syncs/partial-sweep.js';
 import { syncLiquidations, LIQ_INTERVAL_MS } from './syncs/liquidations.js';
 import { syncStaking, syncStakingClaims, syncStakingRotations } from './syncs/staking.js';
 
@@ -134,6 +136,8 @@ export async function startPoller() {
   syncSnapshots();
   syncHolders();
   syncCompanies();
+  syncCompanyStarts();
+  syncPartialSweep();
   setInterval(syncInfluence,        TX_INTERVAL_MS);
   setInterval(syncTransfers,        TX_INTERVAL_MS);
   setInterval(syncVault,            TX_INTERVAL_MS);
@@ -144,5 +148,7 @@ export async function startPoller() {
   setInterval(syncSnapshots,     SNAPSHOT_INTERVAL_MS);
   setInterval(syncHolders,       HOLDERS_INTERVAL_MS);
   setInterval(syncCompanies,     COMPANIES_INTERVAL_MS);
+  setInterval(syncCompanyStarts, COMPANY_STARTS_INTERVAL_MS);
+  setInterval(syncPartialSweep,  PARTIAL_SWEEP_INTERVAL_MS);
   setInterval(() => backfillSupplyHistory().catch(() => {}), 60 * 60_000);
 }

@@ -88,9 +88,12 @@ export function fmtCountdown(endTime) {
 }
 
 export function mapOpType(opType) {
+  // PARTIAL / FAIL are legacy classifier fallbacks — we no longer collapse
+  // them to a generic "op" label. Surfacing them raw makes the leftover
+  // rows visible so they get reclassified instead of silently hiding.
   const m = {
     DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion',
-    PARTIAL: 'op', FAIL: 'op', SCRAP: 'scrap', BUY_ASSET: 'buy-asset',
+    SCRAP: 'scrap', BUY_ASSET: 'buy-asset',
     LEVEL_UP: 'level-up', THIRD_ENTERPRISE: 'buy-asset',
   };
   return m[opType] ?? opType.toLowerCase().replace(/_/g, '-');
