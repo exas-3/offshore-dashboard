@@ -6,7 +6,7 @@ import {
 } from '../terminal.jsx';
 import {
   CHART_AXIS, TmTooltip, localDates, fmtLocal, fmtLocalHour,
-  fmtK, fmtSigned,
+  fmtK,
 } from '../trade-helpers.jsx';
 
 export function TokenSection({ D, grid }) {
@@ -19,9 +19,6 @@ export function TokenSection({ D, grid }) {
   const infMinted      = (inf.purchased || 0) + (inf.refunded || 0);
   const infRefundRate  = infMinted > 0 ? (inf.refunded / infMinted * 100).toFixed(1) + '%' : '—';
   const lastInfDay     = D.influenceFlow.days.at(-1) || {};
-  // Rolling 24h net flow: server-side hourly sum of INF_purchased − (DIRTY_minted−DIRTY_burned)·DIRTY_price.
-  // See lib/db/charts.js::getInfNetFlow24h. Falls back to today-only diff if the field is missing.
-  const infNetFlow24h  = D.influenceFlow.net24h ?? ((lastInfDay.purchased || 0) - (lastInfDay.consumed || 0));
   const infBurnImplied = lastInfDay.consumed || 0;
 
   const idleCount     = Math.max(0, D.companies.totalCompanies - D.companies.activeTrades);
@@ -159,7 +156,6 @@ export function TokenSection({ D, grid }) {
           <KV k="circulating" v={inf.circulating.toLocaleString()} />
           <KVSep />
           <KV k="refund rate"        v={infRefundRate}  cls="warn" />
-          <KV k="net flow / 24h"     v={fmtSigned(infNetFlow24h) + ' INF'} cls={infNetFlow24h >= 0 ? 'pos' : 'neg'} />
           <KV k="$INF burn implied"  v={fmtK(infBurnImplied)} />
         </Region>
       </GridCell>

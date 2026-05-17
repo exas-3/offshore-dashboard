@@ -250,6 +250,21 @@ export async function GET() {
       net24h: infNetFlow24hResult.net,
     };
 
+    // 7-day × 24-hour heatmap of INF purchased per hour. Window is hour-aligned
+    // and rolls every hour (matches the ops-activity heatmap rules).
+    const infHeatStart = (Math.floor(now / 3600) - 167) * 3600;
+    const infHeatGrid  = Array.from({ length: 7 }, () => Array(24).fill(0));
+    for (const b of (influenceBucketsHourly || [])) {
+      const ts = Number(b.ts);
+      if (ts < infHeatStart) continue;
+      const hOff = Math.floor((ts - infHeatStart) / 3600);
+      if (hOff < 0 || hOff >= 168) continue;
+      infHeatGrid[Math.floor(hOff / 24)][hOff % 24] = Number(b.purchased) || 0;
+    }
+    const infHeatDayTs = Array.from({ length: 7 }, (_, i) => infHeatStart + i * 86400);
+    influenceFlow.heatmap      = infHeatGrid;
+    influenceFlow.heatmapDayTs = infHeatDayTs;
+
     // ── burnedDaily ───────────────────────────────────────────────────────────
     const burnedDaily = burnBuckets.slice(-9).map(r => ({
       ts: Number(r.ts), x: fmtDate(r.ts),

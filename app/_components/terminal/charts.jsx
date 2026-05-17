@@ -574,7 +574,7 @@ export function Spark({ data, w = 80, h = 20, color = 'var(--t-fg)' }) {
 const HEAT_MIX = [5, 18, 36, 56, 76, 100];
 const CELL_H   = 14;
 
-export function Heatmap({ grid, days, max }) {
+export function Heatmap({ grid, days, max, label = 'ops', fmtVal = String }) {
   const m = max || Math.max(...grid.flat(), 1);
   const wrapRef = useRef(null);
   const { w: measuredW } = useContainerSize(wrapRef);
@@ -634,7 +634,7 @@ export function Heatmap({ grid, days, max }) {
         <ChartTooltip
           mouse={mouse}
           title={`${days[hover.di]}  ${String(hover.hi).padStart(2, '0')}:00`}
-          rows={[{ k: 'ops', v: String(hover.v) }]}
+          rows={[{ k: label, v: fmtVal(hover.v) }]}
         />
       )}
     </div>
