@@ -67,8 +67,8 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
     return () => { live = false; };
   }, []);
 
-  const WINDOWS = ['active', 'm1', 'm5', 'm15', 'm30', 'm60'];
-  const WIN_LABELS = { active: 'active', m1: '1m', m5: '5m', m15: '15m', m30: '30m', m60: '60m' };
+  const WINDOWS = ['active', 'm1', 'm5', 'm15', 'm30', 'm60', 'h24'];
+  const WIN_LABELS = { active: 'active', m1: '1m', m5: '5m', m15: '15m', m30: '30m', m60: '60m', h24: '24h' };
   const OPS_COLS = ['extortion', 'arms', 'drugs'];
   const OPS_LABELS = { extortion: 'ext', arms: 'arms', drugs: 'drug' };
 

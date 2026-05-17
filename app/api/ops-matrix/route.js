@@ -5,7 +5,7 @@ import { getDb } from '../../../lib/index.js';
 let _cache = null, _cacheTs = 0;
 const TTL = 10_000;
 
-const WINDOWS = ['m1', 'm5', 'm15', 'm30', 'm60'];
+const WINDOWS = ['m1', 'm5', 'm15', 'm30', 'm60', 'h24'];
 const EMPTY_WIN = () => Object.fromEntries(WINDOWS.map(w => [w, { ok: 0, bust: 0 }]));
 
 export async function GET() {
@@ -25,15 +25,16 @@ export async function GET() {
         SELECT
           op_type,
           (amount IN (100, 115, 130)) AS is_ok,
-          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 60})   AS m1,
-          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 300})  AS m5,
-          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 900})  AS m15,
-          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 1800}) AS m30,
-          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 3600}) AS m60
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 60})    AS m1,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 300})   AS m5,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 900})   AS m15,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 1800})  AS m30,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 3600})  AS m60,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 86400}) AS h24
         FROM transfers
         WHERE kind = 'MINT'
           AND op_type IN ('DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL')
-          AND timestamp::bigint >= ${now - 3600}
+          AND timestamp::bigint >= ${now - 86400}
         GROUP BY op_type, is_ok
       `,
       // currently-active counts come from companies.trade_type (populated by syncCompanies)
