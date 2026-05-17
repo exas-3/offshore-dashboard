@@ -18,7 +18,8 @@ export async function GET() {
     const now = Math.floor(Date.now() / 1000);
 
     // ok:   amount IN (100, 115, 130) — the only valid completion payouts
-    // bust: any other amount (extortion busts give 5 DIRTY; PARTIAL = busted arms/drugs)
+    // bust: any other amount (busts of all op types refund ~7 DIRTY)
+    // PARTIAL = still-unresolved MINTs (old rows where idx_logs lacks the D47 event)
     const rows = await db`
       SELECT
         op_type,

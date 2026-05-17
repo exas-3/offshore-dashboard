@@ -155,7 +155,7 @@ export function LiveSidebar({ D, counters, ops, watch, trades, onWallet, aliases
             <tr>
               <th style={{ textAlign: 'left', color: 'var(--t-fg-mut)', fontWeight: 400, paddingBottom: 3 }}></th>
               {OPS_COLS.map(c => (
-                <th key={c} style={{ textAlign: 'right', color: 'var(--t-fg-mut)', fontWeight: 400, paddingBottom: 3, letterSpacing: '0.06em', opacity: c === 'extortion' ? 0.3 : 1 }}>{OPS_LABELS[c]}</th>
+                <th key={c} style={{ textAlign: 'right', color: 'var(--t-fg-mut)', fontWeight: 400, paddingBottom: 3, letterSpacing: '0.06em' }}>{OPS_LABELS[c]}</th>
               ))}
             </tr>
           </thead>
@@ -168,7 +168,7 @@ export function LiveSidebar({ D, counters, ops, watch, trades, onWallet, aliases
                   const ok   = typeof cell === 'object' ? cell.ok   : cell;
                   const bust = typeof cell === 'object' ? cell.bust : 0;
                   return (
-                    <td key={c} style={{ textAlign: 'right', paddingBottom: 1, whiteSpace: 'nowrap', opacity: c === 'extortion' ? 0.3 : 1 }}>
+                    <td key={c} style={{ textAlign: 'right', paddingBottom: 1, whiteSpace: 'nowrap' }}>
                       <span style={{ color: ok > 0 ? 'var(--t-pos)' : 'var(--t-fg-mut)' }}>{ok}</span>
                       <span style={{ color: 'var(--t-fg-mut)', margin: '0 1px' }}>/</span>
                       <span style={{ color: bust > 0 ? 'var(--t-neg)' : 'var(--t-fg-mut)' }}>{bust}</span>
