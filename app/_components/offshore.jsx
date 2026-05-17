@@ -188,7 +188,13 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
         }
         if (d.latestEvent && d.latestEvent._ts > lastEventTs) {
           lastEventTs = d.latestEvent._ts;
-          setLiveTicker((prev) => [d.latestEvent, ...prev].slice(0, 60));
+          setLiveTicker((prev) => {
+            // Dedupe by tx hash to handle multi-hop swaps that emit two events
+            // for the same tx, or repeated polls hitting the same event.
+            const ev = d.latestEvent;
+            if (ev.hash && prev.some(p => p.hash === ev.hash && p.kind === ev.kind)) return prev;
+            return [ev, ...prev].slice(0, 60);
+          });
         }
         if (d.newLiqs && d.newLiqs.length > 0) {
           const fresh = d.newLiqs.filter(l => l._ts > lastLiqTsRef.current);

@@ -347,26 +347,29 @@ export async function GET() {
     const heatmapDays = heatmapDayTs.map(fmtDate);
 
     // ── liveTradeTicker — real mixed event feed ───────────────────────────────
+    // Multi-hop DEX swaps emit two Transfer events at the pool (player→pool +
+    // pool→pool), both classified DEX_*. DISTINCT ON (hash) collapses those
+    // per tx, keeping the largest-amount leg.
     const rawTicker = db ? await db`
-      (SELECT 'DEX_SELL' AS etype, from_addr AS addr, amount, timestamp
+      (SELECT DISTINCT ON (hash) hash, 'DEX_SELL' AS etype, from_addr AS addr, amount, timestamp
         FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_SELL' AND amount >= 1000
-        ORDER BY timestamp DESC LIMIT 15)
+        ORDER BY hash, amount DESC)
       UNION ALL
-      (SELECT 'DEX_BUY' AS etype, to_addr, amount, timestamp
+      (SELECT DISTINCT ON (hash) hash, 'DEX_BUY' AS etype, to_addr, amount, timestamp
         FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_BUY' AND amount >= 1000
-        ORDER BY timestamp DESC LIMIT 10)
+        ORDER BY hash, amount DESC)
       UNION ALL
-      (SELECT op_type AS etype, to_addr, amount, timestamp
+      (SELECT hash, op_type AS etype, to_addr AS addr, amount, timestamp
         FROM transfers WHERE kind='MINT'
           AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP')
         ORDER BY timestamp DESC LIMIT 20)
       UNION ALL
-      (SELECT op_type AS etype, from_addr, amount, timestamp
+      (SELECT hash, op_type AS etype, from_addr AS addr, amount, timestamp
         FROM transfers WHERE kind='SPEND'
           AND op_type IN ('BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE')
         ORDER BY timestamp DESC LIMIT 10)
       UNION ALL
-      (SELECT 'STAKE' AS etype, user_addr AS addr, amount::numeric, timestamp
+      (SELECT NULL::text AS hash, 'STAKE' AS etype, user_addr AS addr, amount::numeric, timestamp
         FROM staking_deposits
         ORDER BY timestamp DESC LIMIT 10)
       ORDER BY timestamp DESC LIMIT 60
@@ -376,6 +379,7 @@ export async function GET() {
     const tickerLabel = { DEX_SELL:'DEX SELL', DEX_BUY:'DEX BUY', DRUG_DEAL:'DRUG DEAL', ARMS_DEAL:'ARMS DEAL', EXTORTION:'EXTORTION', PARTIAL:'OP', FAIL:'OP', SCRAP:'SCRAP', BUY_ASSET:'BUY ASSET', LEVEL_UP:'LEVEL UP', THIRD_ENTERPRISE:'3RD ENTERPRISE', STAKE:'STAKE' };
 
     const liveTradeTicker = rawTicker.map(e => ({
+      hash:     e.hash ?? null,
       kind:     tickerKind[e.etype]  || 'op',
       label:    tickerLabel[e.etype] || e.etype,
       amount:   fmtM(Number(e.amount)),

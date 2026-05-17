@@ -79,25 +79,25 @@ export async function GET(request) {
         ORDER BY timestamp ASC LIMIT 60
       `.catch(() => []) : Promise.resolve([]),
       db ? db`
-        (SELECT 'DEX_SELL' AS etype, from_addr AS addr, amount, timestamp
+        (SELECT hash, 'DEX_SELL' AS etype, from_addr AS addr, amount, timestamp
           FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_SELL' AND amount >= 1000
           ORDER BY timestamp DESC LIMIT 1)
         UNION ALL
-        (SELECT 'DEX_BUY', to_addr, amount, timestamp
+        (SELECT hash, 'DEX_BUY', to_addr, amount, timestamp
           FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_BUY' AND amount >= 1000
           ORDER BY timestamp DESC LIMIT 1)
         UNION ALL
-        (SELECT op_type, to_addr, amount, timestamp
+        (SELECT hash, op_type, to_addr, amount, timestamp
           FROM transfers WHERE kind='MINT'
             AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP')
           ORDER BY timestamp DESC LIMIT 1)
         UNION ALL
-        (SELECT op_type, from_addr, amount, timestamp
+        (SELECT hash, op_type, from_addr, amount, timestamp
           FROM transfers WHERE kind='SPEND'
             AND op_type IN ('BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE')
           ORDER BY timestamp DESC LIMIT 1)
         UNION ALL
-        (SELECT 'STAKE' AS etype, user_addr AS addr, amount::numeric, timestamp
+        (SELECT NULL::text AS hash, 'STAKE' AS etype, user_addr AS addr, amount::numeric, timestamp
           FROM staking_deposits
           ORDER BY timestamp DESC LIMIT 1)
         ORDER BY timestamp DESC LIMIT 1
@@ -186,6 +186,7 @@ export async function GET(request) {
 
     const ev = latestEventRow[0];
     const latestEvent = ev ? {
+      hash:     ev.hash ?? null,
       kind:     tickerKind[ev.etype]  || 'op',
       label:    tickerLabel[ev.etype] || ev.etype,
       amount:   (Math.abs(Number(ev.amount)) >= 1e6 ? (Number(ev.amount)/1e6).toFixed(2)+'M' : Math.abs(Number(ev.amount)) >= 1e3 ? (Number(ev.amount)/1e3).toFixed(1)+'k' : String(Math.round(Number(ev.amount)))),
