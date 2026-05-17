@@ -18,10 +18,13 @@ export {
   durationToOpType,
 } from '../../lib/chain-constants.js';
 
-// Game-op MINTs that contribute to a player's "missions" / "ops" stats.
+// Game-op MINTs that have a completed/busted outcome. SCRAP is a MINT
+// too but it's never busted (you always get the scrap value) — so it's
+// deliberately NOT here, otherwise resultFromAmount would mis-tag every
+// scrap as 'busted' since the amount ≠ 100/115/130.
 // FAIL is legacy classifier output and should not appear in fresh data;
 // included so historical rows still count.
-export const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL', 'FAIL', 'SCRAP']);
+export const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL', 'FAIL']);
 
 // Amount in DIRTY that flags a completed payout. Anything else is a bust.
 export const COMPLETE_AMOUNTS = new Set([100, 115, 130]);

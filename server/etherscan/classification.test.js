@@ -148,10 +148,13 @@ test('resultFromAmount — completion thresholds', () => {
   }
 });
 
-test('EARN_OPS includes the full game-op set + legacy', () => {
-  for (const op of ['DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP']) {
+test('EARN_OPS includes the four game-op + two legacy types, NOT scrap', () => {
+  for (const op of ['DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL']) {
     assert.ok(EARN_OPS.has(op), `${op} missing from EARN_OPS`);
   }
+  // Regression: SCRAP is a MINT but never busted — adding it caused every
+  // scrap entry to render as a red ✗ in the ops feed.
+  assert.equal(EARN_OPS.has('SCRAP'), false, 'SCRAP must NOT be in EARN_OPS');
 });
 
 test('COMPLETE_AMOUNTS — exactly the canonical three values', () => {
