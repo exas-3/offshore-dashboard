@@ -399,6 +399,7 @@ export async function GET() {
       .sort((a, b) => Number(b.timestamp) - Number(a.timestamp) || Number(b.log_index) - Number(a.log_index))
       .slice(0, 250)
       .map(t => ({
+        hash:   t.hash,
         wallet: shortAddr(t.kind === 'MINT' ? t.to_addr : t.from_addr),
         walletFull: (t.kind === 'MINT' ? t.to_addr : t.from_addr),
         op:     mapOpType(t.op_type),

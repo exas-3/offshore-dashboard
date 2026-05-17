@@ -143,9 +143,11 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   // Live tick (800ms): counters, new ops, live trades, ticker events
   useEffect(() => {
     let live = true;
+    let inflight = false;  // skip overlapping ticks when RPC is slow
     let lastEventTs = (D.liveTradeTicker && D.liveTradeTicker[0]?._ts) || 0;
     const tick = async () => {
-      if (!live) return;
+      if (!live || inflight) return;
+      inflight = true;
       try {
         const res = await fetch(`/api/offshore-data/live?since=${lastOpTsRef.current}`, { cache: 'no-cache' });
         if (!res.ok) throw new Error('non-ok');
@@ -166,7 +168,16 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
         if (d.newOps && d.newOps.length > 0) {
           const ts = nowHMS();
           lastOpTsRef.current = d.newOps[d.newOps.length - 1]._ts;
-          setOps((prev) => [...d.newOps.map(o => ({ ...o, time: ts })).reverse(), ...prev].slice(0, 250));
+          setOps((prev) => {
+            // Dedupe against existing — overlapping polls can return the same row twice.
+            // Key: hash + walletFull + op (matches server-side dedup); fall back to wallet+op+_ts.
+            const seen = new Set(prev.map(o => `${o.hash || ''}:${o.walletFull || o.wallet}:${o.op}:${o._ts || ''}`));
+            const incoming = d.newOps
+              .filter(o => !seen.has(`${o.hash || ''}:${o.walletFull || o.wallet}:${o.op}:${o._ts || ''}`))
+              .map(o => ({ ...o, time: ts }))
+              .reverse();
+            return [...incoming, ...prev].slice(0, 250);
+          });
           setLatestNewOps(d.newOps);
         }
         if (d.liveTrades && d.liveTrades.length > 0) {
@@ -191,6 +202,8 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
           gas:    Math.max(0, c.gas    + (Math.random() - 0.5) * 0.0002),
           _bump:  c._bump + 1,
         }));
+      } finally {
+        inflight = false;
       }
     };
     const t = setInterval(tick, 800);

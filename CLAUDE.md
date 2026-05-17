@@ -81,7 +81,9 @@ Usage: `const db = getDb(); const rows = await db\`SELECT ...\``.
 
 Key tables: `transfers`, `vault_payouts`, `influence_transfers`, `supply_snapshots`, `eth_price_snapshots`, `influence_supply_snapshots`, `token_holders`, `companies`, `staking_deposits`, `meta`, `idx_logs`, `idx_contracts`.
 
-### On-chain constants (`server/etherscan.js`)
+### On-chain constants (`lib/chain-constants.js`)
+
+Single source of truth, re-exported by `server/etherscan/constants.js` and `lib/db/connection.js`. Do **not** duplicate addresses elsewhere.
 
 ```
 RPC:             https://mainnet.megaeth.com/rpc  (1 sec/block)
@@ -106,15 +108,33 @@ Price feeds come from the Kumbaya exchange API, not on-chain reads.
 
 ### Transfer classification
 
-Classified at index time into `kind` + `op_type`:
+Classified at index time into `kind` + `op_type` by **destination-first** logic in `server/etherscan/classification.js`:
 
-| kind | from | op_types |
-|------|------|----------|
-| `MINT` | zero address | `DRUG_DEAL`, `ARMS_DEAL`, `EXTORTION`, `PARTIAL`, `FAIL`, `SCRAP_ITEM` |
-| `SPEND` / `BURN` | player wallet | `BUY_ASSET`, `LEVEL_UP`, `THIRD_ENTERPRISE` |
-| `TRANSFER` | player wallet | `DEX_BUY`, `DEX_SELL` |
+| kind | trigger | op_types |
+|------|---------|----------|
+| `MINT` | from = `0x0` | `DRUG_DEAL`, `ARMS_DEAL`, `EXTORTION`, `PARTIAL`, `SCRAP`, `FAIL` (legacy) |
+| `SPEND` / `BURN` | to = `0x0` (selector-aware) | `BUY_ASSET`, `LEVEL_UP`, `THIRD_ENTERPRISE`, `BURN` |
+| `TRANSFER` | DEX pool involved | `DEX_BUY`, `DEX_SELL` |
+| `TRANSFER` | staking contract involved | `STAKE_DEPOSIT`, `STAKE_WITHDRAW` |
+| `TRANSFER` | else | `TRANSFER` (P2P) |
 
-Classification uses tx input function selectors + factory `TradeCompleted` events for PARTIAL → DRUG_DEAL/ARMS_DEAL resolution.
+Selector-based SPEND only fires when the Transfer's destination is the zero address — otherwise the row falls through to a TRANSFER classification. This avoids the old bug where any DIRTY transfer inside a `levelUp()`/`buyAsset()` tx was tagged SPEND regardless of where the tokens went.
+
+**MINT op_type resolution for game ops:** uses the factory's D47 (OpResult) event topic `0xd47648dbe7...`, **not** the company `tradeType()` selector (`0x6fd47b44`) — that selector returns 2 for every company and produced ~30% mis-tagging historically. `word0` of D47's data is 750/250/80 for drug/arms/extortion. `fetchFactoryTradeContext` returns a `d47TxMap` keyed by tx hash for sync paths to consume.
+
+**`result` column on `transfers`** (text, values `'completed' | 'busted' | NULL`):
+- populated for MINTs of `DRUG_DEAL`/`ARMS_DEAL`/`EXTORTION`
+- `completed` ⟺ amount ∈ {100, 115, 130}; everything else (including the ~7-DIRTY consolation refund for busts) is `'busted'`
+
+### Company trade type
+
+`companies.trade_type` (text) stores the current trade's type, resolved from on-chain storage slots:
+- slot 4 = trade start ts, slot 5 = trade end ts
+- duration = slot5 − slot4 → `300s = EXTORTION`, `1800s = ARMS_DEAL`, `5400s = DRUG_DEAL`
+
+`syncCompanies` (every 2 min) refreshes this for active companies via `getCompanyTradeTypesFromStorage`. The upsert uses `COALESCE(EXCLUDED.trade_type, companies.trade_type)` so a failed RPC read never clobbers a good cached value.
+
+The live "ongoing crimes" route reads `c.trade_type` directly. **Do not** join to `transfers.op_type` keyed by the owner — multiple companies per owner give incorrect tags.
 
 ### Vault cycle data
 

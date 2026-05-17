@@ -166,6 +166,7 @@ export async function GET(request) {
     }
     const dedupedRows = [...dedupMap.values()].sort((a, b) => Number(a.timestamp) - Number(b.timestamp)).slice(0, 20);
     const newOps = dedupedRows.map(r => ({
+      hash:   r.hash,
       wallet: shortAddr(r.kind === 'MINT' ? r.addr : r.from_addr2),
       walletFull: (r.kind === 'MINT' ? r.addr : r.from_addr2),
       op:     mapOpType(r.op_type),
