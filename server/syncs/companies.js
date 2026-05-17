@@ -1,4 +1,4 @@
-import { getUserCompaniesBatch, getTradeStates } from '../etherscan.js';
+import { getUserCompaniesBatch, getTradeStates, getCompanyTradeTypesFromStorage } from '../etherscan.js';
 import { getAllPlayerAddresses, upsertCompanies } from '../../lib/index.js';
 
 export async function syncCompanies() {
@@ -29,10 +29,22 @@ export async function syncCompanies() {
       if (i + STATE_CHUNK < allCompanies.length) await new Promise(r => setTimeout(r, 500));
     }
 
+    // Resolve trade_type for active companies via storage slots 4 & 5 (start/end ts).
+    // duration = slot5 - slot4 → 300=EXTORTION, 1800=ARMS_DEAL, 5400=DRUG_DEAL.
+    const activeAddrs = allStates.filter(s => s.active).map(s => s.company);
+    const typeMap = activeAddrs.length > 0
+      ? await getCompanyTradeTypesFromStorage(activeAddrs).catch(() => new Map())
+      : new Map();
+    for (const s of allStates) {
+      const t = typeMap.get(s.company.toLowerCase());
+      if (t) s.tradeType = t;
+    }
+
     await upsertCompanies(allStates);
     const autoOn = allStates.filter(s => s.autoTradeEnabled).length;
-    const active  = allStates.filter(s => s.active).length;
-    console.log(`[poller] companies synced: ${allStates.length} total, ${active} active, ${autoOn} auto-trade on`);
+    const active = allStates.filter(s => s.active).length;
+    const typed  = allStates.filter(s => s.tradeType).length;
+    console.log(`[poller] companies synced: ${allStates.length} total, ${active} active (${typed} typed), ${autoOn} auto-trade on`);
   } catch (err) {
     console.error('[poller] companies sync error:', err.message);
   }

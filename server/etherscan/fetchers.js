@@ -157,6 +157,43 @@ export async function getTradeStates(companyAddrs, timeoutMs = 20000) {
   return structs;
 }
 
+// Batch-reads the current trade's start (slot 4) and end (slot 5) timestamps for each
+// company. Duration = slot5 - slot4 uniquely identifies the trade type:
+//   300s = EXTORTION (5min), 1800s = ARMS_DEAL (30min), 5400s = DRUG_DEAL (90min).
+// Returns Map<companyAddrLower, 'DRUG_DEAL'|'ARMS_DEAL'|'EXTORTION'|null>.
+// The on-chain `tradeType()` selector (0x6fd47b44) returns 2 for every company so
+// it cannot be used; per-trade type lookups via storage slots are the reliable path.
+export async function getCompanyTradeTypesFromStorage(companyAddrs, timeoutMs = 20000) {
+  if (!companyAddrs.length) return new Map();
+  const out = new Map();
+  const CHUNK = 50;  // 2 calls per company → ~100 reqs/chunk
+  for (let i = 0; i < companyAddrs.length; i += CHUNK) {
+    const chunk = companyAddrs.slice(i, i + CHUNK);
+    const reqs = [];
+    chunk.forEach((addr, j) => {
+      reqs.push({ method: 'eth_getStorageAt', params: [addr, '0x4', 'latest'], id: j * 2     });
+      reqs.push({ method: 'eth_getStorageAt', params: [addr, '0x5', 'latest'], id: j * 2 + 1 });
+    });
+    const res = await rpcBatch(reqs, timeoutMs).catch(() => []);
+    const byId = new Map();
+    for (const r of (Array.isArray(res) ? res : [])) byId.set(r.id, r.result);
+    for (let j = 0; j < chunk.length; j++) {
+      const s4 = byId.get(j * 2);
+      const s5 = byId.get(j * 2 + 1);
+      if (!s4 || !s5) continue;
+      try {
+        const start = Number(BigInt(s4));
+        const end   = Number(BigInt(s5));
+        const dur   = end - start;
+        const type  = dur === 300 ? 'EXTORTION' : dur === 1800 ? 'ARMS_DEAL' : dur === 5400 ? 'DRUG_DEAL' : null;
+        if (type) out.set(chunk[j].toLowerCase(), type);
+      } catch { /* skip */ }
+    }
+    if (i + CHUNK < companyAddrs.length) await new Promise(r => setTimeout(r, 150));
+  }
+  return out;
+}
+
 // Batch-reads company storage slot 0x2 (entry price, 18-decimal ETH/USD).
 export async function getEntryPrices(companyAddrs) {
   if (!companyAddrs.length) return new Map();

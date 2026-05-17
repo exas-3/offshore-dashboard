@@ -104,14 +104,8 @@ export async function GET(request) {
       `.catch(() => []) : Promise.resolve([]),
       db ? db`
         SELECT c.address, c.owner, c.liq_price, c.end_time, c.active, c.auto_trade,
-               t.op_type
+               c.trade_type AS op_type
         FROM companies c
-        LEFT JOIN LATERAL (
-          SELECT op_type FROM transfers
-          WHERE to_addr = c.owner AND kind = 'MINT'
-            AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL')
-          ORDER BY timestamp DESC LIMIT 1
-        ) t ON TRUE
         WHERE c.active = TRUE
         ORDER BY c.end_time ASC NULLS LAST
       `.catch(() => []) : Promise.resolve([]),
