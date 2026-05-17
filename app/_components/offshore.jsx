@@ -15,6 +15,7 @@ import { TokenSection } from './sections/TokenSection.jsx';
 import { PlayersSection } from './sections/PlayersSection.jsx';
 import { VaultSection } from './sections/VaultSection.jsx';
 import { TradesSection } from './sections/TradesSection.jsx';
+import { CriminalChartSection } from './sections/CriminalChartSection.jsx';
 
 // Paired grid cells resize as complements (span + partner = 12).
 const CELL_PAIRS = {
@@ -47,6 +48,7 @@ const DEFAULT_SPANS = {
   'total-players':      3,
   'vault':             12,
   'top-stakers':        5,
+  'watch-chart':       12,
   'trades':             6,
   'ops':                6,
   'company-state':      5,
@@ -58,6 +60,7 @@ const NAV = [
   { id: 'token',    label: 'token' },
   { id: 'players',  label: 'players' },
   { id: 'vault',    label: 'vault' },
+  { id: 'watch',    label: 'watch' },
   { id: 'trades',   label: 'trades' },
 ];
 
@@ -130,7 +133,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   );
   const lastLiqTsRef = useRef(0);
 
-  // ETH price (3s)
+  // ETH price (1s)
   useEffect(() => {
     const update = () =>
       fetch('/api/eth-price', { cache: 'no-cache' })
@@ -138,7 +141,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
         .then(({ price }) => { if (isFinite(price) && price > 0) setCounters(c => ({ ...c, eth: price })); })
         .catch(() => {});
     update();
-    const t = setInterval(update, 3_000);
+    const t = setInterval(update, 1_000);
     return () => clearInterval(t);
   }, []);
 
@@ -288,6 +291,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
         <TokenSection    D={D} grid={grid} />
         <PlayersSection  D={D} grid={grid} />
         <VaultSection    D={D} grid={grid} aliases={aliases} onWallet={openWallet} />
+        <CriminalChartSection address={walletAddr} grid={grid} ethPrice={counters.eth} />
         <TradesSection   grid={grid} liveTrades={liveTrades} ops={ops} search={search} ethPrice={counters.eth} aliases={aliases} onWallet={openWallet} />
       </div>
 
