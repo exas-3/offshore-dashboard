@@ -112,6 +112,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     activeOps: D.activeCompanies ?? 0,
     tps:       0,
     _bump:     0,
+    _lastOkAt: Date.now(),  // last successful live-tick — used to decide if RPC is "live"
   }));
   const [ops, setOps] = useState(() =>
     (D.recentOps && D.recentOps.length > 0)
@@ -164,6 +165,7 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
           activeOps: d.activeOps ?? c.activeOps,
           tps:       d.tps       ?? c.tps,
           _bump:  c._bump + 1,
+          _lastOkAt: Date.now(),
         }));
         if (d.newOps && d.newOps.length > 0) {
           const ts = nowHMS();
@@ -238,8 +240,10 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     { k: 'MC',      v: `$${fmtK(latestMc)}` },
   ];
 
+  // 5s grace before we flip to "down" so brief blips don't flicker the indicator.
+  const rpcLive = Date.now() - (counters._lastOkAt ?? 0) < 5000;
   const sideFoot = [
-    { k: 'rpc',   v: 'live', cls: 'pos' },
+    { k: 'rpc',   v: rpcLive ? 'live' : 'down', cls: rpcLive ? 'pos' : 'neg' },
     { k: 'block', v: counters.block.toLocaleString() },
   ];
 
