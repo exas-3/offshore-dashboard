@@ -11,6 +11,7 @@ import {
   getFlowBuckets, getBurnBuckets, getInfluenceBuckets, getInfluenceDaily,
   getParticipantBuckets, getActiveWalletBuckets,
   getSupplyHistoryForChart, getPriceBaseline25h,
+  getInfNetFlow24h,
 } from '../../../lib/index.js';
 import {
   fetchDirtyPrice, fetchLatestInfCost, getLatestBlock,
@@ -51,7 +52,7 @@ export async function GET() {
       recentTransfers, ethPriceDb,
       dirtyPriceResult, infCostResult, latestBlock, ethPriceLive,
       rawLeaderboard, marketCapHistory, priceBase25h,
-      influenceDailyRows,
+      influenceDailyRows, infNetFlow24hResult,
     ] = await Promise.all([
       getStats(), getLatestTokenInfo(), getHolderCount(), getPlayerCount(),
       getFlowBuckets(3600).catch(() => []),
@@ -75,6 +76,7 @@ export async function GET() {
       getDirtyMarketCapHistory().catch(() => []),
       getPriceBaseline25h().catch(() => ({ dirty: null, infCost: null, eth: null })),
       getInfluenceDaily().catch(() => []),
+      getInfNetFlow24h().catch(() => ({ net: 0, hours: [] })),
     ]);
 
     // Raw DB queries that need the connection directly
@@ -241,6 +243,11 @@ export async function GET() {
         consumed:  r.burned,
         refunded:  Math.max(0, r.minted - r.purchased),
       })),
+      // Rolling 24-hour net flow in INF (≈ USD).
+      // For each of the last 24 hourly buckets:
+      //   contribution = INF_purchased(h) - (DIRTY_minted(h) - DIRTY_burned(h)) * DIRTY_price(h)
+      // See lib/db/charts.js::getInfNetFlow24h.
+      net24h: infNetFlow24hResult.net,
     };
 
     // ── burnedDaily ───────────────────────────────────────────────────────────
