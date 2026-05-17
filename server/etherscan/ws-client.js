@@ -95,12 +95,16 @@ export function createWsClient() {
         }
         return;
       }
-      // Response to eth_subscribe: id matches, result is the subscription id
-      if (msg.id != null && msg.result) {
+      // Response to eth_subscribe: id matches; result is the subscription id
+      // OR error carries an explanation.
+      if (msg.id != null) {
         const sub = subs.find(s => s.pendingReqId === msg.id);
-        if (sub) {
+        if (!sub) return;
+        if (msg.result) {
           sub.subId = msg.result;
           console.log(`[ws] subscribed ${sub.name}  id=${msg.result.slice(0, 12)}…`);
+        } else if (msg.error) {
+          console.warn(`[ws] subscribe ${sub.name} failed: ${msg.error.message ?? JSON.stringify(msg.error)}`);
         }
       }
     };
