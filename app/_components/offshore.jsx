@@ -16,6 +16,7 @@ import { PlayersSection } from './sections/PlayersSection.jsx';
 import { VaultSection } from './sections/VaultSection.jsx';
 import { TradesSection } from './sections/TradesSection.jsx';
 import { CriminalChartSection } from './sections/CriminalChartSection.jsx';
+import { StakingSection } from './sections/StakingSection.jsx';
 
 // Paired grid cells resize as complements (span + partner = 12).
 const CELL_PAIRS = {
@@ -290,9 +291,10 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
         <OverviewSection D={D} counters={counters} infPurchased={inf.purchased} dawPct={dawPct} />
         <TokenSection    D={D} grid={grid} />
         <PlayersSection  D={D} grid={grid} />
-        <VaultSection    D={D} grid={grid} aliases={aliases} onWallet={openWallet} />
+        <VaultSection    D={D} grid={grid} />
         <CriminalChartSection address={walletAddr} grid={grid} ethPrice={counters.eth} />
         <TradesSection   grid={grid} liveTrades={liveTrades} ops={ops} search={search} ethPrice={counters.eth} aliases={aliases} onWallet={openWallet} />
+        <StakingSection  grid={grid} aliases={aliases} onWallet={openWallet} />
       </div>
 
       {showToasts && <Toasts items={filteredTicker} />}
