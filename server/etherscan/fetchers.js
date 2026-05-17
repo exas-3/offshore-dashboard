@@ -194,6 +194,39 @@ export async function getCompanyTradeTypesFromStorage(companyAddrs, timeoutMs = 
   return out;
 }
 
+// Batch-reads the current trade's start (slot 4) and end (slot 5) timestamps
+// per company. Returns Map<companyAddrLower, { startTime, endTime }>.
+// Used by the criminal-watch chart to render the "trade started" vertical
+// alongside the existing "trade ends" vertical.
+export async function getCompanyTradeWindows(companyAddrs, timeoutMs = 20000) {
+  if (!companyAddrs.length) return new Map();
+  const out = new Map();
+  const CHUNK = 50;
+  for (let i = 0; i < companyAddrs.length; i += CHUNK) {
+    const chunk = companyAddrs.slice(i, i + CHUNK);
+    const reqs = [];
+    chunk.forEach((addr, j) => {
+      reqs.push({ method: 'eth_getStorageAt', params: [addr, '0x4', 'latest'], id: j * 2     });
+      reqs.push({ method: 'eth_getStorageAt', params: [addr, '0x5', 'latest'], id: j * 2 + 1 });
+    });
+    const res = await rpcBatch(reqs, timeoutMs).catch(() => []);
+    const byId = new Map();
+    for (const r of (Array.isArray(res) ? res : [])) byId.set(r.id, r.result);
+    for (let j = 0; j < chunk.length; j++) {
+      const s4 = byId.get(j * 2);
+      const s5 = byId.get(j * 2 + 1);
+      if (!s4 || !s5) continue;
+      try {
+        const startTime = Number(BigInt(s4));
+        const endTime   = Number(BigInt(s5));
+        if (startTime > 0) out.set(chunk[j].toLowerCase(), { startTime, endTime });
+      } catch { /* skip */ }
+    }
+    if (i + CHUNK < companyAddrs.length) await new Promise(r => setTimeout(r, 150));
+  }
+  return out;
+}
+
 // Batch-reads company storage slot 0x2 (entry price, 18-decimal ETH/USD).
 export async function getEntryPrices(companyAddrs) {
   if (!companyAddrs.length) return new Map();

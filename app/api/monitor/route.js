@@ -2,7 +2,7 @@ export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import {
   fetchTokenBalance, getUserCompaniesBatch, getTradeStates, getEntryPrices,
-  fetchLatestInfCost, INFLUENCE, DIRTY,
+  getCompanyTradeWindows, fetchLatestInfCost, INFLUENCE, DIRTY,
 } from '../../../server/etherscan.js';
 import { ethPriceFeed } from '../../../lib/eth-price-feed.js';
 import { getPlayerStats } from '../../../lib/index.js';
@@ -30,10 +30,21 @@ export async function GET(req) {
       fetchLatestInfCost().catch(() => null),
     ]);
 
-    const companies = tradeStates.map(s => ({
-      ...s,
-      entryPrice: entryPriceMap.get(s.company) ?? 0,
-    }));
+    // Pull trade-window timestamps (startTime / endTime from storage slots 4/5)
+    // for active companies so the chart can render the "trade started" marker.
+    const activeAddrs = tradeStates.filter(s => s.active).map(s => s.company);
+    const windowMap   = activeAddrs.length
+      ? await getCompanyTradeWindows(activeAddrs).catch(() => new Map())
+      : new Map();
+
+    const companies = tradeStates.map(s => {
+      const win = windowMap.get(s.company.toLowerCase());
+      return {
+        ...s,
+        entryPrice: entryPriceMap.get(s.company) ?? 0,
+        startTime:  win?.startTime ?? null,
+      };
+    });
 
     const autoTradeOn  = companies.filter(s => s.autoTradeEnabled).length;
     const autoTradeOff = companies.filter(s => !s.autoTradeEnabled).length;
