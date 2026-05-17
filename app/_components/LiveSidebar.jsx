@@ -91,9 +91,9 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
 
       <div className="tm-live-panel">
         <div className="tm-live-panel-h">
-          <span><b>polizia</b> imminent</span>
+          <span><b>polizia</b></span>
           <span className="rule" />
-          <span className="v">{poliziaTotal}</span>
+          <span className="v">&lt;3$ · {poliziaTotal}</span>
         </div>
         {poliziaList.flatMap((r) => {
           const liveBuffer = Math.round((counters.eth - r.liqPrice) * 100) / 100;
@@ -126,7 +126,7 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
         <div className="tm-live-panel-h">
           <span><b>new</b> crimes</span>
           <span className="rule" />
-          <span className="v">{recentStarts.length}</span>
+          <span className="v">5m · {recentStarts.length}</span>
         </div>
         {recentStarts.slice(0, 5).map(s => {
           const endsIn  = fmtCountdownLocal(s.endTime);
@@ -190,7 +190,6 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
         <div className="tm-live-panel-h">
           <span><b>crimes</b> matrix</span>
           <span className="rule" />
-          <span className="v">60m</span>
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9px', fontFamily: 'var(--t-font)' }}>
           <thead>

@@ -320,8 +320,9 @@ export async function GET() {
     };
 
     // ── recentStarts ──────────────────────────────────────────────────────────
-    // Last 5 ops that started: start_time = end_time - duration(trade_type)
+    // Ops that started in the last 5 minutes (start_time = end_time - duration).
     const TRADE_DUR = { EXTORTION: 300, ARMS_DEAL: 1800, DRUG_DEAL: 5400 };
+    const nowSec = Math.floor(Date.now() / 1000);
     const recentStarts = [...companies]
       .filter(c => c.active && c.op_type && c.end_time > 0)
       .map(c => ({
@@ -333,8 +334,8 @@ export async function GET() {
         endTime:    Number(c.end_time),
         liqPrice:   liqPriceUsd(c.liq_price),
       }))
-      .sort((a, b) => b.startTime - a.startTime)
-      .slice(0, 5);
+      .filter(r => r.startTime >= nowSec - 300)
+      .sort((a, b) => b.startTime - a.startTime);
 
     // ── liveTrades ────────────────────────────────────────────────────────────
     const liveTrades = companies.map(c => {

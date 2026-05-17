@@ -9,13 +9,13 @@ function nowHMS() {
   return `${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
 }
 import { LiveSidebar } from './LiveSidebar.jsx';
-import { WalletRail } from './WalletRail.jsx';
 import { OverviewSection } from './sections/OverviewSection.jsx';
 import { TokenSection } from './sections/TokenSection.jsx';
 import { PlayersSection } from './sections/PlayersSection.jsx';
 import { VaultSection } from './sections/VaultSection.jsx';
 import { TradesSection } from './sections/TradesSection.jsx';
 import { CriminalChartSection } from './sections/CriminalChartSection.jsx';
+import { WalletInspectorSection } from './sections/WalletInspectorSection.jsx';
 import { StakingSection } from './sections/StakingSection.jsx';
 
 // Paired grid cells resize as complements (span + partner = 12).
@@ -50,6 +50,10 @@ const DEFAULT_SPANS = {
   'vault':             12,
   'top-stakers':        5,
   'watch-chart':       12,
+  'indexed-stats':      3,
+  'recent-activity':    3,
+  'live-companies':     3,
+  'farmed-daily':       3,
   'trades':             6,
   'ops':                6,
   'company-state':      5,
@@ -70,18 +74,14 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   const [activeApp, setActiveApp] = useState('offshore');
   const [search, setSearch] = useState('');
   const [notifs, setNotifs] = useState({ 'buys & sells': true, 'operations': true, 'staking': true, 'liquidations': true });
-  // Seed walletAddr from the URL (when arriving via /criminal/0x…) — the rail
-  // opens automatically below once openRailRef is attached.
+  // Seed walletAddr from the URL (when arriving via /criminal/0x…). The
+  // inspector section below the criminal-watch chart renders automatically
+  // when walletAddr matches a full 0x address.
   const [walletAddr, setWalletAddr] = useState(initialAddress);
   const [aliases, setAliases] = useState({});
-  const openRailRef = useRef(null);
-
-  // Open the criminal rail on mount when arriving with a pre-seeded address.
-  useEffect(() => {
-    if (initialAddress && /^0x[0-9a-fA-F]{40}$/.test(initialAddress) && openRailRef.current) {
-      openRailRef.current();
-    }
-  }, []);
+  const [alarmOn, setAlarmOn] = useState(false);
+  const alarmOnRef = useRef(false);
+  alarmOnRef.current = alarmOn;
 
   // Two-way URL ↔ walletAddr sync.
   // Whenever walletAddr changes (rail input, table clicks, anything),
@@ -124,7 +124,6 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
 
   function openWallet(fullAddr) {
     setWalletAddr(fullAddr);
-    if (openRailRef.current) openRailRef.current();
   }
 
   // ── Aliases (every 2 min) ────────────────────────────────────────────────
@@ -160,6 +159,26 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
   const [liveTicker, setLiveTicker] = useState(() => D.liveTradeTicker || []);
   const [latestNewOps, setLatestNewOps] = useState([]);
   const [recentStarts, setRecentStarts] = useState(() => D.recentStarts || []);
+
+  // Audio + Notification alarm for the currently-watched criminal.
+  useEffect(() => {
+    if (alarmOn && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, [alarmOn]);
+  useEffect(() => {
+    if (!alarmOnRef.current || !walletAddr || !latestNewOps?.length) return;
+    const addr = walletAddr.toLowerCase();
+    const mine = latestNewOps.filter(o => (o.walletFull || '').toLowerCase() === addr);
+    if (!mine.length) return;
+    const hasSuccess = mine.some(o => o.result === 'completed');
+    const which = hasSuccess ? 'success' : 'partial';
+    try { new Audio(`/sounds/${which}.mp3`).play(); } catch {}
+    if (typeof document !== 'undefined' && document.hidden &&
+        typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      new Notification(hasSuccess ? 'Op completed' : 'Op partial / bust', { body: walletAddr.slice(0, 10) + '…', silent: true });
+    }
+  }, [latestNewOps]);
 
   const lastOpTsRef  = useRef(
     (D.recentOps && D.recentOps.length > 0) ? (D.recentOps[0]._ts || 0) : 0
@@ -293,10 +312,6 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     { k: 'block', v: counters.block.toLocaleString() },
   ];
 
-  const rail = showRail ? (
-    <WalletRail address={walletAddr} onAddressChange={setWalletAddr} ethPrice={counters.eth} newOps={latestNewOps} />
-  ) : null;
-
   return (
     <TerminalShell
       mode="standalone"
@@ -306,30 +321,40 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
       activeAppId={activeApp}
       onAppChange={setActiveApp}
       ticker={ticker}
-      search={search}
+      // Top search reflects the watched criminal when one is loaded;
+      // otherwise it's the free-text filter consumed by TradesSection.
+      search={walletAddr || search}
       onSearch={(v) => {
-        setSearch(v);
-        // If the user pasted/typed a full 0x address into the top bar, open
-        // the criminal rail on it — same behaviour as the rail's own input.
-        if (/^0x[0-9a-fA-F]{40}$/.test(v)) openWallet(v);
+        if (v === '') {
+          setWalletAddr('');
+          setSearch('');
+        } else if (/^0x[0-9a-fA-F]{40}$/.test(v)) {
+          setWalletAddr(v.toLowerCase());
+          setSearch('');
+        } else {
+          setWalletAddr('');
+          setSearch(v);
+        }
       }}
       sideFooter={sideFoot}
-      rail={rail}
       sideContent={<LiveSidebar D={D} counters={counters} ops={ops} watch={watch} trades={liveTicker} recentStarts={recentStarts} onWallet={openWallet} aliases={aliases} />}
-      railLabel="criminal"
       theme={theme}
       onThemeChange={onThemeChange}
       notifPrefs={notifs}
       onNotifChange={setNotifs}
-      openRailRef={openRailRef}
       density={density}
     >
       <div className="tm-content">
         <OverviewSection D={D} counters={counters} infPurchased={inf.purchased} dawPct={dawPct} />
+        {/^0x[0-9a-fA-F]{40}$/.test(walletAddr) && (
+          <>
+            <CriminalChartSection   address={walletAddr} grid={grid} ethPrice={counters.eth} alarmOn={alarmOn} onAlarmToggle={() => setAlarmOn(v => !v)} />
+            <WalletInspectorSection address={walletAddr} grid={grid} ethPrice={counters.eth} />
+          </>
+        )}
         <TokenSection    D={D} grid={grid} />
         <PlayersSection  D={D} grid={grid} />
         <VaultSection    D={D} grid={grid} />
-        <CriminalChartSection address={walletAddr} grid={grid} ethPrice={counters.eth} />
         <TradesSection   grid={grid} liveTrades={liveTrades} ops={ops} search={search} ethPrice={counters.eth} aliases={aliases} onWallet={openWallet} />
         <StakingSection  grid={grid} aliases={aliases} onWallet={openWallet} />
       </div>

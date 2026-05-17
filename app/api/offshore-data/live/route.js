@@ -110,17 +110,20 @@ export async function GET(request) {
         ORDER BY c.end_time ASC NULLS LAST
       `.catch(() => []) : Promise.resolve([]),
       db ? db`SELECT COUNT(*)::int AS cnt FROM companies WHERE active = TRUE`.catch(() => []) : Promise.resolve([]),
-      // Last 5 operations that started: start_time = end_time - duration per trade_type.
+      // Ops that started in the last 5 minutes: start_time = end_time - duration per trade_type.
       db ? db`
-        SELECT address, owner, end_time, trade_type, liq_price,
-               (end_time - (CASE trade_type
-                              WHEN 'EXTORTION' THEN 300
-                              WHEN 'ARMS_DEAL' THEN 1800
-                              WHEN 'DRUG_DEAL' THEN 5400
-                              ELSE 5400 END)) AS start_time
-        FROM companies
-        WHERE active = TRUE AND trade_type IS NOT NULL AND end_time > 0
-        ORDER BY start_time DESC LIMIT 5
+        SELECT * FROM (
+          SELECT address, owner, end_time, trade_type, liq_price,
+                 (end_time - (CASE trade_type
+                                WHEN 'EXTORTION' THEN 300
+                                WHEN 'ARMS_DEAL' THEN 1800
+                                WHEN 'DRUG_DEAL' THEN 5400
+                                ELSE 5400 END)) AS start_time
+          FROM companies
+          WHERE active = TRUE AND trade_type IS NOT NULL AND end_time > 0
+        ) s
+        WHERE start_time >= EXTRACT(EPOCH FROM now())::bigint - 300
+        ORDER BY start_time DESC
       `.catch(() => []) : Promise.resolve([]),
       // Newly-liquidated positions since last poll
       db && since > 0 ? db`

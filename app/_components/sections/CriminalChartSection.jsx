@@ -34,7 +34,7 @@ function fmtClock(ts) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-export function CriminalChartSection({ address, grid, ethPrice = 0 }) {
+export function CriminalChartSection({ address, grid, ethPrice = 0, alarmOn = false, onAlarmToggle }) {
   const { spans, heights, resize } = grid;
   const isFullAddr = /^0x[0-9a-fA-F]{40}$/.test(address || '');
 
@@ -217,8 +217,23 @@ export function CriminalChartSection({ address, grid, ethPrice = 0 }) {
           sub={isFullAddr
             ? `${activeOps.length} active · span ${fmtMin(span)} · ${bucketName} candles${userSpan != null || panSec ? ' · custom' : ' · auto'}`
             : 'enter a 0x… address in the criminal rail to load'}
-          actions={(userSpan != null || panSec !== 0) && (
-            <button onClick={resetView} className="tm-hot" style={{ background: 'none', border: '1px solid var(--t-rule)', color: 'var(--t-fg-mut)', fontSize: 'var(--t-fs-xs)', padding: '2px 8px', cursor: 'pointer', fontFamily: 'inherit' }}>reset</button>
+          actions={(
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {(userSpan != null || panSec !== 0) && (
+                <button onClick={resetView} className="tm-hot" style={{ background: 'none', border: '1px solid var(--t-rule)', color: 'var(--t-fg-mut)', fontSize: 'var(--t-fs-xs)', padding: '2px 8px', cursor: 'pointer', fontFamily: 'inherit' }}>reset</button>
+              )}
+              {onAlarmToggle && (
+                <span
+                  onClick={onAlarmToggle}
+                  style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4,
+                    fontSize: 'var(--t-fs-xs)', userSelect: 'none',
+                    color: alarmOn ? 'var(--t-warn)' : 'var(--t-fg-soft)' }}
+                >
+                  <span>⏰</span>
+                  <span>{alarmOn ? 'alarm on' : 'alarm off'}</span>
+                </span>
+              )}
+            </div>
           )}
         >
           <div ref={wrapRef} style={{ width: '100%' }}>
