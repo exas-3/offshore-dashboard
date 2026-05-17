@@ -267,18 +267,35 @@ export function WalletRail({ address, onAddressChange, ethPrice = 0, newOps = []
         </Region>
       )}
 
-      {isFullAddr && dbData?.history?.length > 1 && (
-        <Region title="farmed daily">
-          <BarRow2
-            data={dbData.history.map(h => ({ x: h.day?.slice(5) ?? h.day, earned: Number(h.earned), spent: Number(h.spent) }))}
-            series={[
-              { key: 'spent',  label: 'spent',  color: 'neg', dir: 'rtl' },
-              { key: 'earned', label: 'earned', color: 'pos' },
-            ]}
-            hideNum
-          />
-        </Region>
-      )}
+      {isFullAddr && dbData?.history?.length > 1 && (() => {
+        const totalCompleted = dbData.history.reduce((s, h) => s + Number(h.completed || 0), 0);
+        const totalBusted    = dbData.history.reduce((s, h) => s + Number(h.busted    || 0), 0);
+        const totalOps       = totalCompleted + totalBusted;
+        const totalRate      = totalOps > 0 ? (totalCompleted / totalOps * 100).toFixed(1) + '%' : '—';
+        return (
+          <Region title="farmed daily" sub={`win rate ${totalRate}`}>
+            <BarRow2
+              data={dbData.history.map(h => ({
+                x:         h.day?.slice(5) ?? h.day,
+                earned:    Number(h.earned),
+                spent:     Number(h.spent),
+                completed: Number(h.completed || 0),
+                busted:    Number(h.busted    || 0),
+              }))}
+              series={[
+                { key: 'spent',  label: 'spent',  color: 'neg', dir: 'rtl' },
+                { key: 'earned', label: 'earned', color: 'pos' },
+              ]}
+              hideNum
+              extraRows={(d) => {
+                const ops = (d.completed || 0) + (d.busted || 0);
+                const rate = ops > 0 ? (d.completed / ops * 100).toFixed(1) + '%' : '—';
+                return [{ k: 'win rate', v: `${rate} · ${d.completed}/${ops}`, color: 'var(--t-hdr)' }];
+              }}
+            />
+          </Region>
+        );
+      })()}
 
       {isFullAddr && !loading && !dbData && !liveData && (
         <div className="dim" style={{ fontSize: 'var(--t-fs-xs)', padding: '4px 0' }}>no data found for this address</div>

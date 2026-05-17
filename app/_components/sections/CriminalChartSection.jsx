@@ -336,6 +336,16 @@ export function CriminalChartSection({ address, grid, ethPrice = 0 }) {
                 })}
               </svg>
             )}
+            {isFullAddr && (() => {
+              const d = new Date(now * 1000);
+              const z = (n) => String(n).padStart(2, '0');
+              const clock = `${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
+              return (
+                <div style={{ textAlign: 'center', color: 'var(--t-fg-soft)', fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs-xs)', paddingTop: 4 }}>
+                  {clock}
+                </div>
+              );
+            })()}
           </div>
         </Region>
       </GridCell>

@@ -307,7 +307,12 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
       onAppChange={setActiveApp}
       ticker={ticker}
       search={search}
-      onSearch={setSearch}
+      onSearch={(v) => {
+        setSearch(v);
+        // If the user pasted/typed a full 0x address into the top bar, open
+        // the criminal rail on it — same behaviour as the rail's own input.
+        if (/^0x[0-9a-fA-F]{40}$/.test(v)) openWallet(v);
+      }}
       sideFooter={sideFoot}
       rail={rail}
       sideContent={<LiveSidebar D={D} counters={counters} ops={ops} watch={watch} trades={liveTicker} recentStarts={recentStarts} onWallet={openWallet} aliases={aliases} />}

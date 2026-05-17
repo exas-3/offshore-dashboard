@@ -20,7 +20,7 @@ export function VaultSection({ D, grid }) {
               <KV k="total distributed" v={`${D.distributionTotals.totalLabel} USDm`} cls="hdr" />
               <KV k="cycles paid" v={String(D.distributionTotals.cyclesPaid)} />
               <KV k="unique recipients" v={D.distributionTotals.uniqueRecipients.toLocaleString()} />
-              {lastCycle && <KV k="last cycle" v={`${fmtK(lastCycle.v)} USDm`} sub={`${lastRecip ? lastRecip.v : '—'} recipients · ${lastCycle.t}`} />}
+              {lastCycle && <KV k="last cycle" v={`${fmtK(lastCycle.v)} USDm`} sub={`${lastRecip ? lastRecip.v : '—'} claimers · ${lastCycle.t}`} />}
               <KVSep />
               <KV k="median per cycle"     v={`${fmtK(medUsdm)} USDm`} />
               <KV k="new recipients / cycle" v={medNewRecip ? `~${medNewRecip}` : '—'} cls="dim" />

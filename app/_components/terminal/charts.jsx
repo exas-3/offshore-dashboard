@@ -130,7 +130,7 @@ export function BarRow({ data, max, color = 'fg', valueFmt = fmt.k }) {
 
 // ── Two-series bar row ─────────────────────────────────────────────────────
 
-export function BarRow2({ data, series, max, valueFmt = fmt.k, hideNum = false }) {
+export function BarRow2({ data, series, max, valueFmt = fmt.k, hideNum = false, extraRows }) {
   const scrollRef = useRef(null);
   const width = useGlyphWidth(scrollRef);
   const halfW = Math.max(1, Math.floor(width / 2));
@@ -168,11 +168,14 @@ export function BarRow2({ data, series, max, valueFmt = fmt.k, hideNum = false }
         <ChartTooltip
           mouse={mouse}
           title={hoverD.x ?? hoverD.t}
-          rows={series.map(s => ({
-            k: s.label || s.key,
-            v: valueFmt(hoverD[s.key] || 0),
-            color: `var(--t-${s.color})`,
-          }))}
+          rows={[
+            ...series.map(s => ({
+              k: s.label || s.key,
+              v: valueFmt(hoverD[s.key] || 0),
+              color: `var(--t-${s.color})`,
+            })),
+            ...(extraRows ? extraRows(hoverD) : []),
+          ]}
         />
       )}
     </>

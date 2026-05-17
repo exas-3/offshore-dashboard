@@ -17,9 +17,10 @@ export function TokenSection({ D, grid }) {
 
   const inf = D.influenceFlow.totals;
   const infMinted      = (inf.purchased || 0) + (inf.refunded || 0);
-  const infRefundRate  = infMinted > 0 ? (inf.refunded / infMinted * 100).toFixed(1) + '%' : '—';
-  const lastInfDay     = D.influenceFlow.days.at(-1) || {};
-  const infBurnImplied = lastInfDay.consumed || 0;
+  // Refunded INF corresponds to busted ops (the INF cost is returned when an
+  // op fails), so win rate = 1 - refund_rate.
+  const infWinRate = infMinted > 0 ? ((infMinted - inf.refunded) / infMinted * 100).toFixed(1) + '%' : '—';
+  const lastInfDay = D.influenceFlow.days.at(-1) || {};
 
   const idleCount     = Math.max(0, D.companies.totalCompanies - D.companies.activeTrades);
   const expiredCount  = Math.max(0, idleCount - Math.round(idleCount * 0.6));
@@ -155,8 +156,7 @@ export function TokenSection({ D, grid }) {
           <KV k="refunded"    v={inf.refunded.toLocaleString()} />
           <KV k="circulating" v={inf.circulating.toLocaleString()} />
           <KVSep />
-          <KV k="refund rate"        v={infRefundRate}  cls="warn" />
-          <KV k="$INF burn implied"  v={fmtK(infBurnImplied)} />
+          <KV k="win rate"           v={infWinRate} cls="pos" />
         </Region>
       </GridCell>
 
