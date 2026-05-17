@@ -73,10 +73,13 @@ export function createWsClient() {
       console.log('[ws] connected');
       connectAttempt = 0;
       // Gap-fill each sub BEFORE re-subscribing so we don't double-process
-      // any events the live stream catches first.
+      // any events the live stream catches first. Stagger subscribe calls
+      // (~50 ms) — Alchemy returns "Internal error" if a single client
+      // bursts more than ~5 eth_subscribe requests in the same tick.
       for (const sub of subs) {
         await gapFill(sub);
         registerSub(sub);
+        await new Promise(r => setTimeout(r, 50));
       }
     };
     ws.onmessage = async (event) => {
@@ -102,9 +105,19 @@ export function createWsClient() {
         if (!sub) return;
         if (msg.result) {
           sub.subId = msg.result;
+          sub.retryCount = 0;
           console.log(`[ws] subscribed ${sub.name}  id=${msg.result.slice(0, 12)}…`);
         } else if (msg.error) {
           console.warn(`[ws] subscribe ${sub.name} failed: ${msg.error.message ?? JSON.stringify(msg.error)}`);
+          // Alchemy returns "Internal error" for some transient subscribe
+          // failures (rate-limit, in-progress fork-choice, etc). Retry up
+          // to 3 times with a back-off before giving up until next reconnect.
+          sub.retryCount = (sub.retryCount ?? 0) + 1;
+          if (sub.retryCount <= 3 && ws?.readyState === 1) {
+            setTimeout(() => {
+              if (ws?.readyState === 1 && !sub.subId) registerSub(sub);
+            }, 500 * sub.retryCount);
+          }
         }
       }
     };
