@@ -46,7 +46,7 @@ export async function GET(request) {
     const now   = Math.floor(Date.now() / 1000);
     const db    = getDb();
 
-    const [dirtyPrice, infCost, latestBlock, tps, ethFromDb, dawRow, opsRow, latestOpRow, newOpsRows, latestEventRow, companiesRow, activeOpsRow, newLiqsRows, recentStartsRows] = await Promise.all([
+    const [dirtyPrice, infCost, latestBlock, tps, ethFromDb, dawRow, opsRow, latestOpRow, newOpsRows, latestEventRow, companiesRow, activeOpsRow, recentStartsRows, newLiqsRows] = await Promise.all([
       getCachedDirtyPrice().catch(() => null),
       getCachedInfCost().catch(() => null),
       getLatestBlock().catch(() => null),

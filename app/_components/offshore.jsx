@@ -187,7 +187,9 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
           setWatchRaw(d.liveTrades);
           setLiveTrades(d.liveTrades);
         }
-        if (d.recentStarts) setRecentStarts(d.recentStarts);
+        // Keep the previous list if the tick returns an empty/missing payload —
+        // an empty response (e.g. transient DB hiccup) shouldn't clear the panel.
+        if (Array.isArray(d.recentStarts) && d.recentStarts.length > 0) setRecentStarts(d.recentStarts);
         if (d.latestEvent && d.latestEvent._ts > lastEventTs) {
           lastEventTs = d.latestEvent._ts;
           setLiveTicker((prev) => {
