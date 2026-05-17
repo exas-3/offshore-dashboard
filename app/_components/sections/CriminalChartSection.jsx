@@ -296,6 +296,20 @@ export function CriminalChartSection({ address, grid, ethPrice = 0 }) {
                   <line x1={xNow} x2={xNow} y1={PAD.t} y2={h - PAD.b} stroke="var(--t-hdr)" strokeWidth="1" opacity="0.6" />
                 )}
 
+                {/* current ETH price horizontal + right-edge tag */}
+                {ethPrice > 0 && ethPrice >= yMin && ethPrice <= yMax && (() => {
+                  const yEth = yScale(ethPrice);
+                  const label = `$${ethPrice.toFixed(2)}`;
+                  const tagW = Math.max(48, label.length * 6 + 8);
+                  return (
+                    <g>
+                      <line x1={PAD.l} x2={w - PAD.r} y1={yEth} y2={yEth} stroke="var(--t-hdr)" strokeWidth="1" opacity="0.9" />
+                      <rect x={w - PAD.r - tagW} y={yEth - 8} width={tagW} height={14} fill="var(--t-hdr)" opacity="0.9" />
+                      <text x={w - PAD.r - 4} y={yEth + 3} fill="var(--t-bg)" fontSize="10" fontFamily="var(--t-font)" textAnchor="end" fontWeight="500">{label}</text>
+                    </g>
+                  );
+                })()}
+
                 {/* candles */}
                 {candles.map(c => {
                   const cx   = xScale(c.ts + bucketSec / 2);
