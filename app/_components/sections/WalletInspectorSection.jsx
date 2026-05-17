@@ -119,7 +119,7 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0 }) {
   // ── Region: recent activity (8) ───────────────────────────────────────
   const recentActivity = dbData?.activity?.length > 0 ? (
     <Region title="recent activity" sub={`${dbData.activity.length} txs`}>
-      <div className="tm-scroll-bl" style={{ maxHeight: 280, overflowY: 'auto' }}>
+      <div className="tm-scroll-bl" style={{ maxHeight: 400, overflowY: 'auto' }}>
         <table className="tm-tab tm-tab-bl" style={{ width: '100%', tableLayout: 'fixed' }}>
           <thead style={{ position: 'sticky', top: 0, background: 'var(--t-bg)', zIndex: 1 }}>
             <tr>
