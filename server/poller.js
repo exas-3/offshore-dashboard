@@ -13,7 +13,7 @@ import { syncCompanies } from './syncs/companies.js';
 import { syncCompanyStarts, startCompanyStartsWs, COMPANY_STARTS_INTERVAL_MS } from './syncs/company-starts.js';
 import { getWsClient } from './etherscan/ws-client.js';
 import { syncPartialSweep, PARTIAL_SWEEP_INTERVAL_MS } from './syncs/partial-sweep.js';
-import { syncLiquidations, LIQ_INTERVAL_MS } from './syncs/liquidations.js';
+import { syncLiquidations, startLiquidationsWs, LIQ_INTERVAL_MS } from './syncs/liquidations.js';
 import { syncStaking, syncStakingClaims, syncStakingRotations } from './syncs/staking.js';
 
 // Job status (mutated by the long-running reconcile/reclassify jobs, read by admin routes).
@@ -146,6 +146,7 @@ export async function startPoller() {
   // No-op if ALCHEMY_WS_URL isn't set — polling fallback alone keeps running.
   startCompanyStartsWs();
   startTransfersWs();
+  startLiquidationsWs();
   getWsClient().start();
   setInterval(syncInfluence,        TX_INTERVAL_MS);
   setInterval(syncTransfers,        TX_INTERVAL_MS);

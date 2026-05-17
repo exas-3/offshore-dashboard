@@ -6,7 +6,7 @@ import { FACTORY, GENESIS } from './constants.js';
 import { fromWei, rpcPost, rpcBatch } from './rpc-client.js';
 
 const FACTORY_ADDR   = FACTORY.toLowerCase();
-const E_EXITED       = '0xf20fbbc5dd518513b4b0381c1904c0751ca7493753ec53a73e651e8b79ee61ff';
+export const E_EXITED = '0xf20fbbc5dd518513b4b0381c1904c0751ca7493753ec53a73e651e8b79ee61ff';
 const E_PAYOUT       = '0xa082f97b8bead66307ae367bd14b2366e03c2e963493a9f269501d884cd1a502';
 const E_COMPLETE     = '0x55458b8d3210ff0a2d3612a4b3639021fd38d66d563562a98ca8b7d5e7930f70';
 const E_D47          = '0xd47648dbe74844d41eea0e3e6bf1d3f6f03cd31691e10e6edc7376d52b934dbd';
