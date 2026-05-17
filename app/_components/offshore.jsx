@@ -65,14 +65,23 @@ const NAV = [
   { id: 'trades',   label: 'trades' },
 ];
 
-export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme = 'purple', density = 'regular', onThemeChange }) {
+export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme = 'purple', density = 'regular', onThemeChange, initialAddress = '' }) {
   // ── Shell state ──────────────────────────────────────────────────────────
   const [activeApp, setActiveApp] = useState('offshore');
   const [search, setSearch] = useState('');
   const [notifs, setNotifs] = useState({ 'buys & sells': true, 'operations': true, 'staking': true, 'liquidations': true });
-  const [walletAddr, setWalletAddr] = useState('');
+  // Seed walletAddr from the URL (when arriving via /criminal/0x…) — the rail
+  // opens automatically below once openRailRef is attached.
+  const [walletAddr, setWalletAddr] = useState(initialAddress);
   const [aliases, setAliases] = useState({});
   const openRailRef = useRef(null);
+
+  // Open the criminal rail on mount when arriving with a pre-seeded address.
+  useEffect(() => {
+    if (initialAddress && /^0x[0-9a-fA-F]{40}$/.test(initialAddress) && openRailRef.current) {
+      openRailRef.current();
+    }
+  }, []);
 
   // ── Grid layout (shared across sections) ─────────────────────────────────
   const [spans, setSpans] = useState(DEFAULT_SPANS);

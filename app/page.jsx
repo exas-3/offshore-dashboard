@@ -22,7 +22,7 @@ function setFavicon(theme) {
   document.head.appendChild(link);
 }
 
-export default function Page() {
+export default function Page({ initialAddress = '' } = {}) {
   const [data, setData] = useState(null);
   const [theme, setTheme] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -64,5 +64,5 @@ export default function Page() {
     );
   }
 
-  return <OffshoreDashboard D={data} theme={theme} onThemeChange={handleThemeChange} />;
+  return <OffshoreDashboard D={data} theme={theme} onThemeChange={handleThemeChange} initialAddress={initialAddress} />;
 }
