@@ -83,6 +83,29 @@ export function OffshoreDashboard({ D, showToasts = true, showRail = true, theme
     }
   }, []);
 
+  // Two-way URL ↔ walletAddr sync.
+  // Whenever walletAddr changes (rail input, table clicks, anything),
+  // push `/criminal/<addr>` into history; clearing the address resets to `/`.
+  // The popstate listener handles back/forward navigation the other way.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isFullAddr = /^0x[0-9a-fA-F]{40}$/.test(walletAddr);
+    const target = isFullAddr ? `/criminal/${walletAddr.toLowerCase()}` : '/';
+    if (window.location.pathname !== target) {
+      window.history.pushState({}, '', target);
+    }
+  }, [walletAddr]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onPop = () => {
+      const m = window.location.pathname.match(/^\/criminal\/(0x[0-9a-fA-F]{40})/);
+      setWalletAddr(m ? m[1].toLowerCase() : '');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   // ── Grid layout (shared across sections) ─────────────────────────────────
   const [spans, setSpans] = useState(DEFAULT_SPANS);
   const [heights, setHeights] = useState({ supply: 360, 'influence-daily': 200 });
