@@ -58,12 +58,14 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0, liveData =
   // Synthetic "in-progress" activity rows derived from the live companies
   // array — duration → op_type lets the recent-activity table surface a
   // freshly-started op in ≤3 s without waiting for syncCompanyStarts.
+  // Prefer the server-computed `tradeType` (one read pair, no race) and
+  // fall back to recomputing the duration client-side only if missing.
   const syntheticInProgress = useMemo(() => {
     if (!liveData?.companies) return [];
     const out = [];
     for (const c of liveData.companies) {
       if (!c.active || !(c.endTime > 0) || !(c.startTime > 0)) continue;
-      const opType = durationToOpType(Number(c.endTime) - Number(c.startTime));
+      const opType = c.tradeType ?? durationToOpType(Number(c.endTime) - Number(c.startTime));
       if (!opType) continue;
       out.push({
         hash:      c.company,

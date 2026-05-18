@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import {
   fetchTokenBalance, getUserCompaniesBatch, getTradeStates, getEntryPrices,
   getCompanyTradeWindows, fetchLatestInfCost, INFLUENCE, DIRTY,
+  durationToOpType,
 } from '../../../server/etherscan.js';
 import { ethPriceFeed } from '../../../lib/eth-price-feed.js';
 import { getPlayerStats } from '../../../lib/index.js';
@@ -39,10 +40,18 @@ export async function GET(req) {
 
     const companies = tradeStates.map(s => {
       const win = windowMap.get(s.company.toLowerCase());
+      // Compute the op_type from the slot-derived duration here so the
+      // client never has to reconcile a stale endTime (from BATCH_RESOLVER)
+      // against a fresh startTime (from storage slots) — the duration is
+      // computed once from a single read pair.
+      const tradeType = win && win.startTime && win.endTime
+        ? durationToOpType(Number(win.endTime) - Number(win.startTime))
+        : null;
       return {
         ...s,
         entryPrice: entryPriceMap.get(s.company) ?? 0,
         startTime:  win?.startTime ?? null,
+        tradeType,
       };
     });
 
