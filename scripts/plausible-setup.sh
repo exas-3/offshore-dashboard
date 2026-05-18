@@ -35,11 +35,17 @@ if ! command -v docker >/dev/null 2>&1; then
   apt update
   apt install -y ca-certificates curl
   install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/debian/gpg \
+  # Pick the right Docker repo based on the distro (debian vs ubuntu).
+  DISTRO_ID=$(lsb_release -is | tr '[:upper:]' '[:lower:]')
+  case "$DISTRO_ID" in
+    ubuntu|debian) ;;
+    *) echo "[plausible] unsupported distro $DISTRO_ID for docker apt repo" >&2; exit 1 ;;
+  esac
+  curl -fsSL "https://download.docker.com/linux/${DISTRO_ID}/gpg" \
     | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
   chmod a+r /etc/apt/keyrings/docker.gpg
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-    https://download.docker.com/linux/debian $(lsb_release -cs) stable" \
+    https://download.docker.com/linux/${DISTRO_ID} $(lsb_release -cs) stable" \
     > /etc/apt/sources.list.d/docker.list
   apt update
   apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
@@ -70,15 +76,27 @@ TOTP_VAULT_KEY=${TOTP_VAULT_KEY}
 # Lock down registration after creating your admin account.
 DISABLE_REGISTRATION=invite_only
 
-# Bind the Plausible HTTP port to localhost only — Nginx proxies the two
-# adblock-evading paths, the admin UI stays private (SSH-tunnel only).
-HTTP_PORT=${PLAUSIBLE_PORT}
-LISTEN_IP=127.0.0.1
+# Container listens on the default 8000 internally; the compose override
+# publishes it as 127.0.0.1:${PLAUSIBLE_PORT} on the host.
+HTTP_PORT=8000
 EOF
   chmod 600 .env
 fi
 
-# ── 4. Pull and start the stack ─────────────────────────────────────────────
+# ── 4. Compose override: publish plausible on localhost-only port ──────────
+# Upstream compose.yml exposes plausible only to the docker network. Add a
+# host port binding so nginx can reach it. Bound to 127.0.0.1 — the admin UI
+# stays SSH-tunnel-only.
+if [ ! -f compose.override.yml ]; then
+  cat > compose.override.yml <<EOF
+services:
+  plausible:
+    ports:
+      - "127.0.0.1:${PLAUSIBLE_PORT}:8000"
+EOF
+fi
+
+# ── 5. Pull and start the stack ─────────────────────────────────────────────
 echo "[plausible] docker compose up -d"
 docker compose pull
 docker compose up -d
@@ -92,7 +110,7 @@ for i in {1..30}; do
   sleep 2
 done
 
-# ── 5. Inject Nginx proxy blocks ────────────────────────────────────────────
+# ── 6. Inject Nginx proxy blocks ────────────────────────────────────────────
 # We insert two `location` blocks into the HTTPS server{} of the existing
 # offshore-dashboard site. Idempotent via the marker; re-runs won't duplicate.
 
@@ -104,8 +122,11 @@ fi
 if grep -qF "$MARKER" "$NGINX_SITE"; then
   echo "[plausible] nginx marker already present; skipping injection"
 else
-  echo "[plausible] backing up $NGINX_SITE → $NGINX_SITE.bak.$(date +%s)"
-  cp "$NGINX_SITE" "$NGINX_SITE.bak.$(date +%s)"
+  # Keep backups OUT of sites-enabled — nginx loads any file in that dir
+  # and would see the bak as a second server{} for the same names.
+  BACKUP_PATH="/root/offshore-dashboard.nginx.bak.$(date +%s)"
+  echo "[plausible] backing up $NGINX_SITE → $BACKUP_PATH"
+  cp "$NGINX_SITE" "$BACKUP_PATH"
 
   # Insert before the FIRST `location / {` inside each server{} block. Using
   # sed to find the line and prepend our blocks. The site has two server{}
@@ -144,7 +165,7 @@ echo "[plausible] validating + reloading nginx"
 nginx -t
 systemctl reload nginx
 
-# ── 6. Verification ─────────────────────────────────────────────────────────
+# ── 7. Verification ─────────────────────────────────────────────────────────
 echo
 echo "─── Verify these URLs ───────────────────────────────────────────────"
 echo "  curl -fs https://${DOMAIN_MAIN}/ps/script.js | head -c 80   (returns JS, ~7 KB)"
