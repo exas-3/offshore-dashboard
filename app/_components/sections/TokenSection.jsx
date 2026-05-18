@@ -16,10 +16,15 @@ export function TokenSection({ D, grid }) {
   const [infGran, setInfGran] = useState('hourly');
 
   const inf = D.influenceFlow.totals;
-  const infMinted      = (inf.purchased || 0) + (inf.refunded || 0);
-  // Refunded INF corresponds to busted ops (the INF cost is returned when an
-  // op fails), so win rate = 1 - refund_rate.
-  const infWinRate = infMinted > 0 ? ((infMinted - inf.refunded) / infMinted * 100).toFixed(1) + '%' : '—';
+  // Of all INF that went into ops:
+  //   - `consumed` (BURN) = INF burned when the op SUCCEEDED — protocol keeps it
+  //   - `refunded` (MINT with same-tx DIRTY) = INF returned when the op BUSTED
+  // So win rate = consumed / (consumed + refunded). `purchased` (gross INF the
+  // user *bought*) is not part of this ratio.
+  const infStaked  = (inf.consumed || 0) + (inf.refunded || 0);
+  const infWinRate = infStaked > 0
+    ? ((inf.consumed || 0) / infStaked * 100).toFixed(1) + '%'
+    : '—';
   const lastInfDay = D.influenceFlow.days.at(-1) || {};
 
   const idleCount     = Math.max(0, D.companies.totalCompanies - D.companies.activeTrades);
