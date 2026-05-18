@@ -20,6 +20,7 @@ import { FACTORY } from '../etherscan/constants.js';
 import { E_TRADE_STARTED } from '../etherscan/factory-events.js';
 import { getWsClient } from '../etherscan/ws-client.js';
 import { bufferedFlush } from '../etherscan/buffered-flush.js';
+import { logSyncError } from './log-throttle.js';
 import {
   upsertCompanies,
   getLastTradeStartBlock,
@@ -89,7 +90,7 @@ export async function syncCompanyStarts() {
     await setLastTradeStartBlock(tip);
     await resolveAndUpsert(startedMap, 'poll');
   } catch (err) {
-    console.error('[poller] company-starts (poll) error:', err.message);
+    logSyncError('company-starts (poll)', err);
   } finally {
     busy = false;
   }

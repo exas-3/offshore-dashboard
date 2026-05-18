@@ -1,4 +1,5 @@
 import { getLatestBlock } from '../etherscan.js';
+import { logSyncError } from './log-throttle.js';
 
 const inflight = new Set();
 
@@ -43,7 +44,7 @@ export async function runBlockSync({
     if (total > 0) console.log(`[poller] ${name} +${total} | block ${latestBlock}`);
     return total;
   } catch (err) {
-    console.error(`[poller] ${name} sync error:`, err.message);
+    logSyncError(`${name} sync`, err);
     return 0;
   } finally {
     inflight.delete(name);

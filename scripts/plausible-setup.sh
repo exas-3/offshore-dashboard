@@ -1,36 +1,33 @@
 #!/usr/bin/env bash
-# Plausible CE on Hetzner — adblock-evading setup script.
+# Plausible CE on Hetzner — SSH-tunnel admin UI + adblock-evading tracking.
 #
 # Runs on the Hetzner VPS as root. Idempotent where possible — re-running
-# won't clobber an existing install, but the secrets only generate once.
+# won't clobber an existing install, but secrets generate only once.
 #
 # Architecture after this runs:
 #
-#   Browser  ──HTTPS──▶  Caddy  ──┬──▶  Next.js (offshore-dashboard) :3000
-#                                 ├──▶  Plausible :8000  (admin UI on stats.offshoredashboard.xyz)
-#                                 └──▶  proxied analytics paths on the main domain:
-#                                         offshoredashboard.xyz/js/pa.js  →  Plausible /js/script.js
-#                                         offshoredashboard.xyz/api/e     →  Plausible /api/event
+#   Browser  ──HTTPS──▶  Cloudflare  ──▶  Nginx :443  ──┬──▶  Next.js :3000
+#                                                       └──▶  Plausible 127.0.0.1:3001
+#                                                            via two extra location blocks:
+#                                                              /ps/script.js  →  /js/script.js
+#                                                              /ps/event      →  /api/event
 #
-# The proxied paths are what defeats adblockers — they target known
-# Plausible URLs, not our renamed paths on the main domain.
+#   Plausible admin UI lives on 127.0.0.1:3001 — NOT publicly exposed.
+#   Reach it from your laptop:
+#       ssh -L 3001:localhost:3001 root@178.105.127.121
+#       open http://localhost:3001
 #
-# Pre-flight requirements (do these BEFORE running this script):
-#   1. DNS A records (at your registrar):
-#         offshoredashboard.xyz         → <vps-ip>
-#         www.offshoredashboard.xyz     → <vps-ip>
-#         stats.offshoredashboard.xyz   → <vps-ip>
-#   2. Ports 80 and 443 open in Hetzner firewall (cloud firewall, NOT just ufw).
-#   3. SSH access as root.
+# The /ps/* paths defeat adblockers — they aren't on any filter list. The
+# `proxy_pass` rewrites them to Plausible's native /js/script.js + /api/event
+# so the upstream container is unmodified.
 
 set -euo pipefail
 
-# ── Tunables ────────────────────────────────────────────────────────────────
 DOMAIN_MAIN="offshoredashboard.xyz"
-DOMAIN_STATS="stats.offshoredashboard.xyz"
-NEXTJS_UPSTREAM="127.0.0.1:3000"      # where pm2's offshore-dashboard listens
-PLAUSIBLE_PORT=8000                   # internal-only, behind Caddy
+PLAUSIBLE_PORT=3001
 PLAUSIBLE_DIR="/opt/plausible"
+NGINX_SITE="/etc/nginx/sites-enabled/offshore-dashboard"
+MARKER="# ── plausible proxy ──"
 
 # ── 1. Install Docker if missing ────────────────────────────────────────────
 if ! command -v docker >/dev/null 2>&1; then
@@ -48,19 +45,7 @@ if ! command -v docker >/dev/null 2>&1; then
   apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 fi
 
-# ── 2. Install Caddy if missing ─────────────────────────────────────────────
-if ! command -v caddy >/dev/null 2>&1; then
-  echo "[plausible] installing caddy"
-  apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
-  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-    | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-    | tee /etc/apt/sources.list.d/caddy-stable.list
-  apt update
-  apt install -y caddy
-fi
-
-# ── 3. Clone Plausible CE ───────────────────────────────────────────────────
+# ── 2. Clone Plausible CE ───────────────────────────────────────────────────
 mkdir -p "$PLAUSIBLE_DIR"
 cd "$PLAUSIBLE_DIR"
 if [ ! -d hosting ]; then
@@ -69,37 +54,31 @@ if [ ! -d hosting ]; then
 fi
 cd hosting
 
-# ── 4. Generate secrets (once; ignored on re-run) ──────────────────────────
+# ── 3. Generate secrets (once; ignored on re-run) ──────────────────────────
 if [ ! -f .env ]; then
   echo "[plausible] generating .env"
   SECRET_KEY_BASE=$(openssl rand -base64 48 | tr -d '\n')
   TOTP_VAULT_KEY=$(openssl rand -base64 32 | tr -d '\n')
   cat > .env <<EOF
 # ── Plausible CE configuration ──────────────────────────────────────────────
-BASE_URL=https://${DOMAIN_STATS}
+# BASE_URL is what Plausible bakes into emailed links / shared-dashboard URLs.
+# With SSH-tunnel access it points at localhost.
+BASE_URL=http://localhost:${PLAUSIBLE_PORT}
 SECRET_KEY_BASE=${SECRET_KEY_BASE}
 TOTP_VAULT_KEY=${TOTP_VAULT_KEY}
 
-# Disable user registration after you've created your admin account.
+# Lock down registration after creating your admin account.
 DISABLE_REGISTRATION=invite_only
 
-# SMTP — fill in after you sign up with a transactional email provider.
-# Plausible needs this only for password resets / shared-link emails.
-MAILER_EMAIL=admin@${DOMAIN_MAIN}
-SMTP_HOST_ADDR=smtp.example.com
-SMTP_HOST_PORT=587
-SMTP_USER_NAME=
-SMTP_USER_PWD=
-SMTP_HOST_SSL_ENABLED=true
-
-# Bind the Plausible HTTP port to localhost only — Caddy fronts it.
+# Bind the Plausible HTTP port to localhost only — Nginx proxies the two
+# adblock-evading paths, the admin UI stays private (SSH-tunnel only).
 HTTP_PORT=${PLAUSIBLE_PORT}
 LISTEN_IP=127.0.0.1
 EOF
   chmod 600 .env
 fi
 
-# ── 5. Pull and start the stack ─────────────────────────────────────────────
+# ── 4. Pull and start the stack ─────────────────────────────────────────────
 echo "[plausible] docker compose up -d"
 docker compose pull
 docker compose up -d
@@ -113,72 +92,75 @@ for i in {1..30}; do
   sleep 2
 done
 
-# ── 6. Caddy reverse proxy ──────────────────────────────────────────────────
-# Two virtual hosts:
-#   1) stats.offshoredashboard.xyz — Plausible admin UI + raw API.
-#   2) offshoredashboard.xyz       — Next.js, plus the renamed analytics
-#      paths that the browser-side snippet calls.
-#
-# The renamed paths defeat adblockers: /js/pa.js and /api/e aren't on any
-# filter list. handle_path strips the matched prefix before forwarding so
-# Plausible receives the request at its native path.
+# ── 5. Inject Nginx proxy blocks ────────────────────────────────────────────
+# We insert two `location` blocks into the HTTPS server{} of the existing
+# offshore-dashboard site. Idempotent via the marker; re-runs won't duplicate.
 
-CADDYFILE=/etc/caddy/Caddyfile
-if ! grep -q "${DOMAIN_STATS}" "$CADDYFILE" 2>/dev/null; then
-  cat >> "$CADDYFILE" <<EOF
-
-# ── Plausible admin (stats.${DOMAIN_MAIN}) ────────────────────────────────
-${DOMAIN_STATS} {
-  reverse_proxy 127.0.0.1:${PLAUSIBLE_PORT}
-}
-
-# ── Next.js + adblock-proxied analytics (${DOMAIN_MAIN}) ──────────────────
-${DOMAIN_MAIN}, www.${DOMAIN_MAIN} {
-  # Adblock-evading proxy paths. Browser calls these on the main domain.
-  handle /js/pa.js {
-    reverse_proxy 127.0.0.1:${PLAUSIBLE_PORT} {
-      header_up Host ${DOMAIN_STATS}
-      rewrite /js/script.js
-    }
-  }
-  handle /api/e {
-    reverse_proxy 127.0.0.1:${PLAUSIBLE_PORT} {
-      header_up Host ${DOMAIN_STATS}
-      rewrite /api/event
-    }
-  }
-
-  # Everything else goes to Next.js.
-  handle {
-    reverse_proxy ${NEXTJS_UPSTREAM}
-  }
-}
-EOF
+if [ ! -f "$NGINX_SITE" ]; then
+  echo "[plausible] nginx site not found at $NGINX_SITE; aborting" >&2
+  exit 1
 fi
 
-echo "[plausible] reloading caddy"
-caddy validate --config "$CADDYFILE"
-systemctl reload caddy
+if grep -qF "$MARKER" "$NGINX_SITE"; then
+  echo "[plausible] nginx marker already present; skipping injection"
+else
+  echo "[plausible] backing up $NGINX_SITE → $NGINX_SITE.bak.$(date +%s)"
+  cp "$NGINX_SITE" "$NGINX_SITE.bak.$(date +%s)"
 
-# ── 7. Verification ─────────────────────────────────────────────────────────
+  # Insert before the FIRST `location / {` inside each server{} block. Using
+  # sed to find the line and prepend our blocks. The site has two server{}
+  # stanzas (port 80 + 443) — both should serve /ps/* so analytics works on
+  # plain http too (Cloudflare may pass through during cert/SSL config).
+  python3 - "$NGINX_SITE" "$MARKER" "$PLAUSIBLE_PORT" <<'PYEOF'
+import sys, re
+path, marker, port = sys.argv[1], sys.argv[2], sys.argv[3]
+src = open(path).read()
+block = f"""
+    {marker}
+    location = /ps/script.js {{
+        proxy_pass http://127.0.0.1:{port}/js/script.js;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $remote_addr;
+    }}
+    location = /ps/event {{
+        proxy_pass http://127.0.0.1:{port}/api/event;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $remote_addr;
+    }}
+"""
+# Insert before each "location / {" line.
+new = re.sub(r"(\n[ \t]*)location / \{", block + r"\1location / {", src)
+if new == src:
+    sys.stderr.write("could not find 'location / {' to anchor on\n")
+    sys.exit(1)
+open(path, "w").write(new)
+PYEOF
+  echo "[plausible] injected nginx proxy blocks"
+fi
+
+echo "[plausible] validating + reloading nginx"
+nginx -t
+systemctl reload nginx
+
+# ── 6. Verification ─────────────────────────────────────────────────────────
 echo
 echo "─── Verify these URLs ───────────────────────────────────────────────"
-echo "  https://${DOMAIN_STATS}/             (Plausible admin login)"
-echo "  https://${DOMAIN_MAIN}/js/pa.js      (returns JS, ~7 KB)"
-echo "  https://${DOMAIN_MAIN}/api/e         (POST endpoint — GET returns 400, that's fine)"
+echo "  curl -fs https://${DOMAIN_MAIN}/ps/script.js | head -c 80   (returns JS, ~7 KB)"
+echo "  curl -i  https://${DOMAIN_MAIN}/ps/event                    (GET returns 400 — that's fine; tracker uses POST)"
+echo "  curl -fs http://127.0.0.1:${PLAUSIBLE_PORT}/api/health      (returns 'ok')"
 echo
-echo "─── Next steps ──────────────────────────────────────────────────────"
-echo "  1. Open https://${DOMAIN_STATS}/register and create your admin user."
-echo "  2. After login, register a site for domain '${DOMAIN_MAIN}'."
-echo "  3. Add this snippet to app/layout.jsx <head>:"
+echo "─── Reaching the admin UI ───────────────────────────────────────────"
+echo "  From your laptop:"
+echo "    ssh -L ${PLAUSIBLE_PORT}:localhost:${PLAUSIBLE_PORT} root@178.105.127.121"
+echo "  Then open in a browser:"
+echo "    http://localhost:${PLAUSIBLE_PORT}/register"
+echo "  Create your admin user, then register a site for '${DOMAIN_MAIN}'."
 echo
-echo "       <script"
-echo "         defer"
-echo "         data-domain=\"${DOMAIN_MAIN}\""
-echo "         data-api=\"/api/e\""
-echo "         src=\"/js/pa.js\"></script>"
+echo "─── The tracker is already wired in app/layout.jsx ──────────────────"
+echo "  <script defer data-domain=\"${DOMAIN_MAIN}\" data-api=\"/ps/event\" src=\"/ps/script.js\" />"
 echo
-echo "  4. (Optional) Set DISABLE_REGISTRATION=true in .env once your admin"
-echo "     account exists, then 'docker compose restart plausible'."
-echo "  5. (Optional) Daily backup of /var/lib/docker/volumes/plausible-* to"
-echo "     an off-VPS location."
+echo "─── Lock down registration after signup ─────────────────────────────"
+echo "  In ${PLAUSIBLE_DIR}/hosting/.env set DISABLE_REGISTRATION=true, then:"
+echo "    cd ${PLAUSIBLE_DIR}/hosting && docker compose restart plausible"

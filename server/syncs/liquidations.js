@@ -6,6 +6,7 @@ import {
 import { E_EXITED } from '../etherscan/factory-events.js';
 import { getWsClient } from '../etherscan/ws-client.js';
 import { bufferedFlush } from '../etherscan/buffered-flush.js';
+import { logSyncError } from './log-throttle.js';
 import { getCompanyOwners, getLastLiqBlock, setLastLiqBlock, upsertTransfers } from '../../lib/index.js';
 
 export const LIQ_INTERVAL_MS = 60_000;
@@ -75,7 +76,7 @@ export async function syncLiquidations() {
     await setLastLiqBlock(latestBlock);
     if (total > 0) console.log(`[poller] liquidations (poll) +${total} | block ${latestBlock}`);
   } catch (err) {
-    console.error('[poller] liquidations (poll) error:', err.message);
+    logSyncError('liquidations (poll)', err);
   } finally {
     liqSyncing = false;
   }

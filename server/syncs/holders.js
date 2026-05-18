@@ -1,5 +1,6 @@
 import { checkIsContract } from '../etherscan.js';
 import { computeHolderBalances, getKnownIsContract, upsertHolders } from '../../lib/index.js';
+import { logSyncError } from './log-throttle.js';
 
 export async function syncHolders() {
   try {
@@ -30,6 +31,6 @@ export async function syncHolders() {
     await upsertHolders(holders);
     console.log(`[poller] holders synced: ${holders.length}`);
   } catch (err) {
-    console.error('[poller] holders sync error:', err.message);
+    logSyncError('holders sync', err);
   }
 }

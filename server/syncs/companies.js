@@ -1,5 +1,6 @@
 import { getUserCompaniesBatch, getTradeStates, getCompanyTradeTypesFromStorage } from '../etherscan.js';
 import { getAllPlayerAddresses, upsertCompanies } from '../../lib/index.js';
+import { logSyncError } from './log-throttle.js';
 
 export async function syncCompanies() {
   try {
@@ -46,6 +47,6 @@ export async function syncCompanies() {
     const typed  = allStates.filter(s => s.tradeType).length;
     console.log(`[poller] companies synced: ${allStates.length} total, ${active} active (${typed} typed), ${autoOn} auto-trade on`);
   } catch (err) {
-    console.error('[poller] companies sync error:', err.message);
+    logSyncError('companies sync', err);
   }
 }

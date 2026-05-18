@@ -3,6 +3,7 @@ import {
   saveTokenInfoSnapshot, saveEthPriceSnapshot, saveInfluenceSupply,
   savePriceSnapshot, cleanupOldEthPrices, computeTrueHolderCount,
 } from '../../lib/index.js';
+import { logSyncError } from './log-throttle.js';
 
 export async function syncSnapshots() {
   try {
@@ -19,19 +20,19 @@ export async function syncSnapshots() {
       await saveTokenInfoSnapshot(dirtySupply.value, holders || null);
       console.log(`[poller] supply=${dirtySupply.value.toFixed(0)} holders=${holders}`);
     } else {
-      console.error('[poller] supply error:', dirtySupply.reason.message);
+      logSyncError('supply', dirtySupply.reason);
     }
 
     if (infSupply.status === 'fulfilled') {
       await saveInfluenceSupply(infSupply.value);
     } else {
-      console.error('[poller] influence supply error:', infSupply.reason.message);
+      logSyncError('influence supply', infSupply.reason);
     }
 
     if (ethPrice.status === 'fulfilled') {
       await saveEthPriceSnapshot(ethPrice.value);
     } else {
-      console.error('[poller] eth price error:', ethPrice.reason.message);
+      logSyncError('eth price', ethPrice.reason);
     }
 
     const d = dirtyPrice.status === 'fulfilled' ? dirtyPrice.value : null;
@@ -43,6 +44,6 @@ export async function syncSnapshots() {
 
     await cleanupOldEthPrices();
   } catch (err) {
-    console.error('[poller] snapshot error:', err.message);
+    logSyncError('snapshot', err);
   }
 }
