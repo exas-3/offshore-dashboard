@@ -20,14 +20,18 @@ export {
 
 // Game-op MINTs that have a completed/busted outcome. SCRAP is a MINT
 // too but it's never busted (you always get the scrap value) — so it's
-// deliberately NOT here, otherwise resultFromAmount would mis-tag every
-// scrap as 'busted' since the amount ≠ 100/115/130.
+// deliberately NOT here, otherwise the EARN_OPS-gated 'result' would
+// mis-tag every scrap as 'busted'.
 // FAIL is legacy classifier output and should not appear in fresh data;
 // included so historical rows still count.
-export const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL', 'FAIL']);
+export const EARN_OPS = new Set(['DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL', 'FAIL', 'HIT', 'HIT_REFUND', 'HIT_COST', 'ENTERPRISE']);
 
-// Amount in DIRTY that flags a completed payout. Anything else is a bust.
-export const COMPLETE_AMOUNTS = new Set([100, 115, 130]);
+// NOTE: COMPLETE_AMOUNTS / resultFromAmount were removed. Season 2 payouts
+// scale 50–100 by Power Level and busts use progressive partial refunds,
+// so amount alone can't distinguish completed from busted. The structural
+// signal is now: transfers.js (DirtyPaid path) → 'completed';
+// liquidations.js (TradeExited path) → 'busted'. API routes read the
+// stored `result` column rather than recomputing.
 
 // UI label: short, lowercase, hyphen-joined. PARTIAL / FAIL are
 // deliberately not mapped — they're legacy fallbacks; surfacing them raw
@@ -40,7 +44,12 @@ const OP_LABEL_MAP = Object.freeze({
   SCRAP:            'scrap',
   BUY_ASSET:        'buy-asset',
   LEVEL_UP:         'level-up',
-  THIRD_ENTERPRISE: 'buy-asset',
+  THIRD_ENTERPRISE: 'enterprise',  // legacy — kept for any rows that escaped the migration
+  FOURTH_ENTERPRISE:'enterprise',  // legacy — same as above
+  ENTERPRISE:       'enterprise',
+  HIT:              'hit',
+  HIT_COST:         'hit initiated',
+  HIT_REFUND:       'hitted',
   LP_ADD:           'lp add',
   LP_REMOVE:        'lp remove',
 });
@@ -62,6 +71,11 @@ export const tickerKind = Object.freeze({
   BUY_ASSET:         'op',
   LEVEL_UP:          'op',
   THIRD_ENTERPRISE:  'op',
+  FOURTH_ENTERPRISE: 'op',
+  ENTERPRISE:        'op',
+  HIT:               'hit',
+  HIT_COST:          'hit',
+  HIT_REFUND:        'hit',
   STAKE:             'stake',
 });
 
@@ -75,13 +89,12 @@ export const tickerLabel = Object.freeze({
   SCRAP:             'SCRAP',
   BUY_ASSET:         'BUY ASSET',
   LEVEL_UP:          'LEVEL UP',
-  THIRD_ENTERPRISE:  '3RD ENTERPRISE',
+  THIRD_ENTERPRISE:  'ENTERPRISE',
+  FOURTH_ENTERPRISE: 'ENTERPRISE',
+  ENTERPRISE:        'ENTERPRISE',
+  HIT:               'HIT',
+  HIT_COST:          'HIT INITIATED',
+  HIT_REFUND:        'HITTED',
   STAKE:             'STAKE',
 });
 
-// Decide whether a game-op MINT amount represents a completed payout
-// (100/115/130 DIRTY) or a busted op (anything else, including the
-// ~6.34 DIRTY consolation refund).
-export function resultFromAmount(amount) {
-  return COMPLETE_AMOUNTS.has(Math.round(Number(amount))) ? 'completed' : 'busted';
-}

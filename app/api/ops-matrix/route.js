@@ -17,14 +17,18 @@ export async function GET() {
     const db = getDb();
     const now = Math.floor(Date.now() / 1000);
 
-    // ok:   amount IN (100, 115, 130) — the only valid completion payouts
-    // bust: any other amount (busts of all op types refund ~7 DIRTY)
-    // PARTIAL = still-unresolved MINTs (old rows where idx_logs lacks the D47 event)
+    // ok / bust comes from the structural `result` column populated at sync
+    // time: transfers.js (DirtyPaid) → 'completed', liquidations.js
+    // (TradeExited) → 'busted'. Season 2 payouts are 50-100 scaled by Power
+    // Level and progressive bust refunds can sit anywhere in that range, so
+    // amount alone can't distinguish them — only the structural signal does.
+    // PARTIAL rows are transient (storage-slot read failed) — treated as
+    // busted for matrix purposes since the partial-sweep retry will retag.
     const [rows, activeRows] = await Promise.all([
       db`
         SELECT
           op_type,
-          (amount IN (100, 115, 130)) AS is_ok,
+          (result = 'completed') AS is_ok,
           COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 60})    AS m1,
           COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 300})   AS m5,
           COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 900})   AS m15,
@@ -37,11 +41,15 @@ export async function GET() {
           AND timestamp::bigint >= ${now - 86400}
         GROUP BY op_type, is_ok
       `,
-      // currently-active counts come from companies.trade_type (populated by syncCompanies)
+      // currently-active counts come from companies.trade_type (populated by syncCompanies).
+      // trade_type is sticky (COALESCE upsert) so we must also require end_time > now —
+      // otherwise finished trades show as phantom active entries.
       db`
         SELECT trade_type, COUNT(*)::int AS cnt
         FROM companies
-        WHERE active = TRUE AND trade_type IS NOT NULL
+        WHERE active = TRUE
+          AND trade_type IS NOT NULL
+          AND end_time > ${now}
         GROUP BY trade_type
       `,
     ]);

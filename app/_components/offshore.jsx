@@ -11,6 +11,27 @@ function nowHMS() {
 
 const shortAddr = (a) => a ? a.slice(0, 6) + '…' + a.slice(-3) : '';
 
+// Smooth-scroll the dashboard so the band's section comes into view at the
+// top. .tm-main-scroll is position: relative so the band's offsetTop is the
+// natural offset within the scroll container. Pass `stickyTop` matching the
+// band's `top:` value so the target lands at the right pinned-stack offset.
+// If the user is already at-or-past that point (band currently sticky-
+// pinned), the click is a no-op — no surprise jumps.
+function scrollBandToTop(band, stickyTop = 0) {
+  if (!band) return;
+  const scrollEl = band.closest('.tm-main-scroll')
+    || document.querySelector('.tm-main-scroll');
+  if (!scrollEl) {
+    band.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  const target = band.offsetTop - stickyTop;
+  // If currentScrollTop ≈ target, the browser's scrollTo with behavior:'smooth'
+  // is a natural no-op (delta = 0) — that handles the "protocol exactly
+  // under criminal" case without us short-circuiting.
+  scrollEl.scrollTo({ top: target, behavior: 'smooth' });
+}
+
 function relAgo(ts) {
   const diff = Math.floor(Date.now() / 1000) - Number(ts);
   if (!ts || !isFinite(diff) || diff < 0) return null;
@@ -24,6 +45,8 @@ import { TokenSection } from './sections/TokenSection.jsx';
 import { PlayersSection } from './sections/PlayersSection.jsx';
 import { VaultSection } from './sections/VaultSection.jsx';
 import { TradesSection } from './sections/TradesSection.jsx';
+import { HitsSection } from './sections/HitsSection.jsx';
+import { FeedbackTerminal } from './FeedbackTerminal.jsx';
 import { CriminalChartSection } from './sections/CriminalChartSection.jsx';
 import { WalletInspectorSection } from './sections/WalletInspectorSection.jsx';
 import { StakingSection } from './sections/StakingSection.jsx';
@@ -36,6 +59,8 @@ const CELL_PAIRS = {
   'influence-daily':   'influence-totals',
   'trades':            'ops',
   'ops':               'trades',
+  'hits-table':        'hits-chart',
+  'hits-chart':        'hits-table',
   'heatmap':           'daw',
   'daw':               'heatmap',
   'supply':            'company-state',
@@ -68,6 +93,8 @@ const DEFAULT_SPANS = {
   'ops':                6,
   'company-state':      5,
   'staking-chart':      7,
+  'hits-table':         7,
+  'hits-chart':         5,
 };
 
 const NAV = [
@@ -104,11 +131,41 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
   // inspector section below the criminal-watch chart renders automatically
   // when walletAddr matches a full 0x address.
   const [walletAddr, setWalletAddr] = useState(initialAddress);
+  // sessionWallet persists across URL changes / reloads (localStorage). It
+  // drives the always-visible CRIMINAL band even when the user is on /.
+  // walletAddr keeps driving the criminal-zone content (only on /criminal/).
+  const [sessionWallet, setSessionWallet] = useState(() => {
+    if (initialAddress && /^0x[0-9a-fA-F]{40}$/.test(initialAddress)) return initialAddress.toLowerCase();
+    if (typeof window === 'undefined') return '';
+    try { return localStorage.getItem('offshore.lastWallet') || ''; } catch { return ''; }
+  });
+  // Whenever the URL gives us a valid address, remember it as sessionWallet.
+  useEffect(() => {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(walletAddr)) return;
+    const lc = walletAddr.toLowerCase();
+    setSessionWallet(lc);
+    try { localStorage.setItem('offshore.lastWallet', lc); } catch {}
+  }, [walletAddr]);
   const [aliases, setAliases] = useState({});
   const [alarmOn, setAlarmOn] = useState(false);
   const alarmOnRef = useRef(false);
   alarmOnRef.current = alarmOn;
   const [showSmallScreenNote, setShowSmallScreenNote] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  // F2 toggles the feedback terminal (matches the bottom-bar chip's keybinding).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'F2' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // Only when not typing in an input/textarea (Esc inside the panel handles its own close).
+        const tag = (e.target?.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+        e.preventDefault();
+        setFeedbackOpen(o => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (sessionStorage.getItem('offshoreNoteDismissed') === '1') return;
@@ -120,11 +177,14 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
   // Lightweight monitor data for the CRIMINAL zone band (active/underwater
   // counts). The inspector section owns its own copy + 1s poll for its
   // detailed views; here we just want a 3 s refresh for the band labels.
+  // Keyed on sessionWallet so the band keeps refreshing data even when the
+  // user navigates back to '/' (URL doesn't have the address but band still
+  // shows the last-viewed wallet).
   const [liveData, setBandLive] = useState(null);
   useEffect(() => {
-    if (!/^0x[0-9a-fA-F]{40}$/.test(walletAddr)) { setBandLive(null); return; }
+    if (!/^0x[0-9a-fA-F]{40}$/.test(sessionWallet)) { setBandLive(null); return; }
     let live = true;
-    const addr = walletAddr.toLowerCase();
+    const addr = sessionWallet.toLowerCase();
     const load = () => fetch(`/api/monitor?wallet=${addr}`)
       .then(r => r.json())
       .then(d => { if (live && d && !d.error) setBandLive(d); })
@@ -132,7 +192,7 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
     load();
     const t = setInterval(load, 3_000);
     return () => { live = false; clearInterval(t); };
-  }, [walletAddr]);
+  }, [sessionWallet]);
 
   // Two-way URL ↔ walletAddr sync.
   // Whenever walletAddr changes (rail input, table clicks, anything),
@@ -340,6 +400,30 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
   // ── Derived ──────────────────────────────────────────────────────────────
   const watch = useMemo(() => computeWatch(watchRaw, counters.eth), [watchRaw, counters.eth]);
 
+  // Search autocomplete: while the user is typing a partial address or
+  // alias / ENS / .mega name, show the top 5 matches from the loaded
+  // `aliases` map. Empty / valid-full-address inputs skip the dropdown.
+  const searchSuggestions = useMemo(() => {
+    const q = (search || '').trim().toLowerCase();
+    if (q.length < 2) return [];
+    if (/^0x[0-9a-fA-F]{40}$/.test(q)) return [];
+    const out = [];
+    for (const [addr, name] of Object.entries(aliases || {})) {
+      const addrLc = addr.toLowerCase();
+      const nameLc = (name || '').toLowerCase();
+      let score = 0;
+      if (nameLc === q || addrLc === q)                score = 100;
+      else if (nameLc.startsWith(q))                   score = 80;
+      else if (addrLc.startsWith(q.replace(/^0x/,''))) score = 75;
+      else if (addrLc.startsWith(q))                   score = 70;
+      else if (nameLc.includes(q))                     score = 30;
+      else if (addrLc.includes(q))                     score = 20;
+      if (score > 0) out.push({ addr, name, score });
+    }
+    out.sort((a, b) => b.score - a.score || a.name.length - b.name.length);
+    return out.slice(0, 5);
+  }, [search, aliases]);
+
   const filteredTicker = useMemo(() => liveTicker.filter(item => {
     if ((item.kind === 'buy' || item.kind === 'sell') && !notifs['buys & sells']) return false;
     if (item.kind === 'op'          && !notifs['operations'])   return false;
@@ -372,10 +456,134 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
     { k: 'block', v: counters.block.toLocaleString() },
   ];
 
+  // PROTOCOL band — single visible copy at any time.
+  //   emissions vs burn is BELOW the viewport (user hasn't scrolled to it
+  //     yet)            → bottom mirror shows in .tm-main
+  //   emissions vs burn is in view OR above the viewport (user has
+  //     scrolled past) → in-flow sticky copy shows at top (below search)
+  // The in-flow copy is hidden (visibility:hidden, kept in flow so sticky
+  // offsets stay stable) only while emissions is still below the viewport.
+  const protocolRef = useRef(null);
+  const [emissionsBelowView, setEmissionsBelowView] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const scrollEl = document.querySelector('.tm-main-scroll');
+    if (!scrollEl) return;
+    const update = () => {
+      const cell = scrollEl.querySelector('[data-cell-id="emissions"]');
+      if (!cell) { setEmissionsBelowView(false); return; }
+      const cellRect = cell.getBoundingClientRect();
+      const scrollRect = scrollEl.getBoundingClientRect();
+      // emissions is below the viewport when its top edge is past the
+      // visible bottom of the scroll container.
+      setEmissionsBelowView(cellRect.top > scrollRect.bottom);
+    };
+    update();
+    scrollEl.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    const t = setTimeout(update, 50);
+    return () => {
+      clearTimeout(t);
+      scrollEl.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [walletAddr, D]);
+
+  // Body of the PROTOCOL band — rendered both as the in-flow sticky-top
+  // copy and (when needed) as a fixed-bottom mirror.
+  const protocolContent = (
+    <>
+      <span>PROTOCOL</span>
+      <span className="ctx">
+        burn outpacing emission <b>{D.hero.burnedRatio}×</b> ·{' '}
+        burned <b>{D.hero.burnedAllTime}</b> $dirty ·{' '}
+        inf bought <b>{inf.purchased?.toLocaleString() ?? '—'}</b> ·{' '}
+        daily active <b>{counters.daw?.toLocaleString() ?? '—'}</b>
+        {dawPct > 0 ? ` (▾ ${dawPct}%)` : ' (peak)'} ·{' '}
+        world <b>{D.currentWorldTime || 'Q4 2012'}</b>
+      </span>
+    </>
+  );
+
+  // CRIMINAL band — rendered ABOVE the search bar (outside the scroll
+  // container) so the search input sits exactly underneath it. Driven by
+  // sessionWallet so it stays visible even on '/' once the user has loaded
+  // any wallet (localStorage-backed). Clicking it navigates to
+  // /criminal/<address> to bring back the full criminal-zone content.
+  const criminalBand = /^0x[0-9a-fA-F]{40}$/.test(sessionWallet) ? (() => {
+    const allComp = liveData?.companies ?? [];
+    const activeComps = allComp.filter(c => c.active && c.endTime > 0);
+    // Count companies with buffer < $3 (matches the polizia panel rule
+     // for "at risk" — anything thinner than $3 between ETH and liq price).
+    const underwater = activeComps.filter(c => {
+      if (!c.liqPrice) return false;
+      const liqUsd = Number(BigInt(c.liqPrice) / 10n ** 12n) / 1e6;
+      return counters.eth > 0 && (counters.eth - liqUsd) < 3;
+    }).length;
+    const walletLc = sessionWallet.toLowerCase();
+    const lastOp   = ops.find(o => (o.walletFull || '').toLowerCase() === walletLc);
+    const lastOpAgo = lastOp ? relAgo(lastOp._ts) : null;
+    // Hide the address badge while the user is mid-typing in the search box.
+    // It only shows again when the input is empty or holds a complete 0x...
+    // address (40 hex chars).
+    const hideBadge = !!search && !/^0x[0-9a-fA-F]{40}$/.test(search);
+    const onBandClick = () => {
+      // If user is on '/' (no wallet active for content), load the criminal-zone
+      // content. Otherwise just scroll back to the top of it.
+      if (walletAddr !== sessionWallet) {
+        setWalletAddr(sessionWallet);
+      } else {
+        const scrollEl = document.querySelector('.tm-main-scroll');
+        if (scrollEl) scrollEl.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    };
+    return (
+      <div
+        className="tm-zone-band is-criminal"
+        style={{ cursor: 'pointer' }}
+        title={walletAddr === sessionWallet ? 'click to scroll to criminal zone' : 'click to open criminal page'}
+        onClick={onBandClick}
+      >
+        <span className="dot" />
+        <span>CRIMINAL</span>
+        {!hideBadge && <span className="badge">{shortAddr(sessionWallet)}</span>}
+        <span className="ctx">
+          <b>{activeComps.length}</b> active ·{' '}
+          <b>{underwater}</b> underwater ·{' '}
+          last op <b>{lastOpAgo ?? '—'}</b> ago
+        </span>
+      </div>
+    );
+  })() : null;
+
+  // PROTOCOL bottom mirror — sits inside .tm-main (via bottomBand) so it
+  // skips the sidebar. Shown only while emissions vs burn is still below
+  // the viewport (user hasn't scrolled to it). Once emissions enters view
+  // or passes above the top, the in-flow sticky copy takes over.
+  const protocolMirror = emissionsBelowView ? (
+    <div
+      className="tm-zone-band is-protocol"
+      style={{ position: 'static', cursor: 'pointer' }}
+      title="click to scroll protocol zone into view"
+      onClick={() => {
+        const el = protocolRef.current;
+        const scrollEl = document.querySelector('.tm-main-scroll');
+        if (!el || !scrollEl) return;
+        const next = el.nextElementSibling;
+        const target = next
+          ? next.offsetTop - el.offsetHeight
+          : el.offsetTop;
+        scrollEl.scrollTo({ top: target, behavior: 'smooth' });
+      }}
+    >
+      {protocolContent}
+    </div>
+  ) : null;
+
   return (
     <TerminalShell
       mode="standalone"
-      brand={{ name: 'OFFSHORE', sub: 'community dashboard · v0.6.420-beta' }}
+      brand={{ name: 'OFFSHORE', sub: 'community dashboard · v1.0.0', season: 'SEASON 2' }}
       nav={NAV}
       apps={D.apps}
       activeAppId={activeApp}
@@ -397,7 +605,23 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
         }
       }}
       sideFooter={sideFoot}
+      fkeys={[
+        {
+          label:   feedbackOpen ? '× close' : '✉ feedback',
+          color:   'var(--t-fg)',  // same as the <b> key-letter color (the "F2" tint)
+          center:  true,
+          onClick: () => setFeedbackOpen(o => !o),
+        },
+      ]}
       sideContent={<LiveSidebar D={D} counters={counters} ops={ops} watch={watch} trades={liveTicker} recentStarts={recentStarts} onWallet={openWallet} aliases={aliases} />}
+      topBand={criminalBand}
+      bottomBand={protocolMirror}
+      searchSuggestions={searchSuggestions}
+      onPickSuggestion={(addr) => {
+        const lc = addr.toLowerCase();
+        setWalletAddr(lc);
+        setSearch('');
+      }}
       theme={theme}
       onThemeChange={onThemeChange}
       notifPrefs={notifs}
@@ -422,59 +646,55 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
             >×</span>
           </div>
         )}
-        {/^0x[0-9a-fA-F]{40}$/.test(walletAddr) && (() => {
-          const allComp = liveData?.companies ?? [];
-          const activeComps = allComp.filter(c => c.active && c.endTime > 0);
-          const underwater = activeComps.filter(c => {
-            if (!c.liqPrice) return false;
-            const liqUsd = Number(BigInt(c.liqPrice) / 10n ** 12n) / 1e6;
-            return counters.eth > 0 && (counters.eth - liqUsd) < 0;
-          }).length;
-          const walletLc = walletAddr.toLowerCase();
-          const lastOp   = ops.find(o => (o.walletFull || '').toLowerCase() === walletLc);
-          const lastOpAgo = lastOp ? relAgo(lastOp._ts) : null;
-          return (
-            <>
-              {/* CRIMINAL — pinned above the personal zone */}
-              <div className="tm-zone-band is-criminal">
-                <span className="dot" />
-                <span>CRIMINAL</span>
-                <span className="badge">{shortAddr(walletAddr)}</span>
-                <span className="ctx">
-                  <b>{activeComps.length}</b> active ·{' '}
-                  <b>{underwater}</b> underwater ·{' '}
-                  last op <b>{lastOpAgo ?? '—'}</b> ago
-                </span>
-              </div>
-              <div className="tm-zone-criminal">
-                <CriminalChartSection   address={walletAddr} grid={grid} ethPrice={counters.eth} alarmOn={alarmOn} onAlarmToggle={() => setAlarmOn(v => !v)} liveData={liveData} />
-                <WalletInspectorSection address={walletAddr} grid={grid} ethPrice={counters.eth} liveData={liveData} />
-              </div>
-            </>
-          );
-        })()}
+        {/^0x[0-9a-fA-F]{40}$/.test(walletAddr) && (
+          <div className="tm-zone-criminal">
+            <CriminalChartSection   address={walletAddr} grid={grid} ethPrice={counters.eth} alarmOn={alarmOn} onAlarmToggle={() => setAlarmOn(v => !v)} liveData={liveData} />
+            <WalletInspectorSection address={walletAddr} grid={grid} ethPrice={counters.eth} liveData={liveData} />
+          </div>
+        )}
 
-        {/* PROTOCOL — pinned above the rest */}
-        <div className="tm-zone-band is-protocol">
-          <span>PROTOCOL</span>
-          <span className="ctx">
-            burn outpacing emission <b>{D.hero.burnedRatio}×</b> ·{' '}
-            burned <b>{D.hero.burnedAllTime}</b> $dirty ·{' '}
-            inf bought <b>{inf.purchased?.toLocaleString() ?? '—'}</b> ·{' '}
-            daily active <b>{counters.daw?.toLocaleString() ?? '—'}</b>
-            {dawPct > 0 ? ` (▾ ${dawPct}%)` : ' (peak)'} ·{' '}
-            world <b>{D.currentWorldTime || 'Q4 2012'}</b>
-          </span>
+        {/* PROTOCOL — sticky-top inside the scroll. When the user is high
+            enough that this in-flow copy hasn't entered view yet, a fixed
+            mirror appears at the bottom of the scroll container (see
+            below) so the band is always visible. */}
+        <div
+          ref={protocolRef}
+          className="tm-zone-band is-protocol"
+          style={{
+            cursor: 'pointer',
+            top: 0,
+            // hide the in-flow copy only while emissions is still below
+            // the viewport (the bottom mirror is the visible copy then).
+            // Keep it in the flow (not display:none) so sticky offsets
+            // stay stable; once emissions is in view OR above, the
+            // in-flow band is the visible copy at top.
+            visibility: emissionsBelowView ? 'hidden' : 'visible',
+          }}
+          title="click to scroll protocol zone into view"
+          onClick={(e) => {
+            const band = e.currentTarget;
+            const scrollEl = band.closest('.tm-main-scroll');
+            const next = band.nextElementSibling;
+            if (!scrollEl || !next) return scrollBandToTop(band, 0);
+            // Land emissions vs burns flush under the pinned PROTOCOL band
+            // (cancels out the .tm-content gap between band and TokenSection).
+            const target = next.offsetTop - band.offsetHeight;
+            scrollEl.scrollTo({ top: target, behavior: 'smooth' });
+          }}
+        >
+          {protocolContent}
         </div>
 
         <TokenSection    D={{ ...D, companies: companiesLive || D.companies }} grid={grid} />
         <PlayersSection  D={D} grid={grid} />
         <VaultSection    D={D} grid={grid} />
         <TradesSection   grid={grid} liveTrades={liveTrades} ops={ops} search={search} ethPrice={counters.eth} aliases={aliases} onWallet={openWallet} />
+        <HitsSection     D={D} grid={grid} aliases={aliases} onWallet={openWallet} />
         <StakingSection  grid={grid} aliases={aliases} onWallet={openWallet} />
       </div>
 
       {showToasts && <Toasts items={filteredTicker} />}
+      <FeedbackTerminal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </TerminalShell>
   );
 }

@@ -8,14 +8,66 @@ export const CHART_AXIS = { fill: 'var(--t-fg-mut)', fontSize: 10, fontFamily: '
 // disguised as a friendly "partial" / "fail" label.
 export const OP_LABELS_SHORT = {
   DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion',
-  THIRD_ENTERPRISE: '3rd ent.',
+  THIRD_ENTERPRISE: 'enterprise', FOURTH_ENTERPRISE: 'enterprise', ENTERPRISE: 'enterprise',
+  HIT: 'hit', HIT_COST: 'hit initiated', HIT_REFUND: 'hitted',
   LEVEL_UP: 'level up', BUY_ASSET: 'buy asset', SCRAP: 'scrap',
   DEX_BUY: 'dex buy', DEX_SELL: 'dex sell', BURN: 'burn',
   LP_ADD: 'lp add', LP_REMOVE: 'lp remove',
   STAKE_DEPOSIT: 'stake', STAKE_WITHDRAW: 'unstake', TRANSFER: 'transfer',
 };
 
-export const EARN_OPS = new Set(['DRUG_DEAL','ARMS_DEAL','EXTORTION','THIRD_ENTERPRISE','PARTIAL','FAIL','SCRAP']);
+export const EARN_OPS = new Set(['DRUG_DEAL','ARMS_DEAL','EXTORTION','THIRD_ENTERPRISE','FOURTH_ENTERPRISE','ENTERPRISE','HIT','HIT_COST','HIT_REFUND','PARTIAL','FAIL','SCRAP']);
+
+// Pager — shared pagination control for dashboard tables. Slice the
+// already-sorted/filtered array with `usePagedRows` and render this
+// strip below the table. Resets to page 0 whenever the input length
+// changes (e.g. filter narrowed the set).
+import { useState, useEffect } from 'react';
+
+export const PAGE_SIZE = 20;
+
+export function usePagedRows(rows, pageSize = PAGE_SIZE) {
+  const [page, setPage] = useState(0);
+  const total = Array.isArray(rows) ? rows.length : 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  // Snap back if the underlying set shrank past the current page.
+  useEffect(() => { if (page >= totalPages) setPage(0); }, [totalPages, page]);
+  const start = page * pageSize;
+  const pageRows = Array.isArray(rows) ? rows.slice(start, start + pageSize) : [];
+  return { page, setPage, pageRows, totalPages, total, pageSize, start };
+}
+
+export function Pager({ page, setPage, totalPages, total, pageSize, start }) {
+  if (total <= pageSize) return null;
+  const end = Math.min(start + pageSize, total);
+  const btnStyle = {
+    background: 'transparent',
+    border: '1px solid var(--t-rule)',
+    color: 'var(--t-fg-soft)',
+    fontFamily: 'var(--t-font)',
+    fontSize: 'var(--t-fs-xs)',
+    padding: '1px 8px',
+    cursor: 'pointer',
+    lineHeight: 1.4,
+  };
+  const disabled = (b) => ({ ...btnStyle, opacity: b ? 0.35 : 1, cursor: b ? 'not-allowed' : 'pointer' });
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+      padding: '4px 0 0',
+      fontFamily: 'var(--t-font)',
+      fontSize: 'var(--t-fs-xs)',
+      color: 'var(--t-fg-mut)',
+    }}>
+      <button style={disabled(page === 0)} disabled={page === 0} onClick={() => setPage(0)}>«</button>
+      <button style={disabled(page === 0)} disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>‹</button>
+      <span style={{ minWidth: 56, textAlign: 'center' }}>{page + 1} / {totalPages}</span>
+      <button style={disabled(page >= totalPages - 1)} disabled={page >= totalPages - 1} onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}>›</button>
+      <button style={disabled(page >= totalPages - 1)} disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>»</button>
+      <span style={{ marginLeft: 10, opacity: 0.7 }}>{start + 1}–{end} of {total}</span>
+    </div>
+  );
+}
 
 export const TIERS = [
   'shanghai', 'panama', 'monaco', 'zurich', 'cayman',
@@ -54,29 +106,39 @@ export function computeWatch(raw, ethPrice) {
     .slice(0, 5);
 }
 
-export function renderTradeRows(rows, range, ethPrice = 0, _tick = 0, onWallet, aliases = {}) {
+// Process raw live trades into the displayable list (active first, idle
+// second) with computed liveBuffer + liveEndsIn. Splitting filter from
+// render lets the caller paginate the FILTERED set.
+export function processTradeRows(rows, range, ethPrice = 0) {
   const now = Math.floor(Date.now() / 1000);
   const filtered = (range === 'active' ? rows.filter((r) => r.active)
                   : range === 'auto'   ? rows.filter((r) => r.auto)
                   : rows).filter((r) => r.endTime > now);
   const active = filtered.filter((r) => r.active);
   const idle   = filtered.filter((r) => !r.active);
-
   return [...active, ...idle].flatMap((r) => {
     const liveBuffer = ethPrice > 0 ? Math.round((ethPrice - r.liqPrice) * 100) / 100 : r.buffer;
     if (liveBuffer < 0) return [];
-    const liveEndsIn = fmtCountdownLocal(r.endTime);
-    return [(
-      <tr key={r.id}>
-        <td style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span className="tm-num" style={{ cursor: 'pointer', color: 'var(--t-hdr)' }} onClick={() => onWallet && onWallet(r.owner || r.id)}>{aliases[r.owner] || r.ownerShort || r.id}</span></td>
-        <td style={{ width: 72, color: 'var(--t-fg-mut)', fontSize: 'var(--t-fs-xs)', whiteSpace: 'nowrap' }}>{r.opType || '—'}</td>
-        <td style={{ width: 60, whiteSpace: 'nowrap' }} className={r.active ? 'warn' : 'dim'}>{liveEndsIn}</td>
-        <td className={`num ${liveBuffer < 1 ? 'neg' : liveBuffer < 2 ? 'warn' : 'pos'}`} style={{ width: 52, maxWidth: 52 }}>+{liveBuffer.toFixed(2)}</td>
-        <td className="num">{r.liqPrice.toLocaleString()}</td>
-        <td><span className={`tm-pill ${r.auto ? 'on' : 'off'}`}>{r.auto ? 'on' : 'off'}</span></td>
-      </tr>
-    )];
+    return [{ ...r, liveBuffer, liveEndsIn: fmtCountdownLocal(r.endTime) }];
   });
+}
+
+export function renderTradeRow(r, onWallet, aliases = {}) {
+  return (
+    <tr key={r.id}>
+      <td style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span className="tm-num" style={{ cursor: 'pointer', color: 'var(--t-hdr)' }} onClick={() => onWallet && onWallet(r.owner || r.id)}>{aliases[r.owner] || r.ownerShort || r.id}</span></td>
+      <td style={{ width: 72, color: 'var(--t-fg-mut)', fontSize: 'var(--t-fs-xs)', whiteSpace: 'nowrap' }}>{r.opType || '—'}</td>
+      <td style={{ width: 60, whiteSpace: 'nowrap' }} className={r.active ? 'warn' : 'dim'}>{r.liveEndsIn}</td>
+      <td className={`num ${r.liveBuffer < 1 ? 'neg' : r.liveBuffer < 2 ? 'warn' : 'pos'}`} style={{ width: 52, maxWidth: 52 }}>+{r.liveBuffer.toFixed(2)}</td>
+      <td className="num">{r.liqPrice.toLocaleString()}</td>
+      <td><span className={`tm-pill ${r.auto ? 'on' : 'off'}`}>{r.auto ? 'on' : 'off'}</span></td>
+    </tr>
+  );
+}
+
+// Back-compat: old call sites that expect a finished JSX array still work.
+export function renderTradeRows(rows, range, ethPrice = 0, _tick = 0, onWallet, aliases = {}) {
+  return processTradeRows(rows, range, ethPrice).map((r) => renderTradeRow(r, onWallet, aliases));
 }
 
 export function bufferHistory(r) {

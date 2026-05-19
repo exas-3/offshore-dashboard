@@ -177,9 +177,18 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
                   <span className="t">{aliases[o.walletFull] || o.wallet}</span>
                   <span className="op">{o.op}</span>
                 </span>
-                <span className={`v ${[100, 115, 130].includes(o.dirty) ? 'pos' : 'neg'}`}>
-                  {fmt.signed(o.dirty)}{o.count > 1 && <span style={{ opacity: 0.5, fontSize: '0.8em', marginLeft: 2 }}>{o.count}×</span>}
-                </span>
+                {o.dirtyLost != null ? (
+                  <span className="v">
+                    <span className="pos">+{fmt.k(o.dirty)}</span>
+                    <span className="dim"> / </span>
+                    <span className="neg">−{fmt.k(o.dirtyLost)}</span>
+                    {o.count > 1 && <span style={{ opacity: 0.5, fontSize: '0.8em', marginLeft: 2 }}>{o.count}×</span>}
+                  </span>
+                ) : (
+                  <span className={`v ${o.result === 'completed' ? 'pos' : 'neg'}`}>
+                    {fmt.signed(o.dirty)}{o.count > 1 && <span style={{ opacity: 0.5, fontSize: '0.8em', marginLeft: 2 }}>{o.count}×</span>}
+                  </span>
+                )}
               </div>
             );
           })}

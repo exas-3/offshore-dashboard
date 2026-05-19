@@ -17,6 +17,7 @@ import { getDb } from '../../lib/db/connection.js';
 import {
   getLastPartialSweepBlock,
   setLastPartialSweepBlock,
+  getCompanyTradeTypesFromDb,
 } from '../../lib/index.js';
 
 export const PARTIAL_SWEEP_INTERVAL_MS = 5 * 60_000;
@@ -26,15 +27,24 @@ const CHUNK_DELAY_MS  = 10_000;
 
 let busy = false;
 
-function resultFromAmount(amount) {
-  const a = Number(amount);
-  return (a === 100 || a === 115 || a === 130) ? 'completed' : 'busted';
+// PARTIAL rows come from two paths:
+//   - liquidations.js synthesizes bust rows from TradeExited events
+//   - transfers.js may write PARTIAL when DirtyPaid completion mints can't
+//     be resolved at sync time
+// Distinguish by checking whether the original PARTIAL came from a tx that
+// also contained a DirtyPaid factory event. The fetchFactoryTradeContext
+// payoutTxs set tells us; we approximate it here via the presence of a
+// matching companyMap entry built from payoutLogs (logIndex = dirtyTransfer)
+// vs exitedLogs (logIndex = exited event). The caller passes `fromPayout`
+// based on which branch resolved the company.
+function resolveResult(fromPayout) {
+  return fromPayout ? 'completed' : 'busted';
 }
 
 // Retry on rate-limit errors with exponential backoff. Other errors throw
 // immediately so they surface in the caller's log.
 async function withRetry(label, fn) {
-  const delays = [0, 1500, 3500, 8000];
+  const delays = [0, 3000, 8000, 20000];
   let lastErr;
   for (const wait of delays) {
     if (wait) await new Promise(r => setTimeout(r, wait));
@@ -106,16 +116,30 @@ export async function syncPartialSweep() {
           console.warn(`[partial-sweep] slots ${c.start}..${c.end} gave up: ${err.message}`);
         }
       }
+      // DB fallback: pick up any companies the storage read couldn't resolve
+      // (RPC rate-limited, missing block, expired trade window) from the
+      // cached `trade_type` in the companies table.
+      const missing = companies.filter(a => !typeMap.has(a));
+      if (missing.length) {
+        const dbMap = await getCompanyTradeTypesFromDb(missing).catch(() => new Map());
+        for (const [a, t] of dbMap) typeMap.set(a, t);
+      }
 
       const updates = { DRUG_DEAL: { completed: [], busted: [] },
                         ARMS_DEAL: { completed: [], busted: [] },
                         EXTORTION: { completed: [], busted: [] } };
+      // Keys built from companyMap (DirtyPaid uses dirtyLogIdx, TradeExited
+      // uses exited logIndex). Both formats live in companyMap so a single
+      // lookup resolves both completion- and bust-origin PARTIALs.
       for (const r of c.rows) {
         const txh = r.hash.toLowerCase();
         const company = ctx.companyMap.get(txh + ':' + Number(r.log_index));
         const opType = company ? typeMap.get(company.toLowerCase()) : null;
         if (!opType) { unresolved++; continue; }
-        const result = resultFromAmount(r.amount);
+        // DirtyPaid in the tx → completion mint; otherwise it's a bust mint
+        // synthesized from TradeExited. This replaces the old amount-based
+        // check that broke on Season 2 progressive payouts.
+        const result = resolveResult(ctx.payoutTxs?.has(txh));
         updates[opType][result].push({ hash: r.hash, log_index: Number(r.log_index) });
       }
 

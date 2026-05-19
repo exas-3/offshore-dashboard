@@ -4,28 +4,54 @@ export const CORS = {
 };
 
 // ── Cycle boundary helpers ─────────────────────────────────────────────────────
-export const WEEKDAY_ANCHOR = 5400;
-export const WEEKDAY_DUR    = 8 * 3600;
-export const WEEKEND_ANCHOR = 9 * 3600 + 30 * 60;
+// Season 2 (from 2026-05-18 09:30 UTC onwards) runs one 24h vault cycle per
+// day, anchored at 09:30 UTC. Before that, Season 1 used 3×8h weekday cycles
+// (01:30 / 09:30 / 17:30 UTC) and a single 24h weekend cycle (Sat 09:30 → Mon
+// 09:30). getCycleStart branches on the cutover so historical buckets stay
+// stable while current data uses the new rule.
+export const SEASON2_START   = 1779096600;          // 2026-05-18T09:30:00Z
+export const CYCLE_ANCHOR    = 9 * 3600 + 30 * 60;  // 09:30 UTC in seconds
+const S1_WEEKDAY_DUR         = 8 * 3600;
+const S1_WEEKDAY_ANCHOR      = 5400;                // 01:30 UTC
 
-export function isWeekendTs(ts) {
+// Legacy aliases — kept so any straggling importer doesn't break. Prefer
+// CYCLE_ANCHOR for new code.
+export const WEEKDAY_ANCHOR = S1_WEEKDAY_ANCHOR;
+export const WEEKDAY_DUR    = S1_WEEKDAY_DUR;
+export const WEEKEND_ANCHOR = CYCLE_ANCHOR;
+
+function isS1WeekendTs(ts) {
   const d = new Date(ts * 1000);
   const dow = d.getUTCDay();
   const s = d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds();
-  if (dow === 6 && s >= WEEKEND_ANCHOR) return true;
+  if (dow === 6 && s >= CYCLE_ANCHOR) return true;
   if (dow === 0) return true;
-  if (dow === 1 && s < WEEKEND_ANCHOR) return true;
+  if (dow === 1 && s < CYCLE_ANCHOR) return true;
   return false;
 }
 
+export function isWeekendTs(ts) {
+  // Retained for back-compat. Season 2 has no weekday/weekend split — every
+  // day is a single 24h cycle — so always returns true post-cutover.
+  return ts >= SEASON2_START ? true : isS1WeekendTs(ts);
+}
+
 export function getCycleStart(ts) {
-  if (!isWeekendTs(ts)) {
-    return Math.floor((ts - WEEKDAY_ANCHOR) / WEEKDAY_DUR) * WEEKDAY_DUR + WEEKDAY_ANCHOR;
+  // Season 2: single 24h cycle anchored at 09:30 UTC.
+  if (ts >= SEASON2_START) {
+    const d = new Date(ts * 1000);
+    const s = d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds();
+    const dayStart = ts - s;
+    return s >= CYCLE_ANCHOR ? dayStart + CYCLE_ANCHOR : dayStart - 86400 + CYCLE_ANCHOR;
+  }
+  // Season 1: 3×8h weekday cycles (01:30 / 09:30 / 17:30), 1×24h weekend cycle.
+  if (!isS1WeekendTs(ts)) {
+    return Math.floor((ts - S1_WEEKDAY_ANCHOR) / S1_WEEKDAY_DUR) * S1_WEEKDAY_DUR + S1_WEEKDAY_ANCHOR;
   }
   const d = new Date(ts * 1000);
   const s = d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds();
   const dayStart = ts - s;
-  return s >= WEEKEND_ANCHOR ? dayStart + WEEKEND_ANCHOR : dayStart - 86400 + WEEKEND_ANCHOR;
+  return s >= CYCLE_ANCHOR ? dayStart + CYCLE_ANCHOR : dayStart - 86400 + CYCLE_ANCHOR;
 }
 
 // ── Game quarter mapping ───────────────────────────────────────────────────────
@@ -95,7 +121,7 @@ export function mapOpType(opType) {
   const m = {
     DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion',
     SCRAP: 'scrap', BUY_ASSET: 'buy-asset',
-    LEVEL_UP: 'level-up', THIRD_ENTERPRISE: 'buy-asset',
+    LEVEL_UP: 'level-up', ENTERPRISE: 'enterprise', THIRD_ENTERPRISE: 'enterprise', FOURTH_ENTERPRISE: 'enterprise',
     LP_ADD: 'lp add', LP_REMOVE: 'lp remove',
   };
   return m[opType] ?? opType.toLowerCase().replace(/_/g, '-');

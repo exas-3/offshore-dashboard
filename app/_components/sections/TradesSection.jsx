@@ -1,12 +1,12 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { Region, Seg, Sortable, GridCell, fmt } from '../terminal.jsx';
-import { renderTradeRows } from '../trade-helpers.jsx';
+import { processTradeRows, renderTradeRow, usePagedRows, Pager } from '../trade-helpers.jsx';
 
 export function TradesSection({ grid, liveTrades, ops, search, ethPrice, aliases, onWallet }) {
   const { spans, heights, resize } = grid;
   const [trxRange, setTrxRange] = useState('all');
-  const [sortKey,  setSortKey]  = useState('endsIn');
+  const [sortKey,  setSortKey]  = useState('buffer');
   const [sortDir,  setSortDir]  = useState('asc');
   const [focusPane] = useState(null);
 
@@ -34,6 +34,15 @@ export function TradesSection({ grid, liveTrades, ops, search, ethPrice, aliases
     else { setSortKey(k); setSortDir('asc'); }
   }
 
+  // Process + paginate ongoing crimes (sorted/filtered before pagination so
+  // total pages reflects the visible filtered set).
+  const ongoingProcessed = useMemo(
+    () => processTradeRows(tradesFiltered, trxRange, ethPrice),
+    [tradesFiltered, trxRange, ethPrice, tick]
+  );
+  const ongoingPager = usePagedRows(ongoingProcessed);
+  const opsPager     = usePagedRows(ops);
+
   return (
     <section id="sec-trades" className="tm-grid-12">
       <GridCell id="trades" span={spans['trades']} height={heights['trades']} onResize={(r) => resize('trades', r)}>
@@ -55,10 +64,11 @@ export function TradesSection({ grid, liveTrades, ops, search, ethPrice, aliases
                 </tr>
               </thead>
               <tbody>
-                {renderTradeRows(tradesFiltered, trxRange, ethPrice, tick, onWallet, aliases)}
+                {ongoingPager.pageRows.map((r) => renderTradeRow(r, onWallet, aliases))}
               </tbody>
             </table>
           </div>
+          <Pager {...ongoingPager} />
         </Region>
       </GridCell>
 
@@ -75,11 +85,11 @@ export function TradesSection({ grid, liveTrades, ops, search, ethPrice, aliases
                 </tr>
               </thead>
               <tbody>
-                {ops.map((o, i) => {
+                {opsPager.pageRows.map((o, i) => {
                   const success = o.result === 'completed' || o.result === 'ok';
                   const fail    = o.result === 'busted'    || o.result === 'fail';
                   return (
-                  <tr key={i}>
+                  <tr key={`${o.hash || ''}-${opsPager.start + i}`}>
                     <td className="dim">{o.time}</td>
                     <td><span className="tm-num" style={{ cursor: 'pointer', color: 'var(--t-hdr)' }} onClick={() => onWallet(o.walletFull || o.wallet)}>{aliases[o.walletFull] || o.wallet}</span></td>
                     <td className={success ? 'pos' : fail ? 'neg' : ''}>{o.op}</td>
@@ -92,6 +102,7 @@ export function TradesSection({ grid, liveTrades, ops, search, ethPrice, aliases
               </tbody>
             </table>
           </div>
+          <Pager {...opsPager} />
         </Region>
       </GridCell>
     </section>

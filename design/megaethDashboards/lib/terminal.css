@@ -45,7 +45,7 @@
 
   display: grid;
   grid-template-rows: 26px 1fr 26px;
-  grid-template-columns: 192px 1fr;
+  grid-template-columns: minmax(192px, max-content) 1fr;
   grid-template-areas:
     "ticker ticker"
     "side   main"
@@ -119,6 +119,9 @@
   padding: 0;
   display: flex; flex-direction: row;
   overflow: hidden;
+  /* hard cap so a single very-wide row can't blow the sidebar out;
+     short of that, the grid track grows to fit content (no h-scrollbar) */
+  max-width: 280px;
 }
 .tm-side-body {
   flex: 1; min-width: 0;
@@ -228,6 +231,10 @@
   display: flex; flex-direction: column;
   min-width: 0; min-height: 0;
   overflow: hidden;
+  /* establishes containing block for absolutely-positioned children
+     (e.g. the PROTOCOL bottom mirror) so they sit inside .tm-main and
+     don't overlay the sidebar. */
+  position: relative;
 }
 .tm-main::-webkit-scrollbar { width: 10px; background: var(--t-bg); }
 .tm-main::-webkit-scrollbar-thumb { background: var(--t-rule); border: 2px solid var(--t-bg); }
@@ -240,6 +247,11 @@
 .tm-main-scroll {
   flex: 1; min-width: 0; min-height: 0;
   overflow-y: auto;
+  /* makes this the offsetParent for sticky zone bands so click-to-scroll
+     can compute their natural offsetTop relative to the scroll container */
+  position: relative;
+  /* leave room below the sticky band stack when scrollIntoView lands */
+  scroll-padding-top: 56px;
 }
 .tm-main-scroll::-webkit-scrollbar { width: 10px; background: var(--t-bg); }
 .tm-main-scroll::-webkit-scrollbar-thumb { background: var(--t-rule); border: 2px solid var(--t-bg); }
@@ -386,7 +398,10 @@
   display: flex; gap: 6px;
   text-transform: none; letter-spacing: 0;
 }
-.tm-region-body { padding: 6px 10px 8px; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; }
+/* Bottom padding intentionally larger than top — reserves a footer zone
+   for the offshoredashboard.xyz watermark so it doesn't visually blend
+   into the last row of content inside a region. */
+.tm-region-body { padding: 6px 10px 16px; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; }
 .tm-svg-wrap.fill { flex: 1; min-height: 0; }
 .tm-svg-wrap.fill svg { height: 100%; }
 
@@ -707,6 +722,7 @@
   padding: 4px 10px 10px;
   font-size: var(--t-fs-sm);
   overflow-y: auto;
+  overflow-x: hidden;
   flex: 1;
 }
 .tm-live::-webkit-scrollbar { width: 6px; background: var(--t-bg); }
@@ -1157,6 +1173,15 @@ a.tm-toast-noop, .tm-toast a.addr {
   font-weight: 400; letter-spacing: 0.04em;
   text-transform: none; opacity: 0.85;
   font-size: 10px;
+  /* keep the band one line tall on every screen — long context
+     (PROTOCOL: emission · burned · inf · daily · world) truncates with
+     a … instead of wrapping. min-width:0 + flex:1 lets the span shrink
+     below its content width inside the parent flex row. */
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tm-zone-band .ctx b { font-weight: 500; opacity: 1; }
 
@@ -1165,6 +1190,9 @@ a.tm-toast-noop, .tm-toast a.addr {
   background: linear-gradient(180deg,
     rgba(255,176,0,0.025),
     transparent 240px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 /* Heatmap row-scroll: matches .tm-main-scroll site scrollbar style. */
@@ -1203,26 +1231,42 @@ a.tm-toast-noop, .tm-toast a.addr {
     display: grid;
     grid-template-columns: repeat(12, 1fr);
     column-gap: 0;
+    row-gap: 8px;
   }
   .tm-zone-criminal > section.tm-grid-12 { display: contents; }
 
+  /* small/medium order: watch-chart → watch-companies → recent activity →
+     farmed daily → indexed stats (dropped to the bottom). */
   [data-cell-id="watch-chart"]     { grid-column: span 12 !important; order: 0; }
   [data-cell-id="watch-companies"] { grid-column: span 6  !important; order: 1; }
-  [data-cell-id="farmed-daily"]    { grid-column: span 6  !important; order: 2; }
-  [data-cell-id="indexed-stats"]   { grid-column: span 6  !important; order: 3; }
-  [data-cell-id="recent-activity"] { grid-column: span 6  !important; order: 4; }
+  [data-cell-id="recent-activity"] { grid-column: span 6  !important; order: 2; }
+  [data-cell-id="farmed-daily"]    { grid-column: span 6  !important; order: 3; }
+  [data-cell-id="indexed-stats"]   { grid-column: span 6  !important; order: 4; }
+
+  /* Tight (but not flush) vertical gaps between containers on medium
+     screens — stacks read close without dead space between regions. */
+  .tm-content                 { gap: 8px; padding: 0; }
+  .tm-content section         { gap: 8px; }
+  .tm-content section.tm-grid-12 { row-gap: 8px; }
 }
 @media (max-width: 700px) {
   .tm-zone-criminal {
     display: grid;
     grid-template-columns: repeat(12, 1fr);
     column-gap: 0;
+    row-gap: 8px;
   }
   .tm-zone-criminal > section.tm-grid-12 { display: contents; }
 
   [data-cell-id="watch-chart"]     { grid-column: span 12 !important; order: 0; }
   [data-cell-id="watch-companies"] { grid-column: span 12 !important; order: 1; }
-  [data-cell-id="indexed-stats"]   { grid-column: span 12 !important; order: 2; }
-  [data-cell-id="recent-activity"] { grid-column: span 12 !important; order: 3; }
-  [data-cell-id="farmed-daily"]    { grid-column: span 12 !important; order: 4; }
+  [data-cell-id="recent-activity"] { grid-column: span 12 !important; order: 2; }
+  [data-cell-id="farmed-daily"]    { grid-column: span 12 !important; order: 3; }
+  [data-cell-id="indexed-stats"]   { grid-column: span 12 !important; order: 4; }
+
+  /* Tight (but not flush) vertical gaps between containers on small
+     screens — stacks read close without dead space between regions. */
+  .tm-content                 { gap: 8px; padding: 0; }
+  .tm-content section         { gap: 8px; }
+  .tm-content section.tm-grid-12 { row-gap: 8px; }
 }

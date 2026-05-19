@@ -97,3 +97,23 @@ CREATE TABLE IF NOT EXISTS companies (
 );
 CREATE INDEX IF NOT EXISTS idx_companies_owner ON companies(owner);
 CREATE INDEX IF NOT EXISTS idx_companies_auto  ON companies(auto_trade);
+
+CREATE TABLE IF NOT EXISTS hits (
+  tx_hash       TEXT     NOT NULL,
+  log_index     INTEGER  NOT NULL,
+  block_num     BIGINT   NOT NULL,
+  timestamp     BIGINT   NOT NULL,
+  attacker      TEXT     NOT NULL,
+  victim        TEXT     NOT NULL,
+  company       TEXT     NOT NULL,
+  mode          SMALLINT NOT NULL DEFAULT 0,
+  completion    INTEGER  NOT NULL DEFAULT 0,
+  full_payout   DOUBLE PRECISION NOT NULL DEFAULT 0,
+  stolen        DOUBLE PRECISION NOT NULL DEFAULT 0,
+  kept          DOUBLE PRECISION NOT NULL DEFAULT 0,
+  cost          DOUBLE PRECISION NOT NULL DEFAULT 0,
+  PRIMARY KEY (tx_hash, log_index)
+);
+CREATE INDEX IF NOT EXISTS idx_hits_attacker  ON hits(attacker, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_hits_victim    ON hits(victim, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_hits_timestamp ON hits(timestamp DESC);

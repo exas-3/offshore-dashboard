@@ -4,7 +4,7 @@ import { getDb } from '../../../../lib/index.js';
 import { getLatestEthPrice } from '../../../../lib/index.js';
 import {
   fetchDirtyPrice, fetchLatestInfCost, getLatestBlock, fetchTps,
-  mapOpType, EARN_OPS, tickerKind, tickerLabel, resultFromAmount,
+  mapOpType, EARN_OPS, tickerKind, tickerLabel,
 } from '../../../../server/etherscan.js';
 import { ethPriceFeed } from '../../../../lib/eth-price-feed.js';
 
@@ -58,14 +58,15 @@ export async function GET(request) {
       `.catch(() => []) : Promise.resolve([]),
       // New ops since last poll
       db && since > 0 ? db`
-        (SELECT hash, to_addr AS addr, NULL AS from_addr2, op_type, amount::float AS amount, timestamp, 'MINT' AS kind
-          FROM transfers WHERE kind='MINT' AND timestamp > ${since}
-            AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP')
-          ORDER BY timestamp ASC LIMIT 60)
+        (SELECT t.hash, t.to_addr AS addr, NULL AS from_addr2, t.op_type, t.amount::float AS amount, t.timestamp, 'MINT' AS kind, t.result, h.cost::float AS hit_cost, h.stolen::float AS hit_stolen
+          FROM transfers t LEFT JOIN hits h ON h.tx_hash = t.hash
+          WHERE t.kind='MINT' AND t.timestamp > ${since}
+            AND t.op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP','HIT','HIT_REFUND')
+          ORDER BY t.timestamp ASC LIMIT 60)
         UNION ALL
-        (SELECT hash, NULL, from_addr, op_type, amount::float, timestamp, 'SPEND'
+        (SELECT hash, NULL, from_addr, op_type, amount::float, timestamp, 'SPEND', NULL::text, NULL::float, NULL::float
           FROM transfers WHERE kind='SPEND' AND timestamp > ${since}
-            AND op_type IN ('BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE')
+            AND op_type IN ('BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE','FOURTH_ENTERPRISE','ENTERPRISE')
           ORDER BY timestamp ASC LIMIT 20)
         ORDER BY timestamp ASC LIMIT 60
       `.catch(() => []) : Promise.resolve([]),
@@ -80,12 +81,12 @@ export async function GET(request) {
         UNION ALL
         (SELECT hash, op_type, to_addr, amount, timestamp, result
           FROM transfers WHERE kind='MINT'
-            AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP')
+            AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP','HIT','HIT_REFUND')
           ORDER BY timestamp DESC LIMIT 1)
         UNION ALL
         (SELECT hash, op_type, from_addr, amount, timestamp, NULL::text
           FROM transfers WHERE kind='SPEND'
-            AND op_type IN ('BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE')
+            AND op_type IN ('BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE','FOURTH_ENTERPRISE','ENTERPRISE')
           ORDER BY timestamp DESC LIMIT 1)
         UNION ALL
         (SELECT NULL::text AS hash, 'STAKE' AS etype, user_addr AS addr, amount::numeric, timestamp, NULL::text
@@ -156,7 +157,7 @@ export async function GET(request) {
     const latestOp = op ? {
       wallet: shortAddr(op.to_addr),
       op:     mapOpType(op.op_type),
-      result: EARN_OPS.has(op.op_type) ? resultFromAmount(op.amount) : 'ok',
+      result: EARN_OPS.has(op.op_type) ? (op.result ?? 'busted') : 'ok',
       dirty:  Math.round(Number(op.amount) * 100) / 100,
       inf:    typeof infCost === 'number' ? infCost : 12.41,
     } : null;
@@ -175,19 +176,32 @@ export async function GET(request) {
       }
     }
     const dedupedRows = [...dedupMap.values()].sort((a, b) => Number(a.timestamp) - Number(b.timestamp)).slice(0, 20);
-    const newOps = dedupedRows.map(r => ({
-      hash:   r.hash,
-      wallet: shortAddr(r.kind === 'MINT' ? r.addr : r.from_addr2),
-      walletFull: (r.kind === 'MINT' ? r.addr : r.from_addr2),
-      op:     mapOpType(r.op_type),
-      result: EARN_OPS.has(r.op_type) ? resultFromAmount(r._rawAmount) : 'ok',
-      dirty:  r.kind === 'MINT'
-        ? Math.round(r._rawAmount * 100) / 100
-        : -Math.round(r._rawAmount * 100) / 100,
-      count:  r._count,
-      inf:    ic,
-      _ts:    Number(r.timestamp),
-    }));
+    const newOps = dedupedRows.map(r => {
+      const isHit       = r.op_type === 'HIT';
+      const isRefund    = r.op_type === 'HIT_REFUND';
+      const isHitFamily = isHit || isRefund || r.op_type === 'HIT_COST';
+      const dirty = isHit
+        ? -Math.round(Number(r.hit_cost ?? 0) * 100) / 100
+        : r.kind === 'MINT'
+          ? Math.round(r._rawAmount * 100) / 100
+          : -Math.round(r._rawAmount * 100) / 100;
+      let op = mapOpType(r.op_type);
+      if (isHit) op = r.result === 'completed' ? 'hit won' : 'hit lost';
+      return {
+        hash:   r.hash,
+        wallet: shortAddr(r.kind === 'MINT' ? r.addr : r.from_addr2),
+        walletFull: (r.kind === 'MINT' ? r.addr : r.from_addr2),
+        op,
+        result: isHitFamily && !isHit
+          ? 'ok'
+          : (EARN_OPS.has(r.op_type) ? (r.result ?? 'busted') : 'ok'),
+        dirty,
+        ...(isRefund ? { dirtyLost: Math.round(Number(r.hit_stolen ?? 0) * 100) / 100 } : null),
+        count:  r._count,
+        inf:    ic,
+        _ts:    Number(r.timestamp),
+      };
+    });
 
     const ev = latestEventRow[0];
     const latestEvent = ev ? {

@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
-  Region, KV, KVSep, StackedBarRow, MultiSpark, LineChart, Seg, GridCell, fmt,
+  Region, KV, KVSep, MultiSpark, LineChart, Seg, GridCell, fmt,
 } from '../terminal.jsx';
 import {
   CHART_AXIS, TmTooltip, localDates, fmtLocal, fmtLocalHour,
@@ -47,14 +47,12 @@ export function TokenSection({ D, grid }) {
               <XAxis dataKey="x" tick={CHART_AXIS} axisLine={false} tickLine={false} interval="preserveStartEnd" />
               <YAxis tick={CHART_AXIS} axisLine={false} tickLine={false} tickFormatter={fmt.k} />
               <Tooltip content={<TmTooltip valueFmt={fmt.k} />} />
-              <Bar dataKey="minted"       name="minted"   stackId="a" fill="var(--t-fg)"   maxBarSize={40} />
-              <Bar dataKey="protocolMint" name="protocol" stackId="a" fill="var(--t-warn)" maxBarSize={40} />
-              <Bar dataKey="spent"        name="spent"    fill="var(--t-neg)"              maxBarSize={40} radius={[2,2,0,0]} />
+              <Bar dataKey="minted"       name="minted"   fill="var(--t-fg)"  maxBarSize={40} />
+              <Bar dataKey="spent"        name="spent"    fill="var(--t-neg)" maxBarSize={40} radius={[2,2,0,0]} />
             </BarChart>
           </ResponsiveContainer>
           <div style={{ marginTop: 4, fontSize: 'var(--t-fs-sm)', color: 'var(--t-fg-soft)', display: 'flex', gap: 12, fontFamily: 'var(--t-font)' }}>
             <span><span style={{ color: 'var(--t-fg)' }}>█</span> minted</span>
-            <span><span style={{ color: 'var(--t-warn)' }}>█</span> protocol</span>
             <span><span style={{ color: 'var(--t-neg)' }}>█</span> burned</span>
           </div>
         </Region>
@@ -62,21 +60,30 @@ export function TokenSection({ D, grid }) {
 
       <GridCell id="burned" span={spans['burned']} height={heights['burned']} onResize={(r) => resize('burned', r)}>
         <Region title="$dirty burned" sub="daily · all">
-          <StackedBarRow
-            hideNum
-            data={localDates(D.burnedDaily)}
-            series={[
-              { key: 'protocolBurn', label: 'protocol burn',  color: 'neg',  colorVar: 'neg' },
-              { key: 'asset',        label: 'asset purchase', color: 'fg',   colorVar: 'fg' },
-              { key: 'levelUp',      label: 'level up',       color: 'hdr',  colorVar: 'hdr' },
-              { key: 'thirdEnt',     label: 'third ent',      color: 'warn', colorVar: 'warn' },
-            ]}
-          />
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={localDates(D.burnedDaily)} margin={{ top: 4, right: 4, left: -18, bottom: 0 }} barCategoryGap="20%">
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--t-rule)" vertical={false} />
+              <XAxis dataKey="x" tick={CHART_AXIS} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+              <YAxis tick={CHART_AXIS} axisLine={false} tickLine={false} tickFormatter={fmt.k} />
+              <Tooltip content={<TmTooltip valueFmt={fmt.k} />} />
+              <Bar dataKey="protocolBurn" name="protocol burn"  stackId="a" fill="var(--t-neg)"  maxBarSize={40} />
+              <Bar dataKey="asset"        name="asset purchase" stackId="a" fill="var(--t-fg)"   maxBarSize={40} />
+              <Bar dataKey="levelUp"      name="level up"       stackId="a" fill="var(--t-hdr)"  maxBarSize={40} />
+              <Bar dataKey="enterprise"   name="enterprise"     stackId="a" fill="var(--t-warn)" maxBarSize={40} radius={[2,2,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
           <div style={{ marginTop: 4, fontSize: 'var(--t-fs-sm)', color: 'var(--t-fg-soft)', display: 'flex', gap: 12, fontFamily: 'var(--t-font)' }}>
             <span><span style={{ color: 'var(--t-neg)' }}>█</span> protocol</span>
             <span><span style={{ color: 'var(--t-fg)' }}>█</span> asset</span>
             <span><span style={{ color: 'var(--t-hdr)' }}>█</span> level-up</span>
-            <span><span style={{ color: 'var(--t-warn)' }}>█</span> 3rd enterprise</span>
+            <span>
+              <span style={{ color: 'var(--t-warn)' }}>█</span> enterprise
+              {typeof D.loadout4PriceNow === 'number' && (
+                <span style={{ color: 'var(--t-fg-mut)', marginLeft: 4 }}>
+                  (loadout 4: {fmt.k(D.loadout4PriceNow)})
+                </span>
+              )}
+            </span>
           </div>
         </Region>
       </GridCell>
@@ -95,42 +102,41 @@ export function TokenSection({ D, grid }) {
 
       <GridCell id="company-state" span={spans['company-state']} height={heights['company-state']} onResize={(r) => resize('company-state', r)}>
         <Region title="company state" sub={`${D.companies.totalCompanies.toLocaleString()} total`}>
-          <StackedBarRow
-            hideNum
-            data={[
-              { x: 'active',   manual: Math.max(0, D.companies.activeTrades - D.companies.autoTradeOn), auto: D.companies.autoTradeOn },
-              { x: 'inactive', expired: expiredCount, idle: trueIdleCount },
-            ]}
-            series={[
-              { key: 'manual',  color: 'pos',  label: 'active'  },
-              { key: 'auto',    color: 'fg',   label: 'auto-on' },
-              { key: 'expired', color: 'neg',  label: 'expired' },
-              { key: 'idle',    color: 'warn', label: 'idle'    },
-            ]}
-            valueFmt={(v) => String(Math.round(v))}
-          />
+          {(() => {
+            const active = Math.max(0, D.companies.activeTrades - D.companies.autoTradeOn);
+            const auto   = D.companies.autoTradeOn;
+            // Combine expired + true-idle into a single "idle" bucket, keeping
+            // the expired (red) color so the bar still signals dead state.
+            const idle   = expiredCount + trueIdleCount;
+            const total  = active + auto + idle; // pin the X-axis
+            return (
+              <ResponsiveContainer width="100%" height={36}>
+                <BarChart
+                  layout="vertical"
+                  data={[{ name: 'companies', active, auto, idle }]}
+                  margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
+                  barCategoryGap={0}
+                >
+                  <XAxis type="number" domain={[0, total || 1]} hide />
+                  <YAxis type="category" dataKey="name" hide />
+                  <Tooltip content={<TmTooltip valueFmt={(v) => String(Math.round(v))} />} />
+                  <Bar dataKey="active" name="active"  stackId="a" fill="var(--t-pos)" isAnimationActive={false} />
+                  <Bar dataKey="auto"   name="auto-on" stackId="a" fill="color-mix(in srgb, var(--t-pos) 55%, var(--t-bg))" isAnimationActive={false} />
+                  <Bar dataKey="idle"   name="idle"    stackId="a" fill="var(--t-neg)" isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            );
+          })()}
           <div style={{ marginTop: 4, fontSize: 'var(--t-fs-sm)', color: 'var(--t-fg-soft)', display: 'flex', gap: 12, fontFamily: 'var(--t-font)' }}>
             <span><span style={{ color: 'var(--t-pos)' }}>█</span> active</span>
-            <span><span style={{ color: 'var(--t-fg)' }}>█</span> auto-on</span>
-            <span><span style={{ color: 'var(--t-neg)' }}>█</span> expired</span>
-            <span><span style={{ color: 'var(--t-warn)' }}>█</span> idle</span>
+            <span><span style={{ color: 'color-mix(in srgb, var(--t-pos) 55%, var(--t-bg))' }}>█</span> auto-on</span>
+            <span><span style={{ color: 'var(--t-neg)' }}>█</span> idle</span>
           </div>
           <KVSep />
           <KV k="active trades"  v={D.companies.activeTrades.toLocaleString()} cls="pos" />
           <KV k="auto-trade on"  v={D.companies.autoTradeOn.toLocaleString()} sub={D.companies.autoTradeShareLabel} />
           <KV k="unique owners"  v={D.companies.uniqueOwners.toLocaleString()} />
           {D.leaderboard && D.leaderboard[0] && <KV k="largest co" v={D.leaderboard[0].wallet} cls="dim" sub={`${D.leaderboard[0].ops.toLocaleString()} ops · ${D.leaderboard[0].earned} earned`} />}
-        </Region>
-      </GridCell>
-
-      <GridCell id="circ-supply" span={spans['circ-supply']} onResize={(r) => resize('circ-supply', r)}>
-        <Region title="circulating supply" sub="hourly · $DIRTY">
-          <LineChart
-            data={localDates((D.marketCapChart || []).map(r => ({ ...r, v: r.supply })), true)}
-            color="fg"
-            fill
-            valueFmt={(v) => v >= 1e6 ? (v/1e6).toFixed(2)+'M' : v >= 1e3 ? (v/1e3).toFixed(1)+'k' : String(Math.round(v))}
-          />
         </Region>
       </GridCell>
 
@@ -154,6 +160,17 @@ export function TokenSection({ D, grid }) {
         </Region>
       </GridCell>
 
+      <GridCell id="circ-supply" span={spans['circ-supply']} onResize={(r) => resize('circ-supply', r)}>
+        <Region title="circulating supply" sub="hourly · $DIRTY">
+          <LineChart
+            data={localDates((D.marketCapChart || []).map(r => ({ ...r, v: r.supply })), true)}
+            color="fg"
+            fill
+            valueFmt={(v) => v >= 1e6 ? (v/1e6).toFixed(2)+'M' : v >= 1e3 ? (v/1e3).toFixed(1)+'k' : String(Math.round(v))}
+          />
+        </Region>
+      </GridCell>
+
       <GridCell id="influence-totals" span={spans['influence-totals']} height={heights['influence-totals']} onResize={(r) => resize('influence-totals', r)}>
         <Region title="influence flow" sub="all time">
           <KV k="purchased"   v={inf.purchased.toLocaleString()}   cls="pos" />
@@ -171,7 +188,16 @@ export function TokenSection({ D, grid }) {
           fill
         >
           {(() => {
-            const src = infGran === 'hourly' ? (D.influenceFlow.hours || []) : D.influenceFlow.days;
+            let src = infGran === 'hourly' ? (D.influenceFlow.hours || []) : D.influenceFlow.days;
+            // Drop the current-hour partial bucket until 30 minutes of the
+            // hour have elapsed — keeps the line from dipping to 0 at the
+            // start of every hour.
+            if (infGran === 'hourly' && src.length > 0) {
+              const last  = src[src.length - 1];
+              const nowS  = Math.floor(Date.now() / 1000);
+              const tsNum = Number(last?.ts) || 0;
+              if (tsNum > 0 && nowS - tsNum < 1800) src = src.slice(0, -1);
+            }
             return (
               <MultiSpark
                 labels={src.map(d => d.ts ? (infGran === 'hourly' ? fmtLocalHour(d.ts) : fmtLocal(d.ts)) : (d.x || ''))}

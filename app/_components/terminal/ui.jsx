@@ -104,7 +104,7 @@ export function BeaconMark({ size = 32 }) {
 
 // ── Shell ─────────────────────────────────────────────────────────────────
 
-export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, activeTab, onTabChange, search, onSearch, fkeys, sideFooter, children, rail, clock, theme = 'purple', density = 'regular', mode = 'standalone', nav, brand, sideContent, railLabel = 'criminal', onThemeChange, notifPrefs, onNotifChange, openRailRef }) {
+export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, activeTab, onTabChange, search, onSearch, fkeys, sideFooter, children, rail, clock, theme = 'purple', density = 'regular', mode = 'standalone', nav, brand, sideContent, railLabel = 'criminal', onThemeChange, notifPrefs, onNotifChange, openRailRef, topBand, bottomBand, searchSuggestions, onPickSuggestion }) {
   const [now, setNow] = useState(clock || nowUTC());
   const [activeSection, setActiveSection] = useState(nav && nav[0] ? nav[0].id : null);
   const [railOpen, setRailOpen] = useState(false);
@@ -247,6 +247,16 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
                 <div>
                   <div className="tm-side-mark">{brand?.name || 'OFFSHORE'}<em>·</em></div>
                   <div className="tm-side-sub">{brand?.sub || 'dashboard · v0.3'}</div>
+                  {brand?.season && (
+                    <div style={{
+                      color: 'var(--t-pos)',
+                      fontWeight: 700,
+                      letterSpacing: '0.1em',
+                      fontSize: 'var(--t-fs-sm)',
+                      textShadow: '0 0 6px var(--t-pos)',
+                      marginTop: 2,
+                    }}>{brand.season}</div>
+                  )}
                 </div>
               )}
             </div>
@@ -312,7 +322,8 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
       </aside>
 
       <main className="tm-main">
-        <div className="tm-cmd">
+        {topBand}
+        <div className="tm-cmd" style={{ position: 'relative' }}>
           <span className="prompt">&gt;</span>
           {(tabs || []).map((t) => (
             <span
@@ -326,6 +337,48 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
             onChange={(e) => onSearch && onSearch(e.target.value)}
             placeholder="search address · 0x… · / to focus"
           />
+          {Array.isArray(searchSuggestions) && searchSuggestions.length > 0 && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 22,           // align with the input (after prompt + tabs gap)
+              right: 12,
+              zIndex: 50,
+              marginTop: 2,
+              background: 'var(--t-bg)',
+              border: '1px solid var(--t-rule)',
+              boxShadow: '0 6px 16px rgba(0,0,0,0.35)',
+              fontFamily: 'var(--t-font)',
+              fontSize: 'var(--t-fs-sm)',
+            }}>
+              {searchSuggestions.map((s, i) => (
+                <div
+                  key={s.addr}
+                  onMouseDown={(e) => {
+                    // mousedown (not click) so the input's blur doesn't fire
+                    // first and re-render the dropdown away before pick runs.
+                    e.preventDefault();
+                    onPickSuggestion && onPickSuggestion(s.addr);
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '5px 10px',
+                    cursor: 'pointer',
+                    borderTop: i === 0 ? 'none' : '1px solid var(--t-rule)',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--t-rule)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <span style={{ color: 'var(--t-hdr)', minWidth: 0, flex: '0 0 auto' }}>
+                    {s.name || '—'}
+                  </span>
+                  <span style={{ color: 'var(--t-fg-mut)', fontSize: 'var(--t-fs-xs)', marginLeft: 'auto' }}>
+                    {s.addr.slice(0, 6)}…{s.addr.slice(-4)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="tm-main-row">
           <div className="tm-main-scroll">
@@ -345,12 +398,36 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
             </div>
           ) : null}
         </div>
+        {bottomBand && (
+          <div style={{
+            position: 'absolute',
+            left: 0, right: 0, bottom: 0,
+            zIndex: 4,
+            pointerEvents: 'auto',
+          }}>
+            {bottomBand}
+          </div>
+        )}
       </main>
 
-      <div className="tm-fkeys">
-        {(fkeys || []).map((f, i) => (
-          <span key={i}><b>{f.k}</b> {f.label}</span>
-        ))}
+      <div className="tm-fkeys" style={{ position: 'relative' }}>
+        {(fkeys || []).map((f, i) => {
+          const style = {
+            ...(f.onClick ? { cursor: 'pointer' } : {}),
+            ...(f.center ? { position: 'absolute', left: '50%', transform: 'translateX(-50%)' } : {}),
+            ...(f.color  ? { color: f.color } : {}),
+          };
+          return (
+            <span
+              key={i}
+              onClick={f.onClick}
+              style={style}
+              title={f.onClick ? (f.k ? `${f.k} · ${f.label}` : f.label) : undefined}
+            >
+              {f.k ? <><b>{f.k}</b> {f.label}</> : f.label}
+            </span>
+          );
+        })}
         <span className="right">Developed with <span style={{ color: 'var(--t-heart)' }}>♥</span> by <a href="https://x.com/s_exas" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>@s_exas</a></span>
       </div>
 
@@ -451,7 +528,7 @@ export function Sortable({ label, k, sortKey, sortDir, on }) {
 
 // ── Toasts ─────────────────────────────────────────────────────────────────
 
-export function Toasts({ items, ttl = 4000 }) {
+export function Toasts({ items, ttl = 2000 }) {
   const [stack, setStack] = useState([]);
   const seenRef  = useRef(null);
   const mountRef = useRef(false);
@@ -469,9 +546,12 @@ export function Toasts({ items, ttl = 4000 }) {
     seenRef.current.add(key);
     const id = `${key}-${Math.random().toString(36).slice(2, 5)}`;
     setStack((s) => [{ ...latest, id }, ...s].slice(0, 30));
-    const t1 = setTimeout(() => setStack((s) => s.map((x) => x.id === id ? { ...x, out: true } : x)), ttl);
-    const t2 = setTimeout(() => setStack((s) => s.filter((x) => x.id !== id)), ttl + 380);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    // Per-toast fade timers — NO cleanup return. The previous behaviour
+    // cleared earlier toasts' timers on every new item, so only the most
+    // recent one ever faded. Each timer's setStack callback is a no-op
+    // if the toast was already dismissed, so leaking is harmless.
+    setTimeout(() => setStack((s) => s.map((x) => x.id === id ? { ...x, out: true } : x)), ttl);
+    setTimeout(() => setStack((s) => s.filter((x) => x.id !== id)), ttl + 380);
   }, [items]);
 
   function dismiss(id) {

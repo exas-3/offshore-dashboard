@@ -16,9 +16,7 @@ import {
   DURATION_TO_OP_TYPE,
   durationToOpType,
   mapOpType,
-  resultFromAmount,
   EARN_OPS,
-  COMPLETE_AMOUNTS,
 } from './op-types.js';
 
 const ZERO  = '0x0000000000000000000000000000000000000000';
@@ -95,12 +93,12 @@ test('Burn to zero with small mod-200 amount → BUY_ASSET', () => {
   assert.equal(r.opType, 'BUY_ASSET');
 });
 
-test('Burn to zero with amount > 6000 → THIRD_ENTERPRISE', () => {
+test('Burn to zero with amount > 6000 → ENTERPRISE', () => {
   const r = classifyTransfer(USER, ZERO, 10_000);
-  assert.equal(r.opType, 'THIRD_ENTERPRISE');
+  assert.equal(r.opType, 'ENTERPRISE');
 });
 
-test('Burn to zero from protocol address → BURN (not THIRD_ENTERPRISE)', () => {
+test('Burn to zero from protocol address → BURN (not ENTERPRISE)', () => {
   const protocolAddr = '0x5dc36d6dcd5a3792b3980de1f40c7c0970af3462';
   const r = classifyTransfer(protocolAddr, ZERO, 50_000);
   assert.deepEqual(r, { kind: 'BURN', opType: 'BURN' });
@@ -126,7 +124,9 @@ test('mapOpType — canonical labels', () => {
   assert.equal(mapOpType('EXTORTION'),       'extortion');
   assert.equal(mapOpType('LP_ADD'),          'lp add');
   assert.equal(mapOpType('LP_REMOVE'),       'lp remove');
-  assert.equal(mapOpType('THIRD_ENTERPRISE'),'buy-asset');
+  assert.equal(mapOpType('ENTERPRISE'),      'enterprise');
+  assert.equal(mapOpType('THIRD_ENTERPRISE'),'enterprise'); // legacy
+  assert.equal(mapOpType('FOURTH_ENTERPRISE'),'enterprise'); // legacy
 });
 
 test('mapOpType — PARTIAL/FAIL fall through, NOT collapsed to "op"', () => {
@@ -139,15 +139,6 @@ test('mapOpType — unknown op_type lowercases + hyphenates', () => {
   assert.equal(mapOpType('SOME_NEW_OP'), 'some-new-op');
 });
 
-test('resultFromAmount — completion thresholds', () => {
-  for (const ok of [100, 115, 130]) {
-    assert.equal(resultFromAmount(ok), 'completed', `${ok} should be completed`);
-  }
-  for (const bust of [0, 6.34, 50, 200, 99]) {
-    assert.equal(resultFromAmount(bust), 'busted', `${bust} should be busted`);
-  }
-});
-
 test('EARN_OPS includes the four game-op + two legacy types, NOT scrap', () => {
   for (const op of ['DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL']) {
     assert.ok(EARN_OPS.has(op), `${op} missing from EARN_OPS`);
@@ -155,10 +146,6 @@ test('EARN_OPS includes the four game-op + two legacy types, NOT scrap', () => {
   // Regression: SCRAP is a MINT but never busted — adding it caused every
   // scrap entry to render as a red ✗ in the ops feed.
   assert.equal(EARN_OPS.has('SCRAP'), false, 'SCRAP must NOT be in EARN_OPS');
-});
-
-test('COMPLETE_AMOUNTS — exactly the canonical three values', () => {
-  assert.deepEqual([...COMPLETE_AMOUNTS].sort((a,b)=>a-b), [100, 115, 130]);
 });
 
 // ── DEX_POOLS sanity (regression: a 39-char address typo cost 32k rows) ──

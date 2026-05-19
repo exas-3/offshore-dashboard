@@ -24,6 +24,7 @@ function setFavicon(theme) {
 
 export default function Page({ initialAddress = '' } = {}) {
   const [data, setData] = useState(null);
+  const [slowLoad, setSlowLoad] = useState(false);
   const [theme, setTheme] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('offshore-theme') || 'amber';
@@ -32,6 +33,15 @@ export default function Page({ initialAddress = '' } = {}) {
   });
 
   useEffect(() => { setFavicon(theme); }, [theme]);
+
+  // Flag the loading screen as "slow" after 1 s so we can prompt the user
+  // to hard-refresh — the most common cause for an indefinite loading
+  // splash is a stale JS bundle (cross-deploy chunk mismatch).
+  useEffect(() => {
+    if (data) return;
+    const t = setTimeout(() => setSlowLoad(true), 1000);
+    return () => clearTimeout(t);
+  }, [data]);
 
   function handleThemeChange(t) {
     setTheme(t);
@@ -52,14 +62,22 @@ export default function Page({ initialAddress = '' } = {}) {
 
   if (!data) {
     const { fg, bg } = THEME_FAVICON[theme] || THEME_FAVICON.paper;
+    const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent || '');
+    const hardRefresh = isMac ? '⌘ + Shift + R' : 'Ctrl + Shift + R';
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexDirection: 'column', gap: 12,
         height: '100vh', background: bg, color: fg,
         fontFamily: "'IBM Plex Mono', monospace", fontSize: 13,
         letterSpacing: '0.04em',
       }}>
         <span style={{ opacity: 0.7 }}>loading offshore data…</span>
+        {slowLoad && (
+          <span style={{ opacity: 0.55, fontSize: 11 }}>
+            try a hard refresh: <b style={{ opacity: 0.9 }}>{hardRefresh}</b>
+          </span>
+        )}
       </div>
     );
   }

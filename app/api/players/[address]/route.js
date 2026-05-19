@@ -5,6 +5,7 @@ import {
   getPlayerOpsBreakdown, getPlayerDailyHistory, getPlayerInfluenceStats,
   getPlayerRecentMissionStats,
 } from '../../../../lib/index.js';
+import { getCycleStart } from '../../offshore-data/helpers.js';
 
 export async function GET(_req, { params }) {
   try {
@@ -12,8 +13,9 @@ export async function GET(_req, { params }) {
     if (!/^0x[0-9a-f]{40}$/i.test(address)) {
       return NextResponse.json({ error: 'invalid address' }, { status: 400 });
     }
+    const cycleStart = getCycleStart(Math.floor(Date.now() / 1000));
     const [stats, activity, vault, breakdown, history, influence, recentMissions] = await Promise.all([
-      getPlayerStats(address), getPlayerActivity(address, 10000, 0),
+      getPlayerStats(address, cycleStart), getPlayerActivity(address, 10000, 0),
       getPlayerVaultPayouts(address, 50), getPlayerOpsBreakdown(address),
       getPlayerDailyHistory(address), getPlayerInfluenceStats(address),
       getPlayerRecentMissionStats(address),

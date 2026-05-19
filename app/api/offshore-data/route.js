@@ -15,8 +15,10 @@ import {
 } from '../../../lib/index.js';
 import {
   fetchDirtyPrice, fetchLatestInfCost, getLatestBlock,
-  TRADE_DURATIONS, EARN_OPS, COMPLETE_AMOUNTS, mapOpType, tickerKind, tickerLabel, resultFromAmount,
+  TRADE_DURATIONS, EARN_OPS, mapOpType, tickerKind, tickerLabel,
 } from '../../../server/etherscan.js';
+import { loadout4PriceAt } from '../../../lib/chain-constants.js';
+import { getHitsDashboard } from '../../../lib/db/hits.js';
 import { ethPriceFeed } from '../../../lib/eth-price-feed.js';
 import {
   CORS, getCycleStart, cycleQuarter,
@@ -156,10 +158,10 @@ export async function GET() {
         WHERE inf_cost IS NOT NULL
         ORDER BY timestamp ASC
       `.catch(() => []),
-      // ops matrix seed
+      // ops matrix seed — structural completed/busted via the `result` column
       db`
         SELECT op_type,
-          (amount IN (100, 115, 130)) AS is_ok,
+          (result = 'completed') AS is_ok,
           COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 60})   AS m1,
           COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 300})  AS m5,
           COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 900})  AS m15,
@@ -259,7 +261,7 @@ export async function GET() {
       protocolBurn: r.burned,
       asset:        r.assets,
       levelUp:      r.levels,
-      thirdEnt:     r.enterprise,
+      enterprise:   r.enterprise,
     }));
 
     // ── participants & active wallets ─────────────────────────────────────────
@@ -302,6 +304,19 @@ export async function GET() {
     });
 
     const usdmPerCycle = cycleHistory.slice(-20).map(r => ({ t: r.t, v: r.distributed }));
+    // Per calendar UTC day — used by the vault distribution bar chart so each
+    // bar is a date rather than a cycle/quarter. Season 1 weekday triples
+    // (01:30/09:30/17:30 cycles) get summed into one bar per day.
+    const dailyMap = new Map();
+    sortedStarts.forEach((start) => {
+      const dayKey = Math.floor(start / 86400) * 86400;
+      const prev = dailyMap.get(dayKey) || 0;
+      dailyMap.set(dayKey, prev + cycleMap.get(start).distributed);
+    });
+    const usdmPerDay = [...dailyMap.entries()]
+      .sort(([a], [b]) => a - b)
+      .slice(-30)
+      .map(([dayTs, v]) => ({ t: fmtDate(dayTs), v }));
     const recipientsPerCycle = cycleHistory.map(r => ({ t: r.t, v: r.recipients }));
     const newRecipientsPerCycle = [];
     const distributionTotals = {
@@ -386,12 +401,12 @@ export async function GET() {
       UNION ALL
       (SELECT hash, op_type AS etype, to_addr AS addr, amount, timestamp, result
         FROM transfers WHERE kind='MINT'
-          AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP')
+          AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP','HIT','HIT_REFUND')
         ORDER BY timestamp DESC LIMIT 20)
       UNION ALL
       (SELECT hash, op_type AS etype, from_addr AS addr, amount, timestamp, NULL::text
         FROM transfers WHERE kind='SPEND'
-          AND op_type IN ('BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE')
+          AND op_type IN ('BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE','FOURTH_ENTERPRISE','ENTERPRISE')
         ORDER BY timestamp DESC LIMIT 10)
       UNION ALL
       (SELECT NULL::text AS hash, 'STAKE' AS etype, user_addr AS addr, amount::numeric, timestamp, NULL::text
@@ -417,8 +432,12 @@ export async function GET() {
     // Deduplicate: same wallet + same tx → collapse into one entry (sum amounts)
     const opDedupMap = new Map();
     for (const t of recentTransfers) {
-      if (!((t.kind === 'MINT' && t.op_type && t.op_type !== '') ||
-            (t.kind === 'SPEND' && ['BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE'].includes(t.op_type)))) continue;
+      // HIT_COST is intentionally excluded — the HIT row already conveys the
+      // cost (it now displays as −cost in the feed), so the burn row would
+      // double-count the same event.
+      const keep = (t.kind === 'MINT' && t.op_type && t.op_type !== '')
+        || (t.kind === 'SPEND' && ['BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE','FOURTH_ENTERPRISE','ENTERPRISE'].includes(t.op_type));
+      if (!keep) continue;
       const wallet = t.kind === 'MINT' ? t.to_addr : t.from_addr;
       const key = `${t.hash}:${wallet}:${t.op_type}`;
       if (opDedupMap.has(key)) {
@@ -431,19 +450,36 @@ export async function GET() {
     const recentOps = [...opDedupMap.values()]
       .sort((a, b) => Number(b.timestamp) - Number(a.timestamp) || Number(b.log_index) - Number(a.log_index))
       .slice(0, 250)
-      .map(t => ({
-        hash:   t.hash,
-        wallet: shortAddr(t.kind === 'MINT' ? t.to_addr : t.from_addr),
-        walletFull: (t.kind === 'MINT' ? t.to_addr : t.from_addr),
-        op:     mapOpType(t.op_type),
-        result: EARN_OPS.has(t.op_type) ? resultFromAmount(t._rawAmount) : 'ok',
-        dirty:  t.kind === 'MINT'
-          ? Math.round(t._rawAmount * 100) / 100
-          : -Math.round(t._rawAmount * 100) / 100,
-        count:  t._count,
-        inf:    infCost,
-        _ts:    Number(t.timestamp),
-      }));
+      .map(t => {
+        const isHit       = t.op_type === 'HIT';
+        const isRefund    = t.op_type === 'HIT_REFUND';
+        const isHitFamily = isHit || isRefund || t.op_type === 'HIT_COST';
+        // HIT displays −cost (the DIRTY burned to initiate the hit). The W/L
+        // verdict comes from the `result` column / label, not the sign.
+        // HIT_REFUND shows kept (+) and stolen (−) side-by-side.
+        const dirty = isHit
+          ? -Math.round(Number(t.hit_cost ?? 0) * 100) / 100
+          : t.kind === 'MINT'
+            ? Math.round(t._rawAmount * 100) / 100
+            : -Math.round(t._rawAmount * 100) / 100;
+        let op = mapOpType(t.op_type);
+        if (isHit) op = t.result === 'completed' ? 'hit won' : 'hit lost';
+        return {
+          hash:   t.hash,
+          wallet: shortAddr(t.kind === 'MINT' ? t.to_addr : t.from_addr),
+          walletFull: (t.kind === 'MINT' ? t.to_addr : t.from_addr),
+          op,
+          result: isHitFamily && !isHit
+            ? 'ok'
+            : (EARN_OPS.has(t.op_type) ? (t.result ?? 'busted') : 'ok'),
+          dirty,
+          // Victim's dual display: kept (dirty, +) and stolen (dirtyLost, −).
+          ...(isRefund ? { dirtyLost: Math.round(Number(t.hit_stolen ?? 0) * 100) / 100 } : null),
+          count:  t._count,
+          inf:    infCost,
+          _ts:    Number(t.timestamp),
+        };
+      });
 
     // ── live counter seed ─────────────────────────────────────────────────────
     const counterInit = {
@@ -476,8 +512,8 @@ export async function GET() {
 
     const opLabelMap  = { DRUG_DEAL: 'Drug Deal', ARMS_DEAL: 'Arms Deal', PARTIAL: 'Op', SCRAP: 'Scrap Item', EXTORTION: 'Extortion' };
     const opColorMap  = { DRUG_DEAL: 'green', ARMS_DEAL: 'green', PARTIAL: 'dim', EXTORTION: 'green', SCRAP: 'orange' };
-    const spnLabelMap = { BUY_ASSET: 'Buy Asset', LEVEL_UP: 'Level Up', THIRD_ENTERPRISE: 'Third Enterprise' };
-    const spnColorMap = { BUY_ASSET: 'orange', LEVEL_UP: 'magenta', THIRD_ENTERPRISE: 'red' };
+    const spnLabelMap = { BUY_ASSET: 'Buy Asset', LEVEL_UP: 'Level Up', ENTERPRISE: 'Enterprise', THIRD_ENTERPRISE: 'Enterprise', FOURTH_ENTERPRISE: 'Enterprise' };
+    const spnColorMap = { BUY_ASSET: 'orange', LEVEL_UP: 'magenta', ENTERPRISE: 'red', THIRD_ENTERPRISE: 'red', FOURTH_ENTERPRISE: 'red' };
 
     const earnedByOp = walletEarnedByOp.map(r => ({
       type:  opLabelMap[r.op_type] || r.op_type,
@@ -567,11 +603,15 @@ export async function GET() {
     // cycleHistory.length = last completed cycle number; current active cycle is +1
     const currentWorldTime = cycleHistory.length > 0 ? cycleQuarter(cycleHistory.length + 1) : 'Q1 2013';
 
+    const hits = await getHitsDashboard({ limit: 100, hoursWindow: 24 }).catch(() => ({ recent: [], summary: { total: 0, wins: 0, losses: 0, winRate: 0 }, buckets: [] }));
+
     const result = {
       hero, supplyOverTime, marketCapChart, emissionsVsBurn, emissionsVsBurnDaily, influenceFlow,
-      burnedDaily, newParticipants, newParticipantsTotal, totalPlayersChart,
+      burnedDaily, loadout4PriceNow: loadout4PriceAt(Math.floor(Date.now() / 1000)),
+      hits,
+      newParticipants, newParticipantsTotal, totalPlayersChart,
       dailyActiveWallets, dailyActiveWalletsPeak,
-      usdmPerCycle, recipientsPerCycle, newRecipientsPerCycle, distributionTotals,
+      usdmPerCycle, usdmPerDay, recipientsPerCycle, newRecipientsPerCycle, distributionTotals,
       currentWorldTime,
       companies: companiesData, liveTrades, onChainStrip, wallet,
       heatmap: heatmapGrid, heatmapDays, heatmapDayTs,

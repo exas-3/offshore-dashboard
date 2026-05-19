@@ -1,13 +1,17 @@
 import {
   fetchTransferLogs, parseTransferLog, fetchTxInputs, fetchFactoryTradeContext,
+  fetchHitEvents,
   getCompanyTradeTypesFromStorage, classifyTransfer,
   fetchSupplyAtBlock, DIRTY, USDM, DEX_POOLS,
-  TRADE_DURATIONS, resultFromAmount,
+  TRADE_DURATIONS,
 } from '../etherscan.js';
+import { HITS, E_HIT_RESOLVED } from '../../lib/chain-constants.js';
 import { getWsClient } from '../etherscan/ws-client.js';
 import { bufferedFlush } from '../etherscan/buffered-flush.js';
 import {
   getLastBlock, setLastBlock, upsertTransfers,
+  upsertHits, retagHitCosts,
+  getCompanyTradeTypesFromDb, getDb,
   getDaysNeedingSupplyBackfill, getHoursNeedingSupplyBackfill, saveTokenInfoSnapshot,
 } from '../../lib/index.js';
 import { runBlockSync } from './_run.js';
@@ -30,11 +34,14 @@ async function processTransferBatch({ start, end, prefetched }) {
   // Pull USDM Transfers in the same block range — net DIRTY/USDM delta
   // per user tells swap (opposite signs) apart from LP add/remove (same
   // signs).
-  const [txInputs, tradeCtx, usdmLogs] = await Promise.all([
+  const [txInputs, tradeCtx, usdmLogs, hitCtx] = await Promise.all([
     fetchTxInputs(mintHashes).catch(() => new Map()),
-    fetchFactoryTradeContext(start, end).catch(() => ({ companyMap: new Map(), fullTxs: new Set(), companyBlockMap: new Map(), d47Map: new Map() })),
+    fetchFactoryTradeContext(start, end).catch(() => ({ companyMap: new Map(), fullTxs: new Set(), companyBlockMap: new Map() })),
     fetchTransferLogs(USDM, start, end).catch(() => []),
+    fetchHitEvents(start, end).catch(() => ({ hits: [], byTx: new Map() })),
   ]);
+  // Persist hit records (separate table) — independent of transfers upsert.
+  if (hitCtx.hits.length) await upsertHits(hitCtx.hits).catch(err => console.warn('[poller] upsertHits:', err.message));
   const usdmByTx = new Map();
   for (const u of usdmLogs) {
     const h = u.hash.toLowerCase();
@@ -50,20 +57,50 @@ async function processTransferBatch({ start, end, prefetched }) {
   const typeMap = companyAddrs.length
     ? await getCompanyTradeTypesFromStorage(companyAddrs, tradeCtx.companyBlockMap).catch(() => new Map())
     : new Map();
+  // DB fallback: any companies whose storage read failed (RPC throttling /
+  // missing block / etc.) get their cached `trade_type` from the companies
+  // table, populated periodically by syncCompanies. Resolves PARTIALs that
+  // would otherwise pile up under rate-limit pressure.
+  const missingAddrs = companyAddrs.filter(a => !typeMap.has(a));
+  if (missingAddrs.length) {
+    const dbMap = await getCompanyTradeTypesFromDb(missingAddrs).catch(() => new Map());
+    for (const [a, t] of dbMap) typeMap.set(a, t);
+  }
 
   const rows = logs.map(t => {
-    const classified = { ...t, rawValue: t.amount.toString(), ...classifyTransfer(t.fromAddr, t.toAddr, t.amount, txInputs.get(t.hash.toLowerCase())) };
+    const classified = { ...t, rawValue: t.amount.toString(), ...classifyTransfer(t.fromAddr, t.toAddr, t.amount, txInputs.get(t.hash.toLowerCase()), Number(t.timestamp)) };
+    // Hit re-tag: a hit tx emits two MINTs — one to the attacker (stolen
+    // 80%) and one to the victim (kept 20%). Re-tag these before the
+    // PARTIAL → trade-type fallback runs, so they don't get mis-resolved
+    // via the victim's company storage slots.
+    if (classified.kind === 'MINT') {
+      const hit = hitCtx.byTx.get(t.hash.toLowerCase());
+      if (hit) {
+        const to = (t.toAddr ?? '').toLowerCase();
+        if (to === hit.attacker)    { classified.opType = 'HIT';        classified.result = classified.amount > hit.cost ? 'completed' : 'busted'; }
+        else if (to === hit.victim) { classified.opType = 'HIT_REFUND'; classified.result = 'busted'; }
+      }
+    }
     if (classified.kind === 'MINT' && classified.opType === 'PARTIAL') {
       const txh = t.hash.toLowerCase();
       const company = tradeCtx.companyMap.get(txh + ':' + t.logIndex);
       const resolved = company ? typeMap.get(company.toLowerCase()) : null;
       if (resolved) classified.opType = resolved;
     }
-    // Outcome for game-op MINTs: completed payouts are exactly 100/115/130
-    // DIRTY (location-dependent); anything else is a busted op with a
-    // proportionate refund.
+    // Season 2 progressive partial payouts emit DirtyPaid + a small DIRTY
+    // Transfer even on busted ops, so a DirtyPaid event alone no longer
+    // implies "completed". True completions land on integer amounts that
+    // are multiples of 5 in the 50–130 range:
+    //   - Season 2: 50, 55, 60, … , 100 by Power Level
+    //   - Season 1: 100, 115, 130 by company location
+    // Anything fractional, sub-50, above 130, or not a multiple of 5 is
+    // treated as a partial bust.
     if (classified.kind === 'MINT' && TRADE_DURATIONS[classified.opType] != null) {
-      classified.result = resultFromAmount(classified.amount);
+      const amt = Number(classified.amount);
+      const rounded = Math.round(amt);
+      const integerish = Math.abs(amt - rounded) < 0.001;
+      const isCompleted = integerish && rounded >= 50 && rounded <= 130 && rounded % 5 === 0;
+      classified.result = isCompleted ? 'completed' : 'busted';
     }
     return classified;
   });
@@ -101,7 +138,48 @@ async function processTransferBatch({ start, end, prefetched }) {
     // else: opposite signs (or zero USDM delta) → genuine swap, leave as-is.
   }
 
+  // Resilience pass: any rows still 'PARTIAL' after the storage/DB path
+  // (e.g. fetchFactoryTradeContext was rate-limited and returned empty maps)
+  // get a final pass against idx_logs → companies.trade_type. This is the
+  // same SQL the bulk-resolve UPDATE uses; running it inline catches new
+  // PARTIALs before they ever leave the sync.
+  const stillPartial = rows.filter(r => r.kind === 'MINT' && r.opType === 'PARTIAL');
+  if (stillPartial.length) {
+    const hashes = [...new Set(stillPartial.map(r => r.hash.toLowerCase()))];
+    const db = getDb();
+    const resolved = await db`
+      WITH p AS (SELECT unnest(${hashes}::text[]) AS hash)
+      SELECT p.hash, l.log_index, lower('0x' || RIGHT(l.topic1, 40)) AS company,
+             l.topic0 = '0xa082f97b8bead66307ae367bd14b2366e03c2e963493a9f269501d884cd1a502' AS is_payout
+      FROM p
+      JOIN idx_logs l ON l.tx_hash = p.hash
+        AND l.address = '0x619814a203ca441611cee02abf31986ca265dd35'
+        AND l.topic0 IN ('0xa082f97b8bead66307ae367bd14b2366e03c2e963493a9f269501d884cd1a502',
+                          '0xf20fbbc5dd518513b4b0381c1904c0751ca7493753ec53a73e651e8b79ee61ff')
+    `.catch(() => []);
+    if (resolved.length) {
+      const byKey = new Map();  // (txHash, dirtyMintLogIndex) → company
+      for (const r of resolved) {
+        const mintIdx = r.is_payout ? Number(r.log_index) - 1 : Number(r.log_index);
+        byKey.set(`${r.hash}:${mintIdx}`, r.company);
+      }
+      const companies = [...new Set([...byKey.values()])];
+      const dbMap = await getCompanyTradeTypesFromDb(companies).catch(() => new Map());
+      for (const r of stillPartial) {
+        const c = byKey.get(`${r.hash.toLowerCase()}:${r.logIndex}`);
+        if (!c) continue;
+        const t = dbMap.get(c);
+        if (t) r.opType = t;
+      }
+    }
+  }
   await upsertTransfers(rows);
+  // Retag the cost-burn that initiates each hit (separate or same tx).
+  // Must run AFTER upsertTransfers so the burn row exists for SAME-tx hits.
+  if (hitCtx.hits.length) {
+    const n = await retagHitCosts(hitCtx.hits).catch(err => { console.warn('[poller] retagHitCosts:', err.message); return 0; });
+    if (n) console.log(`[poller] retagged ${n} burns as HIT_COST`);
+  }
   return rows.length;
 }
 
@@ -148,6 +226,38 @@ export function startTransfersWs() {
       } catch (err) {
         console.warn('[poller] DIRTY (ws) parse failed:', err.message);
       }
+    },
+  });
+}
+
+// ── Hits WS path ──────────────────────────────────────────────────────────
+// Subscribe to HitResolved on the HITS contract. On flush, re-run
+// processTransferBatch over the affected block range — that path already
+// fetches hits + classifies MINTs as HIT/HIT_REFUND + retags the cost burn
+// as HIT_COST. Adding this in addition to the DIRTY WS subscription gives
+// explicit, immediate processing of hit results (the DIRTY WS would still
+// catch the same blocks, but the buffered flush windows are independent
+// and this guarantees a hit shows up even if no DIRTY transfers were
+// captured in the same WS window).
+const hitsWsBuffer = bufferedFlush({
+  label:   'poller] hits (ws)',
+  flushMs: 1500,
+  keyFn:   (b) => b, // de-dupe by block number
+  onFlush: async (blocks) => {
+    const start = Math.min(...blocks);
+    const end   = Math.max(...blocks);
+    const n = await processTransferBatch({ start, end });
+    if (n) console.log(`[poller] hits (ws): processed ${n} rows (blocks ${start}..${end})`);
+  },
+});
+
+export function startHitsWs() {
+  const client = getWsClient();
+  client.addSubscription({
+    name: 'hits',
+    filter: { address: HITS.toLowerCase(), topics: [E_HIT_RESOLVED] },
+    onLog: (rawLog) => {
+      try { hitsWsBuffer.push(parseInt(rawLog.blockNumber, 16)); } catch {}
     },
   });
 }

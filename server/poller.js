@@ -4,7 +4,7 @@ import {
 import {
   getDistinctMintHashes, batchUpdateMintOpTypes, upsertTransfers,
 } from '../lib/index.js';
-import { syncTransfers, startTransfersWs, backfillSupplyHistory } from './syncs/transfers.js';
+import { syncTransfers, startTransfersWs, startHitsWs, backfillSupplyHistory } from './syncs/transfers.js';
 import { syncInfluence, startInfluenceWs } from './syncs/influence.js';
 import { syncSnapshots } from './syncs/snapshots.js';
 import { syncHolders } from './syncs/holders.js';
@@ -150,6 +150,7 @@ export async function startPoller() {
   startInfluenceWs();
   startVaultWs();
   startStakingWs();
+  startHitsWs();
   getWsClient().start();
   setInterval(syncInfluence,        TX_INTERVAL_MS);
   setInterval(syncTransfers,        TX_INTERVAL_MS);

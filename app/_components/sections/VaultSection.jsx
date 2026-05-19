@@ -8,13 +8,16 @@ export function VaultSection({ D, grid }) {
 
   const lastCycle   = D.usdmPerCycle.at(-1);
   const lastRecip   = D.recipientsPerCycle.at(-1);
-  const medUsdm     = Math.round(median(D.usdmPerCycle.map(c => c.v)));
+  // Median is computed off the per-DAY series (calendar-date totals) so it
+  // tracks the same axis the bargraph shows. Weekday triples in Season 1
+  // are summed into a single daily value before taking the median.
+  const medUsdm     = Math.round(median((D.usdmPerDay || []).map(d => d.v)));
   const medNewRecip = Math.round(median((D.newRecipientsPerCycle || []).map(c => c.v)));
 
   return (
     <section id="sec-vault" className="tm-grid-12">
       <GridCell id="vault" span={spans['vault']} height={heights['vault']} onResize={(r) => resize('vault', r)}>
-        <Region title="swiss vault distribution" sub="cycles">
+        <Region title="swiss vault distribution" sub="daily · USDm">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 14, alignItems: 'flex-start' }}>
             <div>
               <KV k="total distributed" v={`${D.distributionTotals.totalLabel} USDm`} cls="hdr" />
@@ -22,12 +25,12 @@ export function VaultSection({ D, grid }) {
               <KV k="unique recipients" v={D.distributionTotals.uniqueRecipients.toLocaleString()} />
               {lastCycle && <KV k="last cycle" v={`${fmtK(lastCycle.v)} USDm`} sub={`${lastRecip ? lastRecip.v : '—'} claimers · ${lastCycle.t}`} />}
               <KVSep />
-              <KV k="median per cycle"     v={`${fmtK(medUsdm)} USDm`} />
+              <KV k="median per day"       v={`${fmtK(medUsdm)} USDm`} />
               <KV k="new recipients / cycle" v={medNewRecip ? `~${medNewRecip}` : '—'} cls="dim" />
             </div>
             <div>
               <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={D.usdmPerCycle.map((d) => ({ label: d.t, usdm: d.v }))} margin={{ top: 4, right: 4, left: -18, bottom: 0 }} barCategoryGap="20%">
+                <BarChart data={(D.usdmPerDay || []).map((d) => ({ label: d.t, usdm: d.v }))} margin={{ top: 4, right: 4, left: -18, bottom: 0 }} barCategoryGap="20%">
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--t-rule)" vertical={false} />
                   <XAxis dataKey="label" tick={CHART_AXIS} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                   <YAxis tick={CHART_AXIS} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? Math.round(v/1000)+'k' : String(Math.round(v))} />

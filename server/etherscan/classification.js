@@ -9,15 +9,16 @@
 // transfers to the staking contract or DEX pool that aren't burns at all.
 
 import { DEX_POOLS, FUNCTION_OP_TYPES, STAKING } from './constants.js';
+import { loadout4PriceAt } from '../../lib/chain-constants.js';
 
 const ZERO         = '0x0000000000000000000000000000000000000000';
 const STAKING_ADDR = STAKING.toLowerCase();
 const LEVEL_COSTS  = new Set([300, 800, 1500, 2500, 4000, 9000, 13500, 19500, 28500]);
 
-// Protocol/team addresses — their burns stay as BURN, not THIRD_ENTERPRISE
+// Protocol/team addresses — their burns stay as BURN, not ENTERPRISE
 const PROTOCOL = new Set(['0x5dc36d6dcd5a3792b3980de1f40c7c0970af3462']);
 
-export function classifyTransfer(from, to, amount, txInput = null) {
+export function classifyTransfer(from, to, amount, txInput = null, timestamp = null) {
   const f = (from ?? '').toLowerCase();
   const t = (to   ?? '').toLowerCase();
 
@@ -48,17 +49,26 @@ export function classifyTransfer(from, to, amount, txInput = null) {
     if (txInput) {
       const sel = txInput.slice(0, 10).toLowerCase();
       const knownOp = FUNCTION_OP_TYPES[sel];
-      if (knownOp === 'BUY_ASSET')        return { kind: 'SPEND', opType: 'BUY_ASSET' };
-      if (knownOp === 'LEVEL_UP')         return { kind: 'SPEND', opType: 'LEVEL_UP'  };
-      if (knownOp === 'THIRD_ENTERPRISE') return { kind: 'SPEND', opType: 'THIRD_ENTERPRISE' };
+      if (knownOp === 'BUY_ASSET')  return { kind: 'SPEND', opType: 'BUY_ASSET' };
+      if (knownOp === 'LEVEL_UP')   return { kind: 'SPEND', opType: 'LEVEL_UP'  };
+      if (knownOp === 'ENTERPRISE') return { kind: 'SPEND', opType: 'ENTERPRISE' };
     }
     // Amount-based fallback for txs whose selector we don't recognise.
     if (amount > 0 && amount % 200 < 0.5 && amount <= 6000)
       return { kind: 'SPEND', opType: 'BUY_ASSET' };
     if (LEVEL_COSTS.has(Math.round(amount)))
       return { kind: 'SPEND', opType: 'LEVEL_UP' };
-    if (amount > 6000 && !PROTOCOL.has(f))
-      return { kind: 'SPEND', opType: 'THIRD_ENTERPRISE' };
+    // Enterprise buy (Season 1 Loadout 3 + Season 2 Loadout 4): a Dutch-
+    // priced burn from a player wallet to 0x0. Tag if amount matches the
+    // active Loadout 4 price (±2 %) OR exceeds the asset/level-up upper
+    // bound of ~6 k. Mechanic is the same in both seasons — the only
+    // difference is the starting price / decay schedule.
+    if (!PROTOCOL.has(f)) {
+      const expected = timestamp != null ? loadout4PriceAt(timestamp) : null;
+      const matchesPrice = expected != null && Math.abs(amount - expected) / expected < 0.02;
+      if (matchesPrice || amount > 6000)
+        return { kind: 'SPEND', opType: 'ENTERPRISE' };
+    }
     return { kind: 'BURN', opType: 'BURN' };
   }
 

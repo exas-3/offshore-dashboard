@@ -3,9 +3,10 @@ import { NextResponse } from 'next/server';
 import { getDb } from '../../../lib/index.js';
 import { ethPriceFeed } from '../../../lib/eth-price-feed.js';
 
-let _list   = [];   // current canonical list (top 5)
-let _pool   = [];   // full pool (top 50)
-let _poolTs = 0;
+let _list    = [];   // current canonical list (top 5)
+let _pool    = [];   // full pool of candidates near current ETH price
+let _poolTs  = 0;
+let _poolEth = 0;
 const POOL_TTL = 5_000;
 
 function liqPriceUsd(raw) {
@@ -18,16 +19,29 @@ function shortAddr(addr) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
-async function fetchPool() {
-  if (Date.now() - _poolTs < POOL_TTL) return _pool;
+async function fetchPool(ethPrice) {
+  // Polizia is "almost-dead" companies: buffer in [0, 3) USD. Old query
+  // pulled the 50 HIGHEST liq_price companies, which becomes useless when
+  // those are already underwater (buffer < 0). Instead pull the 50 highest
+  // liq_price that are STILL <= ETH (eligible == buffer >= 0). Re-fetch
+  // when ETH moves > 0.5 USD so the band stays anchored to the live price.
+  if (Date.now() - _poolTs < POOL_TTL && Math.abs(ethPrice - _poolEth) < 0.5) return _pool;
   const db = getDb();
+  // BigInt-safe upper bound: ethPrice * 1e18 as a string (avoids JS float scale loss).
+  const ethWeiCap = ethPrice > 0
+    ? (BigInt(Math.floor(ethPrice * 1e6)) * (10n ** 12n)).toString()
+    : '0';
   const rows = await db`
     SELECT address, owner, liq_price, end_time, active
-    FROM companies WHERE active = TRUE
-    ORDER BY CAST(liq_price AS NUMERIC) DESC LIMIT 50
+    FROM companies
+    WHERE active = TRUE
+      AND CAST(liq_price AS NUMERIC) <= CAST(${ethWeiCap} AS NUMERIC)
+    ORDER BY CAST(liq_price AS NUMERIC) DESC
+    LIMIT 50
   `.catch(() => []);
-  _pool = rows;
-  _poolTs = Date.now();
+  _pool    = rows;
+  _poolTs  = Date.now();
+  _poolEth = ethPrice;
   return _pool;
 }
 
@@ -59,7 +73,8 @@ function diff(prev, next) {
 }
 
 export async function GET() {
-  const [ethPrice, pool] = await Promise.all([ethPriceFeed.getLatest() ?? 0, fetchPool()]);
+  const ethPrice = ethPriceFeed.getLatest() ?? 0;
+  const pool     = await fetchPool(ethPrice);
   const { list: next, total } = buildList(pool, ethPrice);
   const events = diff(_list, next);
   _list = next;

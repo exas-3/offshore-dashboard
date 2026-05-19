@@ -1,6 +1,7 @@
 import {
   fetchLiquidationEvents, fetchFactoryTradeContext,
-  getCompanyTradeTypes, getCompanyType, getLatestBlock,
+  fetchHitEvents,
+  getCompanyTradeTypesFromStorage, getLatestBlock,
   FACTORY,
 } from '../etherscan.js';
 import { E_EXITED } from '../etherscan/factory-events.js';
@@ -19,30 +20,39 @@ let liqSyncing = false;
 // and the WS-driven flush funnel through here so the synthesized MINT
 // rows are produced identically.
 async function processLiquidationBatch(start, end) {
-  const [liqs, tradeCtx] = await Promise.all([
+  const [liqs, tradeCtx, hitCtx] = await Promise.all([
     fetchLiquidationEvents(start, end).catch(() => []),
-    fetchFactoryTradeContext(start, end).catch(() => ({ companyMap: new Map(), fullTxs: new Set(), companyBlockMap: new Map(), d47Map: new Map(), d47TxMap: new Map() })),
+    fetchFactoryTradeContext(start, end).catch(() => ({ companyMap: new Map(), fullTxs: new Set(), companyBlockMap: new Map() })),
+    fetchHitEvents(start, end).catch(() => ({ hits: [], byTx: new Map() })),
   ]);
   if (liqs.length === 0) return 0;
-
-  const liqCompanyAddrs = [...new Set(liqs.map(l => l.companyAddr))];
-  if (liqCompanyAddrs.length > 0) {
-    await getCompanyTradeTypes(liqCompanyAddrs, tradeCtx.companyBlockMap).catch(() => {});
+  // Skip E_EXITEDs that come from a hit — transfers.js already records the
+  // victim's keep MINT with op_type=HIT_REFUND, so synthesizing a duplicate
+  // bust row here would double-count.
+  const beforeFilter = liqs.length;
+  const liqsFiltered = liqs.filter(l => !hitCtx.byTx.has(l.hash));
+  if (liqsFiltered.length !== beforeFilter) {
+    console.log(`[poller] liquidations: filtered ${beforeFilter - liqsFiltered.length} hit-induced exits`);
   }
-  const missingPlayer = liqs.filter(l => !l.playerAddr).map(l => l.companyAddr);
+  if (liqsFiltered.length === 0) return 0;
+
+  // Resolve trade type from the company's storage slots 4/5 at blockNum-1
+  // (still inside the active trade window). Duration → op_type is
+  // unambiguous (300/1800/5400 → EXTORTION/ARMS/DRUG). Mirrors the path
+  // in syncs/transfers.js.
+  const liqCompanyAddrs = [...new Set(liqsFiltered.map(l => l.companyAddr))];
+  const typeMap = liqCompanyAddrs.length
+    ? await getCompanyTradeTypesFromStorage(liqCompanyAddrs, tradeCtx.companyBlockMap).catch(() => new Map())
+    : new Map();
+
+  const missingPlayer = liqsFiltered.filter(l => !l.playerAddr).map(l => l.companyAddr);
   const ownerMap = missingPlayer.length > 0 ? await getCompanyOwners(missingPlayer) : new Map();
 
-  const rows = liqs.map(l => {
-    // D47 (OpResult) event fires in every bust tx and carries the trade
-    // type definitively. Prefer that over the company-type selector, which
-    // returns 0 for extortion companies and so mis-tags those busts.
-    const d47OpType = tradeCtx.d47TxMap?.get(l.hash);
-    const compType  = getCompanyType(l.companyAddr);
-    const opType = d47OpType
-                ?? (compType === 1 ? 'DRUG_DEAL'
-                  : compType === 2 ? 'ARMS_DEAL'
-                  : compType === 3 ? 'EXTORTION'
-                  : l.dirtyAmount > 0 ? 'PARTIAL' : 'EXTORTION');
+  const rows = liqsFiltered.map(l => {
+    // Storage-slot duration is the canonical trade-type signal. If the RPC
+    // read failed, leave the row as PARTIAL (transient) so the next sweep
+    // / backfill can resolve it rather than guessing from amount.
+    const opType = typeMap.get(l.companyAddr.toLowerCase()) ?? 'PARTIAL';
     const toAddr = l.playerAddr ?? ownerMap.get(l.companyAddr) ?? l.companyAddr;
     return {
       hash: l.hash, logIndex: l.logIndex, blockNum: l.blockNum,

@@ -126,21 +126,28 @@ Every game op (drug/arms/extortion) executes on a **company contract** that runs
 - slot 4 = trade start ts
 - slot 5 = trade end ts
 
-`end - start` is exactly **300 s = EXTORTION**, **1800 s = ARMS_DEAL**, **5400 s = DRUG_DEAL**. This is the canonical type signal — it's set when the trade starts and stays consistent through the trade window. `getCompanyTradeTypesFromStorage` (`server/etherscan/fetchers.js`) and `companies.trade_type` in the DB are populated from this.
+`end - start` is exactly **300 s = EXTORTION**, **1800 s = ARMS_DEAL**, **5400 s = DRUG_DEAL**. This is the canonical type signal — it's set when the trade starts and stays consistent through the trade window. `getCompanyTradeTypesFromStorage` (`server/etherscan/fetchers.js`) reads slots 4/5 at `blockNum-1`; `companies.trade_type` in the DB is populated from this.
 
 For the sync path, `server/etherscan/factory-events.js::fetchFactoryTradeContext` pulls factory event logs in batches and exposes:
-- `d47Map` / `d47TxMap` — keyed by `txHash[:logIndex]`, returns the trade type (`word0` of the D47 OpResult event: 750→DRUG, 250→ARMS, 80→EXTORTION). Used as the live identifier during sync.
-- `companyMap` — `txHash:logIndex → company` from DirtyPaid / TradeExited events. Lets a sync path read the company's `tradeType()` selector at `blockNum-1` (still inside the active trade window) as a fallback.
+- `companyMap` — `txHash:logIndex → company` from DirtyPaid (uses dirtyTransfer log_index) and TradeExited (uses exited log_index). Lets transfers.js, liquidations.js, and partial-sweep all resolve PARTIAL rows by reading slots 4/5 at `blockNum-1`.
+- `companyBlockMap` — `company → blockNum`. Passed into `getCompanyTradeTypesFromStorage` so each storage read happens at the right block.
+- `payoutTxs` — Set of tx_hashes that contained a DirtyPaid event. Used by partial-sweep to set `result = 'completed'` (DirtyPaid present) vs `'busted'` (TradeExited only).
+- `fullTxs` — Set of tx_hashes with an E_COMPLETE event (full-completion trades).
 
-**Do NOT use the bare `tradeType()` selector or payout amount to infer the trade type.** Selector value drift was the source of ~30 % mis-tagging historically; payout amounts (100 / 115 / 130 DIRTY) only tell you *that* an op completed, not which kind.
+**Do NOT use the bare `tradeType()` selector or payout amount to infer the trade type.** The selector (`0x6fd47b44`) returns `2` for every company and was removed. Payout amounts in Season 2 are 50–100 scaled by Power Level — they can't distinguish trade types or even completed vs busted.
 
-**`PARTIAL` is legacy / transient.** It's the destination-first classifier's fallback when neither the D47 event nor the company-type lookup resolved at sync time. Any remaining `PARTIAL` row is a backfill candidate — its tx interacts with exactly one factory event (`DirtyPaid` or `TradeExited`) that names the company, and reading that company's storage slots / `tradeType()` at `blockNum-1` produces the real type. `scripts/reclassify-partials.mjs` walks the existing rows; new sync writes should not produce PARTIAL — if they do, the D47 fetch failed and the row should be re-resolved on the next sweep, not displayed.
+**The D47 / OpResult event (`0xd47648…`) is deprecated and removed from the codebase.** Its data layout changed after the Season 2 launch (`word0` is no longer one of 750/250/80) and we now resolve trade type exclusively from storage slots 4/5.
 
-The UI label maps (`mapOpType` in `app/api/offshore-data/helpers.js`, `OP_LABELS_SHORT` in `app/_components/trade-helpers.jsx`) treat `PARTIAL` / `FAIL` as unknown and render the row's `op_type` raw rather than collapsing to a generic `"op"` — so any leftover legacy row is visible and reportable.
+**`PARTIAL` is transient.** It's the fallback when the slot 4/5 RPC read fails at sync time. Two recovery paths run automatically:
+- `server/syncs/partial-sweep.js` (every 5 min) walks PARTIAL rows by block and re-resolves them via slot 4/5.
+- `scripts/reclassify-partials-by-duration.mjs` is the one-shot manual version of the same logic.
 
-**`result` column on `transfers`** (text, values `'completed' | 'busted' | NULL`):
-- populated for MINTs of `DRUG_DEAL` / `ARMS_DEAL` / `EXTORTION`
-- `completed` ⟺ amount ∈ {100, 115, 130}; everything else (including the ~7-DIRTY consolation refund for busts) is `'busted'`
+The UI label maps (`mapOpType` in `app/api/offshore-data/helpers.js`, `OP_LABELS_SHORT` in `app/_components/trade-helpers.jsx`) treat `PARTIAL` / `FAIL` as unknown and render the row's `op_type` raw rather than collapsing to a generic `"op"` — so any leftover row is visible and reportable.
+
+**`result` column on `transfers`** (text, values `'completed' | 'busted' | NULL`) — structural signal, NOT amount-based:
+- `transfers.js` (DirtyPaid completion path) writes `result = 'completed'`
+- `liquidations.js` (TradeExited bust path) writes `result = 'busted'`
+- API routes read this column directly. The old `resultFromAmount(amount)` helper was removed because Season 2 progressive partial payouts break the assumption that bust = small DIRTY.
 
 ### Company trade type
 
@@ -154,13 +161,15 @@ The live "ongoing crimes" route reads `c.trade_type` directly. **Do not** join t
 
 ### Vault cycle data
 
-`vault_payouts` stores individual claims (one row per user claim). For cycle-level aggregation, group in JavaScript using `getCycleStart(ts)` — **never use raw SQL time buckets**, they break on weekends.
+`vault_payouts` stores individual claims (one row per user claim). For cycle-level aggregation, group in JavaScript using `getCycleStart(ts)` from `app/api/offshore-data/helpers.js` — **never use raw SQL time buckets**, they don't know about the cycle anchor or the Season 1/2 cutover.
 
-Cycle rules:
-- **Weekdays** (Mon 09:30 → Sat 09:30 UTC): 3 cycles/day, 8h each, starting at 01:30 / 09:30 / 17:30 UTC
-- **Weekends** (Sat 09:30 → Mon 09:30 UTC): 1 cycle/day, 24h
+Cycle rules (cutover at `SEASON2_START = 2026-05-18T09:30:00Z`):
+- **Season 2** (≥ cutover): 1 cycle/day, 24h, anchored at 09:30 UTC. Every day follows the same rule.
+- **Season 1** (< cutover):
+  - Weekdays (Mon 09:30 → Sat 09:30 UTC): 3 cycles/day, 8h each, anchored at 01:30 / 09:30 / 17:30 UTC.
+  - Weekends (Sat 09:30 → Mon 09:30 UTC): 1 cycle/day, 24h, anchored at 09:30 UTC.
 
-`getCycleStart` is defined in `app/api/offshore-data/route.js` and `app/api/vault/route.js`.
+`getCycleStart` branches on the cutover so historical Season 1 buckets stay stable while current data uses the new 24h rule. `SEASON2_START` and `CYCLE_ANCHOR` are exported from the helper module.
 
 ### Environment
 
