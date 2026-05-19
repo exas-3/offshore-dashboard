@@ -50,6 +50,7 @@ import { FeedbackTerminal } from './FeedbackTerminal.jsx';
 import { CriminalChartSection } from './sections/CriminalChartSection.jsx';
 import { WalletInspectorSection } from './sections/WalletInspectorSection.jsx';
 import { StakingSection } from './sections/StakingSection.jsx';
+import { ExtractorsSection } from './sections/ExtractorsSection.jsx';
 
 // Paired grid cells resize as complements (span + partner = 12).
 const CELL_PAIRS = {
@@ -95,6 +96,7 @@ const DEFAULT_SPANS = {
   'staking-chart':      7,
   'hits-table':         7,
   'hits-chart':         5,
+  'extractors':        12,
 };
 
 const NAV = [
@@ -689,6 +691,7 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
         <PlayersSection  D={D} grid={grid} />
         <VaultSection    D={D} grid={grid} />
         <TradesSection   grid={grid} liveTrades={liveTrades} ops={ops} search={search} ethPrice={counters.eth} aliases={aliases} onWallet={openWallet} />
+        <ExtractorsSection grid={grid} aliases={aliases} onWallet={openWallet} />
         <HitsSection     D={D} grid={grid} aliases={aliases} onWallet={openWallet} />
         <StakingSection  grid={grid} aliases={aliases} onWallet={openWallet} />
       </div>
