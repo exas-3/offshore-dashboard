@@ -89,8 +89,6 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
         </div>
         <Counter k="active players /24" v={counters.daw.toLocaleString()} />
         <Counter k="total players"    v={D.newParticipantsTotal.toLocaleString()} />
-        <Counter k="finished ops/min"  v={Math.round(counters.opsMin  ?? 0).toLocaleString()} tickKey={counters._bump} />
-        <Counter k="finished ops/hour" v={Math.round(counters.opsHour ?? 0).toLocaleString()} tickKey={counters._bump} />
         <Counter k="active ops"        v={counters.activeOps.toLocaleString()}                  tickKey={counters._bump} />
         <Counter k="$dirty"     v={`$${counters.dirty.toFixed(4)}`} cls="warn"   tickKey={counters._bump} />
         <Counter k="op cost"    v={`${counters.opCost.toFixed(2)} INF`}          tickKey={counters._bump} />
