@@ -1,6 +1,6 @@
 'use client';
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { TerminalShell, Toasts } from './terminal.jsx';
+import { TerminalShell, Toasts, LabelChip } from './terminal.jsx';
 import { InfTooltip, computeWatch, fmtK } from './trade-helpers.jsx';
 
 function nowHMS() {
@@ -51,6 +51,7 @@ import { CriminalChartSection } from './sections/CriminalChartSection.jsx';
 import { WalletInspectorSection } from './sections/WalletInspectorSection.jsx';
 import { StakingSection } from './sections/StakingSection.jsx';
 import { ExtractorsSection } from './sections/ExtractorsSection.jsx';
+import { CycleEarnersSection } from './sections/CycleEarnersSection.jsx';
 
 // Paired grid cells resize as complements (span + partner = 12).
 const CELL_PAIRS = {
@@ -87,16 +88,19 @@ const DEFAULT_SPANS = {
   'top-stakers':        5,
   'watch-chart':        9,
   'watch-companies':    3,
-  'indexed-stats':      4,
-  'recent-activity':    4,
-  'farmed-daily':       4,
+  'indexed-stats':      6,
+  'recent-activity':    6,
+  'farmed-daily':       6,
+  'enterprises-user':   6,
   'trades':             6,
   'ops':                6,
   'company-state':      5,
   'staking-chart':      7,
   'hits-table':         7,
   'hits-chart':         5,
-  'extractors':        12,
+  'extractors':         6,
+  'cycle-earners':      6,
+  'enterprises':       12,
 };
 
 const NAV = [
@@ -196,6 +200,20 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
     return () => { live = false; clearInterval(t); };
   }, [sessionWallet]);
 
+  // Live cycle state from the offshoreprotocol.fun upstream API. 15 s poll
+  // is plenty — the cycle counter only advances once per 96 s on chain.
+  const [cycleInfo, setCycleInfo] = useState(null);
+  useEffect(() => {
+    let live = true;
+    const load = () => fetch('/api/cycles/current')
+      .then(r => r.json())
+      .then(d => { if (live && d && d.cycle) setCycleInfo(d.cycle); })
+      .catch(() => {});
+    load();
+    const t = setInterval(load, 15_000);
+    return () => { live = false; clearInterval(t); };
+  }, []);
+
   // Two-way URL ↔ walletAddr sync.
   // Whenever walletAddr changes (rail input, table clicks, anything),
   // push `/criminal/<addr>` into history; clearing the address resets to `/`.
@@ -259,7 +277,8 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
   const [counters, setCounters] = useState(() => ({
     block:     ci.block   || 4128907,
     daw:       ci.daw     || 930,
-    opsMin:    ci.opsMin  || 4.2,
+    opsMin:    ci.opsMin  || 0,
+    opsHour:   ci.opsHour || 0,
     dirty:     ci.dirty   || 0.0706,
     opCost:    ci.opCost  || 12.41,
     gas:       ci.gas     || 0.001,
@@ -332,12 +351,13 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
         const d = await res.json();
         setCounters((c) => ({
           ...c,
-          block:  d.block  ?? (c.block  + 1 + Math.floor(Math.random() * 3)),
-          daw:    d.daw    ?? c.daw,
-          opsMin: d.opsMin ?? Math.max(0, c.opsMin + (Math.random() - 0.5) * 0.6),
-          dirty:  d.dirty  ?? Math.max(0.001, c.dirty + (Math.random() - 0.5) * 0.0008),
-          opCost: d.opCost ?? Math.max(0, c.opCost + (Math.random() - 0.5) * 0.04),
-          gas:    d.gas    ?? Math.max(0, c.gas    + (Math.random() - 0.5) * 0.0002),
+          block:   d.block   ?? c.block,
+          daw:     d.daw     ?? c.daw,
+          opsMin:  d.opsMin  ?? c.opsMin,
+          opsHour: d.opsHour ?? c.opsHour,
+          dirty:   d.dirty   ?? c.dirty,
+          opCost:  d.opCost  ?? c.opCost,
+          gas:     d.gas     ?? c.gas,
           eth:       c.eth,
           activeOps: d.activeOps ?? c.activeOps,
           tps:       d.tps       ?? c.tps,
@@ -382,15 +402,8 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
         }
         if (d.companiesStats) setCompaniesLive(d.companiesStats);
       } catch {
-        setCounters((c) => ({
-          ...c,
-          block:  c.block  + 1 + Math.floor(Math.random() * 3),
-          opsMin: Math.max(0, c.opsMin + (Math.random() - 0.5) * 0.6),
-          dirty:  Math.max(0.001, c.dirty + (Math.random() - 0.5) * 0.0008),
-          opCost: Math.max(0, c.opCost + (Math.random() - 0.5) * 0.04),
-          gas:    Math.max(0, c.gas    + (Math.random() - 0.5) * 0.0002),
-          _bump:  c._bump + 1,
-        }));
+        // Tick failed — keep the last good values. Random-walking the counters
+        // made the panel look alive while actually displaying made-up numbers.
       } finally {
         inflight = false;
       }
@@ -402,6 +415,19 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
   // ── Derived ──────────────────────────────────────────────────────────────
   const watch = useMemo(() => computeWatch(watchRaw, counters.eth), [watchRaw, counters.eth]);
 
+  // Set of addresses that have actually farmed ≥1 $dirty from a game op.
+  // Used to narrow the search dropdown to real players (funders / ENS-only
+  // wallets with no game activity are filtered out).
+  const [activePlayers, setActivePlayers] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/active-players')
+      .then(r => r.json())
+      .then(d => { if (alive && Array.isArray(d?.addresses)) setActivePlayers(new Set(d.addresses)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
   // Search autocomplete: while the user is typing a partial address or
   // alias / ENS / .mega name, show the top 5 matches from the loaded
   // `aliases` map. Empty / valid-full-address inputs skip the dropdown.
@@ -411,6 +437,9 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
     if (/^0x[0-9a-fA-F]{40}$/.test(q)) return [];
     const out = [];
     for (const [addr, name] of Object.entries(aliases || {})) {
+      // Only suggest wallets that have actually farmed game dirty (>0 from
+      // DRUG/ARMS/EXTORTION mints). Funders / pure-DEX wallets are hidden.
+      if (activePlayers && !activePlayers.has(addr.toLowerCase())) continue;
       const addrLc = addr.toLowerCase();
       const nameLc = (name || '').toLowerCase();
       let score = 0;
@@ -424,7 +453,7 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
     }
     out.sort((a, b) => b.score - a.score || a.name.length - b.name.length);
     return out.slice(0, 5);
-  }, [search, aliases]);
+  }, [search, aliases, activePlayers]);
 
   const filteredTicker = useMemo(() => liveTicker.filter(item => {
     if ((item.kind === 'buy' || item.kind === 'sell') && !notifs['buys & sells']) return false;
@@ -443,6 +472,29 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
   const base = D.priceBase25h || {};
   const pct = (current, baseline) => (!baseline || !current) ? null : ((current - baseline) / baseline) * 100;
   const latestMc = D.marketCapChart?.at(-1)?.v ?? 0;
+  // CYCLE chip — sits immediately to the left of the clock (right side of
+  // the ticker), not interleaved with the regular cells. Format: "29 ·
+  // 493/900 · 10:50:32".
+  const cycleChip = (() => {
+    if (!cycleInfo) return null;
+    const tr = Number(cycleInfo.timeRemaining) || 0;
+    const hh = String(Math.floor(tr / 3600)).padStart(2, '0');
+    const mm = String(Math.floor((tr % 3600) / 60)).padStart(2, '0');
+    const ss = String(tr % 60).padStart(2, '0');
+    return (
+      <span
+        className="tm-ticker-cell"
+        style={{ marginLeft: 'auto' }}  // pin to the right, just before the clock
+        title={`cycle ${cycleInfo.cycleId} · tick ${cycleInfo.currentTick}/${cycleInfo.totalTicks} · ends in ${hh}:${mm}:${ss}`}
+      >
+        <span className="tm-ticker-k">CYCLE</span>
+        <span className="tm-ticker-v">
+          {cycleInfo.cycleId} · {cycleInfo.currentTick}/{cycleInfo.totalTicks} · {hh}:{mm}:{ss}
+        </span>
+      </span>
+    );
+  })();
+
   const ticker = [
     { k: '$DIRTY',  v: `$${counters.dirty.toFixed(4)}`,     trend: pct(counters.dirty,  base.dirty) },
     { k: 'OP COST', v: `${counters.opCost.toFixed(2)} INF`, trend: pct(counters.opCost, base.infCost), tooltip: <InfTooltip data={D.infCostHistory || []} current={counters.opCost} trend={pct(counters.opCost, base.infCost)} /> },
@@ -549,6 +601,9 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
         <span className="dot" />
         <span>CRIMINAL</span>
         {!hideBadge && <span className="badge">{shortAddr(sessionWallet)}</span>}
+        {liveData?.label?.label && (
+          <LabelChip label={liveData.label.label} size="xs" />
+        )}
         <span className="ctx">
           <b>{activeComps.length}</b> active ·{' '}
           <b>{underwater}</b> underwater ·{' '}
@@ -585,12 +640,13 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
   return (
     <TerminalShell
       mode="standalone"
-      brand={{ name: 'OFFSHORE', sub: 'community dashboard · v1.0.0', season: 'SEASON 2' }}
+      brand={{ name: 'OFFSHORE', sub: 'community dashboard · v1.0.1', season: 'SEASON 2' }}
       nav={NAV}
       apps={D.apps}
       activeAppId={activeApp}
       onAppChange={setActiveApp}
       ticker={ticker}
+      clockExtras={cycleChip}
       // Top search reflects the watched criminal when one is loaded;
       // otherwise it's the free-text filter consumed by TradesSection.
       search={walletAddr || search}
@@ -691,7 +747,10 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
         <PlayersSection  D={D} grid={grid} />
         <VaultSection    D={D} grid={grid} />
         <TradesSection   grid={grid} liveTrades={liveTrades} ops={ops} search={search} ethPrice={counters.eth} aliases={aliases} onWallet={openWallet} />
-        <ExtractorsSection grid={grid} aliases={aliases} onWallet={openWallet} />
+        <section id="sec-leaderboards" className="tm-grid-12">
+          <ExtractorsSection   grid={grid} aliases={aliases} onWallet={openWallet} noSection />
+          <CycleEarnersSection grid={grid} aliases={aliases} onWallet={openWallet} noSection />
+        </section>
         <HitsSection     D={D} grid={grid} aliases={aliases} onWallet={openWallet} />
         <StakingSection  grid={grid} aliases={aliases} onWallet={openWallet} />
       </div>

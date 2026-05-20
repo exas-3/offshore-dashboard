@@ -6,7 +6,7 @@ import {
   durationToOpType,
 } from '../../../server/etherscan.js';
 import { ethPriceFeed } from '../../../lib/eth-price-feed.js';
-import { getPlayerStats } from '../../../lib/index.js';
+import { getPlayerStats, getWalletLabel, getDb } from '../../../lib/index.js';
 
 export async function GET(req) {
   const wallet = new URL(req.url).searchParams.get('wallet')?.toLowerCase().trim();
@@ -23,12 +23,13 @@ export async function GET(req) {
 
     const companyAddrs = companiesMap[wallet] ?? [];
 
-    const [tradeStates, playerStats, currentEthPrice, entryPriceMap, infCost] = await Promise.all([
+    const [tradeStates, playerStats, currentEthPrice, entryPriceMap, infCost, labelRow] = await Promise.all([
       companyAddrs.length ? getTradeStates(companyAddrs) : Promise.resolve([]),
       getPlayerStats(wallet).catch(() => null),
       Promise.resolve(ethPriceFeed.getLatest()),
       companyAddrs.length ? getEntryPrices(companyAddrs) : Promise.resolve(new Map()),
       fetchLatestInfCost().catch(() => null),
+      getWalletLabel(wallet).catch(() => null),
     ]);
 
     // Pull trade-window timestamps (startTime / endTime from storage slots 4/5)
@@ -37,6 +38,14 @@ export async function GET(req) {
     const windowMap   = activeAddrs.length
       ? await getCompanyTradeWindows(activeAddrs).catch(() => new Map())
       : new Map();
+
+    // Look up location_id from the DB for every company we know about — set
+    // once at deployment so a single query is enough; no RPC per request.
+    const lcAddrs = tradeStates.map(s => s.company.toLowerCase());
+    const locRows = lcAddrs.length
+      ? await getDb()`SELECT address, location_id FROM companies WHERE address = ANY(${lcAddrs})`.catch(() => [])
+      : [];
+    const locMap = new Map(locRows.map(r => [r.address, r.location_id]));
 
     const companies = tradeStates.map(s => {
       const win = windowMap.get(s.company.toLowerCase());
@@ -52,6 +61,7 @@ export async function GET(req) {
         entryPrice: entryPriceMap.get(s.company) ?? 0,
         startTime:  win?.startTime ?? null,
         tradeType,
+        locationId: locMap.get(s.company.toLowerCase()) ?? null,
       };
     });
 
@@ -77,6 +87,11 @@ export async function GET(req) {
         completable,
       },
       playerStats,
+      label: labelRow ? {
+        label:             labelRow.label || null,
+        label_score:       labelRow.label_score != null ? Number(labelRow.label_score) : null,
+        label_computed_at: labelRow.label_computed_at != null ? Number(labelRow.label_computed_at) : null,
+      } : null,
     });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });

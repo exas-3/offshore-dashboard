@@ -44,7 +44,7 @@ export function PlayersSection({ D, grid }) {
             data={(D.totalPlayersChart || []).map(r => ({ x: r.x, v: r.v }))}
             color="pos"
             fill
-            valueFmt={(v) => v >= 1000 ? (v/1000).toFixed(1)+'k' : String(Math.round(v))}
+            valueFmt={(v) => Math.round(v).toLocaleString()}
           />
         </Region>
       </GridCell>

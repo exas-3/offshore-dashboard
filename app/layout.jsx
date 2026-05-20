@@ -1,15 +1,36 @@
 import '../src/styles.css';
 import '../design/megaethDashboards/lib/terminal.css';
 
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://offshoredashboard.xyz';
+
 export const metadata = {
-  title: 'Offshore Protocol | Dashboard',
-  description: 'Live on-chain analytics for the Offshore Protocol on MegaETH',
+  metadataBase: new URL(SITE),
+  title: {
+    default: 'Offshore Protocol | Dashboard',
+    template: '%s | Offshore Dashboard',
+  },
+  description: 'Bloomberg-style terminal for the Offshore Protocol on MegaETH — live DIRTY price, emissions vs burns, Swiss Vault cycles, hits, staking, and the criminal rail.',
+  applicationName: 'Offshore Dashboard',
+  keywords: ['Offshore Protocol', 'MegaETH', 'DIRTY token', 'on-chain terminal', 'crypto dashboard', 'Swiss Vault', 'criminal rail', 'hits', 'faction staking'],
   icons: {
     apple: '/apple-touch-icon.png',
   },
+  alternates: { canonical: '/' },
   openGraph: {
-    images: [{ url: '/og-mark.png' }],
+    type: 'website',
+    siteName: 'Offshore Dashboard',
+    title: 'Offshore Protocol | Dashboard',
+    description: 'Bloomberg-style terminal for the Offshore Protocol on MegaETH.',
+    url: '/',
+    images: [{ url: '/og-mark.png', width: 1200, height: 630, alt: 'Offshore Dashboard' }],
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Offshore Protocol | Dashboard',
+    description: 'Bloomberg-style terminal for the Offshore Protocol on MegaETH.',
+    images: ['/og-mark.png'],
+  },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({ children }) {

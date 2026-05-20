@@ -36,10 +36,31 @@ function TweaksPanel({ theme, onThemeChange, notifPrefs, onNotifChange, onClose,
 
   const sectionLbl = { color: 'var(--t-fg-mut)', fontSize: 9, letterSpacing: '0.1em', marginBottom: 8 };
 
+  // Anchor to the button's bounding rect (position: fixed) so the panel
+  // isn't clipped by the .tm-ticker's `overflow: hidden`. Recomputed when
+  // the window resizes so the anchor stays correct.
+  const [pos, setPos] = useState(() => {
+    const r = btnRef?.current?.getBoundingClientRect();
+    return r ? { top: r.bottom + 2, left: r.left } : { top: 28, left: 0 };
+  });
+  useEffect(() => {
+    const update = () => {
+      const r = btnRef?.current?.getBoundingClientRect();
+      if (r) setPos({ top: r.bottom + 2, left: r.left });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [btnRef]);
+
   return (
     <div ref={ref} style={{
-      position: 'fixed', top: 28, right: 0, zIndex: 10000,
-      background: 'var(--t-bg)', border: '1px solid var(--t-rule)', borderTop: 'none',
+      position: 'fixed', top: pos.top, left: pos.left, zIndex: 10000,
+      background: 'var(--t-bg)', border: '1px solid var(--t-rule)',
       padding: '12px 14px', fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs)',
       minWidth: 188, boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
     }}>
@@ -104,7 +125,7 @@ export function BeaconMark({ size = 32 }) {
 
 // ── Shell ─────────────────────────────────────────────────────────────────
 
-export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, activeTab, onTabChange, search, onSearch, fkeys, sideFooter, children, rail, clock, theme = 'purple', density = 'regular', mode = 'standalone', nav, brand, sideContent, railLabel = 'criminal', onThemeChange, notifPrefs, onNotifChange, openRailRef, topBand, bottomBand, searchSuggestions, onPickSuggestion }) {
+export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, activeTab, onTabChange, search, onSearch, fkeys, sideFooter, children, rail, clock, theme = 'purple', density = 'regular', mode = 'standalone', nav, brand, sideContent, railLabel = 'criminal', onThemeChange, notifPrefs, onNotifChange, openRailRef, topBand, bottomBand, searchSuggestions, onPickSuggestion, clockExtras }) {
   const [now, setNow] = useState(clock || nowUTC());
   const [activeSection, setActiveSection] = useState(nav && nav[0] ? nav[0].id : null);
   const [railOpen, setRailOpen] = useState(false);
@@ -115,6 +136,44 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tickerTooltip, setTickerTooltip] = useState(null);
   const settingsBtnRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const [activeSuggestion, setActiveSuggestion] = useState(0);
+  const suggestions = Array.isArray(searchSuggestions) ? searchSuggestions : [];
+
+  // Autofocus the search on mount so the cursor is ready to accept typing.
+  useEffect(() => {
+    searchInputRef.current?.focus();
+  }, []);
+
+  // Reset the active suggestion when the list changes (new query / cleared).
+  useEffect(() => {
+    setActiveSuggestion(0);
+  }, [suggestions.length, search]);
+
+  // Route stray keystrokes to the search bar when nothing else is focused.
+  useEffect(() => {
+    function onKey(e) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target;
+      const tag = t && t.tagName;
+      const editable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable);
+      if (editable) return;
+      // Only redirect printable characters (single visible char) so Tab,
+      // Shift, F-keys, Escape, etc. still do what they normally do.
+      if (e.key.length !== 1) return;
+      const el = searchInputRef.current;
+      if (!el) return;
+      el.focus();
+      // The keydown that just fired won't naturally type into the input
+      // (focus happens after the event), so prepend the char ourselves.
+      e.preventDefault();
+      const next = (search || '') + e.key;
+      onSearch && onSearch(next);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [search, onSearch]);
+
   const [showTweakHint, setShowTweakHint] = useState(() => {
     if (typeof window === 'undefined') return false;
     return !localStorage.getItem('offshore-hint-seen');
@@ -201,17 +260,17 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
                   <span className="tm-blink">↑</span> click to customize theme
                 </div>
               )}
+              {settingsOpen && (
+                <TweaksPanel
+                  theme={theme}
+                  onThemeChange={onThemeChange}
+                  notifPrefs={notifPrefs}
+                  onNotifChange={onNotifChange}
+                  onClose={() => setSettingsOpen(false)}
+                  btnRef={settingsBtnRef}
+                />
+              )}
             </div>
-            {settingsOpen && (
-              <TweaksPanel
-                theme={theme}
-                onThemeChange={onThemeChange}
-                notifPrefs={notifPrefs}
-                onNotifChange={onNotifChange}
-                onClose={() => setSettingsOpen(false)}
-                btnRef={settingsBtnRef}
-              />
-            )}
           </>
         ) : null}
         {(ticker || []).map((c, i) => (
@@ -230,6 +289,7 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
             )}
           </span>
         ))}
+        {clockExtras}
         <span className="tm-ticker-clock">{now}</span>
       </div>
 
@@ -333,11 +393,28 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
             >{t}</span>
           ))}
           <input
+            ref={searchInputRef}
             value={search || ''}
             onChange={(e) => onSearch && onSearch(e.target.value)}
-            placeholder="search address · 0x… · / to focus"
+            onKeyDown={(e) => {
+              if (suggestions.length === 0) return;
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setActiveSuggestion(i => (i + 1) % suggestions.length);
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setActiveSuggestion(i => (i - 1 + suggestions.length) % suggestions.length);
+              } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const pick = suggestions[activeSuggestion] || suggestions[0];
+                if (pick && onPickSuggestion) onPickSuggestion(pick.addr);
+              } else if (e.key === 'Escape') {
+                onSearch && onSearch('');
+              }
+            }}
+            placeholder="search address · 0x… · ↑↓ navigate · enter to select"
           />
-          {Array.isArray(searchSuggestions) && searchSuggestions.length > 0 && (
+          {suggestions.length > 0 && (
             <div style={{
               position: 'absolute',
               top: '100%',
@@ -351,7 +428,7 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
               fontFamily: 'var(--t-font)',
               fontSize: 'var(--t-fs-sm)',
             }}>
-              {searchSuggestions.map((s, i) => (
+              {suggestions.map((s, i) => (
                 <div
                   key={s.addr}
                   onMouseDown={(e) => {
@@ -360,14 +437,14 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
                     e.preventDefault();
                     onPickSuggestion && onPickSuggestion(s.addr);
                   }}
+                  onMouseEnter={() => setActiveSuggestion(i)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 10,
                     padding: '5px 10px',
                     cursor: 'pointer',
                     borderTop: i === 0 ? 'none' : '1px solid var(--t-rule)',
+                    background: i === activeSuggestion ? 'var(--t-rule)' : 'transparent',
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--t-rule)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                 >
                   <span style={{ color: 'var(--t-hdr)', minWidth: 0, flex: '0 0 auto' }}>
                     {s.name || '—'}

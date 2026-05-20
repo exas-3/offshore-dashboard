@@ -117,3 +117,64 @@ CREATE TABLE IF NOT EXISTS hits (
 CREATE INDEX IF NOT EXISTS idx_hits_attacker  ON hits(attacker, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_hits_victim    ON hits(victim, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_hits_timestamp ON hits(timestamp DESC);
+
+-- wallet_aliases is created dynamically by the alias fetchers — this block
+-- only ensures the behavioral-classification columns exist (idempotent).
+ALTER TABLE wallet_aliases
+  ADD COLUMN IF NOT EXISTS label             TEXT,
+  ADD COLUMN IF NOT EXISTS label_score       DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS label_computed_at BIGINT;
+CREATE INDEX IF NOT EXISTS idx_wallet_aliases_label ON wallet_aliases(label) WHERE label IS NOT NULL;
+
+-- location_id is read once per company from its on-chain `locationId()`
+-- function (selector 0xe8aadc3f). Maps to game_locations.id.
+ALTER TABLE companies
+  ADD COLUMN IF NOT EXISTS location_id INTEGER;
+CREATE INDEX IF NOT EXISTS idx_companies_location ON companies(location_id);
+
+-- Enrichment columns pulled from Supabase hit_events: completion_bps is
+-- finer-grained than `completion`, hit_type tells WHO initiated (1/2),
+-- *_wei store the exact on-chain amounts for auditability.
+ALTER TABLE hits
+  ADD COLUMN IF NOT EXISTS hit_type           SMALLINT,
+  ADD COLUMN IF NOT EXISTS completion_bps     INTEGER,
+  ADD COLUMN IF NOT EXISTS stack_wei          TEXT,
+  ADD COLUMN IF NOT EXISTS attacker_payout_wei TEXT,
+  ADD COLUMN IF NOT EXISTS victim_payout_wei  TEXT,
+  ADD COLUMN IF NOT EXISTS hit_cost_wei       TEXT;
+
+-- Per-cycle per-user reward rollup from Supabase cycle_user_results.
+CREATE TABLE IF NOT EXISTS cycle_rewards (
+  cycle_id          INTEGER NOT NULL,
+  user_address      TEXT    NOT NULL,
+  total_flux        TEXT    NOT NULL,
+  reward_amount_wei TEXT    NOT NULL,
+  loadout_count     INTEGER NOT NULL DEFAULT 0,
+  created_at        TIMESTAMP WITH TIME ZONE NOT NULL,
+  PRIMARY KEY (cycle_id, user_address)
+);
+CREATE INDEX IF NOT EXISTS idx_cycle_rewards_user ON cycle_rewards(user_address);
+
+-- Static reference data — both fetched once and rarely changing.
+CREATE TABLE IF NOT EXISTS game_locations (
+  id           INTEGER PRIMARY KEY,
+  region       TEXT,
+  country      TEXT,
+  city         TEXT,
+  display_name TEXT,
+  short_name   TEXT,
+  flag_emoji   TEXT,
+  latitude     DOUBLE PRECISION,
+  longitude    DOUBLE PRECISION,
+  description  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS game_items (
+  id                INTEGER PRIMARY KEY,
+  item_name         TEXT,
+  item_type_id      INTEGER,
+  region            TEXT,
+  specific_location TEXT,
+  latitude          DOUBLE PRECISION,
+  longitude         DOUBLE PRECISION
+);

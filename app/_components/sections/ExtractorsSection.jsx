@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { Region, GridCell, Sortable, fmt } from '../terminal.jsx';
+import { Region, GridCell, Sortable, fmt, LabelChip } from '../terminal.jsx';
 import { usePagedRows, Pager } from '../trade-helpers.jsx';
 
 function shortAddr(a) {
@@ -11,9 +11,9 @@ function shortAddr(a) {
 // Top extractors leaderboard. Polls /api/extractors every 60s (server-side
 // cache TTL is 60s too, so this aligns).
 //
-// Score = (sold − 2×burned − bought + net P2P) × (1.5 if spent < 0.2×earned else 1).
+// Score = (sold − 2×burned − bought + net P2P) × (2.5 if spent < 0.2×earned else 1).
 // Per-address (no funder roll-up). See lib/db/extractors.js for the SQL.
-export function ExtractorsSection({ grid, aliases = {}, onWallet }) {
+export function ExtractorsSection({ grid, aliases = {}, onWallet, noSection = false }) {
   const { spans, heights, resize } = grid;
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -54,12 +54,11 @@ export function ExtractorsSection({ grid, aliases = {}, onWallet }) {
 
   const pager = usePagedRows(sorted);
 
-  return (
-    <section id="sec-extractors" className="tm-grid-12">
-      <GridCell id="extractors" span={spans['extractors'] ?? 12} height={heights['extractors']} onResize={(r) => resize('extractors', r)}>
+  const cell = (
+    <GridCell id="extractors" span={spans['extractors'] ?? 12} height={heights['extractors']} onResize={(r) => resize('extractors', r)}>
         <Region
           title="top extractors"
-          sub="score = sold − 2×burned − bought + net P2P (×1.5 if spent < 20% earned) · refresh 60s"
+          sub="score = sold − 2×burned − bought + net P2P (×2.5 if spent < 20% earned) · refresh 60s"
           actions={
             <span style={{
               fontSize: 'var(--t-fs-xs)',
@@ -78,6 +77,7 @@ export function ExtractorsSection({ grid, aliases = {}, onWallet }) {
                 <tr>
                   <th style={{ width: 36 }}>#</th>
                   <th style={{ width: 160 }}><Sortable label="wallet"   k="address"    sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
+                  <th style={{ width: 84 }}><Sortable label="behavior" k="label"      sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
                   <th className="num" style={{ width: 68 }}><Sortable label="earned"   k="earned"     sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
                   <th className="num" style={{ width: 68 }}><Sortable label="spent"    k="spent"      sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
                   <th className="num" style={{ width: 72 }}><Sortable label="dex sold" k="dex_sold"   sortKey={sortKey} sortDir={sortDir} on={sortBy} /></th>
@@ -88,14 +88,14 @@ export function ExtractorsSection({ grid, aliases = {}, onWallet }) {
               </thead>
               <tbody>
                 {loading && rows.length === 0 && (
-                  <tr><td colSpan={8} className="dim" style={{ padding: '6px 0', fontSize: 'var(--t-fs-xs)' }}>loading…</td></tr>
+                  <tr><td colSpan={9} className="dim" style={{ padding: '6px 0', fontSize: 'var(--t-fs-xs)' }}>loading…</td></tr>
                 )}
                 {!loading && rows.length === 0 && (
-                  <tr><td colSpan={8} className="dim" style={{ padding: '6px 0', fontSize: 'var(--t-fs-xs)' }}>no extractors found</td></tr>
+                  <tr><td colSpan={9} className="dim" style={{ padding: '6px 0', fontSize: 'var(--t-fs-xs)' }}>no extractors found</td></tr>
                 )}
                 {pager.pageRows.map((r, i) => {
-                  const label = r.alias || aliases[r.address] || shortAddr(r.address);
-                  const rank  = pager.start + i + 1;
+                  const display = r.alias || aliases[r.address] || shortAddr(r.address);
+                  const rank    = pager.start + i + 1;
                   return (
                     <tr key={r.address}>
                       <td className="dim" style={{ fontSize: 'var(--t-fs-xs)' }}>{rank}</td>
@@ -104,7 +104,10 @@ export function ExtractorsSection({ grid, aliases = {}, onWallet }) {
                           className="tm-num"
                           style={{ cursor: onWallet ? 'pointer' : 'default', color: 'var(--t-hdr)' }}
                           onClick={() => onWallet && onWallet(r.address)}
-                        >{label}</span>
+                        >{display}</span>
+                      </td>
+                      <td style={{ fontSize: 'var(--t-fs-xs)' }}>
+                        <LabelChip label={r.label} size="xs" />
                       </td>
                       <td className="num pos" style={{ fontSize: 'var(--t-fs-xs)' }}>{fmt.k(r.earned)}</td>
                       <td className="num neg" style={{ fontSize: 'var(--t-fs-xs)' }}>{fmt.k(r.spent)}</td>
@@ -127,6 +130,6 @@ export function ExtractorsSection({ grid, aliases = {}, onWallet }) {
           <Pager {...pager} />
         </Region>
       </GridCell>
-    </section>
   );
+  return noSection ? cell : <section id="sec-extractors" className="tm-grid-12">{cell}</section>;
 }

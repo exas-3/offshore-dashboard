@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Region, KVSep, GridCell } from '../terminal.jsx';
+import { Region, KVSep, GridCell, useLocations } from '../terminal.jsx';
 import { fmtCountdownLocal } from '../trade-helpers.jsx';
 import { useEthCandles } from '../hooks/use-eth-candles.js';
 import { useChartViewport, useChartWheelZoom } from '../hooks/use-chart-viewport.js';
@@ -32,8 +32,25 @@ function fmtClock(ts) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-function renderCompaniesCard({ liveData, ethPrice, spans, heights, resize }) {
+function renderCompaniesCard({ liveData, ethPrice, spans, heights, resize, locations }) {
   const allCompanies = liveData?.companies ?? [];
+  // Render flag + city next to the company address (chip is decorative; the
+  // company short address is still the unique identifier).
+  const flagFor = (id) => {
+    if (id == null) return null;
+    const loc = locations?.get?.(Number(id));
+    if (!loc) return null;
+    const cityLabel = loc.city || loc.short_name || '';
+    return (
+      <span
+        title={`${loc.city ?? ''}${loc.country ? `, ${loc.country}` : ''}`.trim() || loc.short_name}
+        style={{ marginRight: 4, whiteSpace: 'nowrap' }}
+      >
+        <span style={{ marginRight: 3 }}>{loc.flag_emoji || ''}</span>
+        <span className="dim" style={{ fontSize: 'var(--t-fs-xs)' }}>{cityLabel}</span>
+      </span>
+    );
+  };
   const chilling  = allCompanies.filter(c => !(c.active && c.endTime > 0));
   const liveEth   = ethPrice || liveData?.currentEthPrice || 0;
   // Sort active companies by buffer ascending (smallest = closest to
@@ -54,7 +71,7 @@ function renderCompaniesCard({ liveData, ethPrice, spans, heights, resize }) {
       <div key={c.company} className="tm-kv" style={{ marginBottom: 2 }}>
         <span className="k" style={{ fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs-xs)' }}>
           <span className="pos" style={{ marginRight: 4 }}>●</span>
-          {c.company.slice(0, 6)}…{c.company.slice(-4)}
+          {flagFor(c.locationId)}
           {c.autoTradeEnabled && <span className="dim"> auto</span>}
         </span>
         <span className={`v ${buf == null ? '' : buf >= 0 ? 'pos' : 'neg'}`} style={{ fontSize: 'var(--t-fs-xs)' }}>
@@ -72,7 +89,7 @@ function renderCompaniesCard({ liveData, ethPrice, spans, heights, resize }) {
       <div key={c.company} className="tm-kv" style={{ marginBottom: 2, opacity: 0.6 }}>
         <span className="k" style={{ fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs-xs)' }}>
           <span className="dim" style={{ marginRight: 4 }}>○</span>
-          {c.company.slice(0, 6)}…{c.company.slice(-4)}
+          {flagFor(c.locationId)}
         </span>
         <span className="v dim" style={{ fontSize: 'var(--t-fs-xs)' }}>{note}</span>
       </div>
@@ -105,6 +122,7 @@ function renderCompaniesCard({ liveData, ethPrice, spans, heights, resize }) {
 
 export function CriminalChartSection({ address, grid, ethPrice = 0, alarmOn = false, onAlarmToggle, liveData = null }) {
   const { spans, heights, resize } = grid;
+  const locations = useLocations();
   const isFullAddr = /^0x[0-9a-fA-F]{40}$/.test(address || '');
 
   const companies = liveData?.companies ?? [];
@@ -359,7 +377,7 @@ export function CriminalChartSection({ address, grid, ethPrice = 0, alarmOn = fa
           </div>
         </Region>
       </GridCell>
-      {renderCompaniesCard({ liveData, ethPrice, spans, heights, resize })}
+      {renderCompaniesCard({ liveData, ethPrice, spans, heights, resize, locations })}
     </section>
   );
 }

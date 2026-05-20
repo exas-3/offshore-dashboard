@@ -36,6 +36,7 @@ Production runs on a Hetzner VPS. Two always-on processes run side by side:
 - `server/poller.js` + `server/etherscan.js` + `server/poller-main.js` — active poller code.
 - `scripts/farmer-bot.js` — active Telegram monitor bot.
 - `scripts/fetch-*.js` + `scripts/run-aliases.sh` — alias enrichment pipeline (`npm run aliases`).
+- `scripts/fetch-game-leaderboard.mjs` — pulls the in-game player display names from the Offshore Protocol Supabase leaderboard and writes them to `wallet_aliases.alias`. Run via `npm run fetch-game-leaderboard`.
 - `scripts/` — one-time migration/fix/backfill scripts. Leave in place for reference.
 
 ### Data flow
@@ -79,7 +80,35 @@ Usage: `const db = getDb(); const rows = await db\`SELECT ...\``.
 
 `lib/idx-queries.js` — queries over `idx_logs` / `idx_contracts` written by the offshore-indexer service. Views: `v_dex_swaps`, `v_vault_cycles`, `v_company_trades`, `v_v3_swaps`.
 
-Key tables: `transfers`, `vault_payouts`, `influence_transfers`, `supply_snapshots`, `eth_price_snapshots`, `influence_supply_snapshots`, `token_holders`, `companies`, `staking_deposits`, `meta`, `idx_logs`, `idx_contracts`.
+Key tables: `transfers`, `vault_payouts`, `influence_transfers`, `supply_snapshots`, `eth_price_snapshots`, `influence_supply_snapshots`, `token_holders`, `companies`, `staking_deposits`, `meta`, `idx_logs`, `idx_contracts`, `wallet_aliases`, `hits`.
+
+### Wallet alias resolution
+
+`wallet_aliases` holds every name source for a given address: `alias`, `ens_alias`, `debank_alias`, `arkham_alias`, plus a `funded_by` pointer for funder fallback.
+
+**Display priority order (highest → lowest):**
+
+1. `alias` — Offshore game in-game **display_name**, populated by `scripts/fetch-game-leaderboard.mjs` from the Supabase leaderboard. This is the authoritative player name and always wins.
+2. `ens_alias` — ENS / MNS (mega-names) lookup.
+3. `debank_alias` — DeBank profile name.
+4. (fallback) the same chain for the wallet's `funded_by` parent.
+
+Every UI surface that resolves a name (CRIMINAL band, recent ops, top extractors, staker leaderboard, etc.) goes through `getWalletAliases()` in `lib/db/staking.js`, which materializes the COALESCE in this exact order. Adding a new query that resolves names? Reuse `getWalletAliases()` or mirror the same COALESCE order (`alias, ens_alias, debank_alias`) — do not flip them.
+
+### Source-of-truth policy: chain first
+
+**The chain is the ultimate source of truth.** Supabase / `api.offshoreprotocol.fun` / `kumbaya` are secondary. The dashboard MUST never let an API value overwrite a chain-derived value.
+
+Concretely:
+
+- `transfers`, `influence_transfers`, `vault_payouts`, `staking_deposits`, `hits.{attacker, victim, company, mode, completion, full_payout, stolen, kept}`, `companies.{address, owner, active, liq_price, end_time, trade_type, location_id}`, and `wallet_aliases.label` are **chain-derived**. They are written by the poller (`server/poller.js`) or one-shot RPC backfills. **Never have an API fetcher write to these columns**.
+- API-only enrichments (no chain equivalent) live in *separate columns* alongside chain data — never overwrite:
+  - `hits.{hit_type, completion_bps, stack_wei, attacker_payout_wei, victim_payout_wei, hit_cost_wei}` ← `hit_events` (Supabase)
+  - `wallet_aliases.alias` ← `leaderboard.display_name`
+  - `cycle_rewards`, `game_locations`, `game_items` — API-only tables, no chain alternative
+- If a new feature needs data that exists both on-chain and via API, prefer the chain reader. Treat the API as a faster path that's allowed to lag.
+
+The hourly refresh script (`scripts/refresh-game-data.sh`, cron `7 * * * *`) only touches the API-only columns listed above. It is safe to run alongside the poller — they touch disjoint sets of fields.
 
 ### On-chain constants (`lib/chain-constants.js`)
 

@@ -13,6 +13,22 @@ const nextConfig = {
       { source: '/api/:path*', destination: 'http://localhost:3001/api/:path*' },
     ];
   },
+  async redirects() {
+    return [
+      { source: '/players/:address', destination: '/criminal/:address', permanent: true },
+      { source: '/whales',           destination: '/',                  permanent: true },
+      { source: '/companies',        destination: '/',                  permanent: true },
+      { source: '/monitor',          destination: '/',                  permanent: true },
+      { source: '/vault',            destination: '/',                  permanent: true },
+      { source: '/players',          destination: '/',                  permanent: true },
+      { source: '/trades',           destination: '/',                  permanent: true },
+      { source: '/token',            destination: '/',                  permanent: true },
+      { source: '/protocol',         destination: '/',                  permanent: true },
+      { source: '/hits',             destination: '/',                  permanent: true },
+      { source: '/staking',          destination: '/',                  permanent: true },
+      { source: '/leaderboards',     destination: '/',                  permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;

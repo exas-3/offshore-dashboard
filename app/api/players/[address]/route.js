@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import {
   getPlayerStats, getPlayerActivity, getPlayerVaultPayouts,
   getPlayerOpsBreakdown, getPlayerDailyHistory, getPlayerInfluenceStats,
-  getPlayerRecentMissionStats,
+  getPlayerRecentMissionStats, getWalletLabel,
 } from '../../../../lib/index.js';
 import { getCycleStart } from '../../offshore-data/helpers.js';
 
@@ -14,12 +14,17 @@ export async function GET(_req, { params }) {
       return NextResponse.json({ error: 'invalid address' }, { status: 400 });
     }
     const cycleStart = getCycleStart(Math.floor(Date.now() / 1000));
-    const [stats, activity, vault, breakdown, history, influence, recentMissions] = await Promise.all([
+    const [stats, activity, vault, breakdown, history, influence, recentMissions, labelRow] = await Promise.all([
       getPlayerStats(address, cycleStart), getPlayerActivity(address, 10000, 0),
       getPlayerVaultPayouts(address, 50), getPlayerOpsBreakdown(address),
       getPlayerDailyHistory(address), getPlayerInfluenceStats(address),
-      getPlayerRecentMissionStats(address),
+      getPlayerRecentMissionStats(address), getWalletLabel(address),
     ]);
-    return NextResponse.json({ address, stats, activity, vault, breakdown, history, influence, recentMissions });
+    const label = labelRow ? {
+      label:             labelRow.label || null,
+      label_score:       labelRow.label_score != null ? Number(labelRow.label_score) : null,
+      label_computed_at: labelRow.label_computed_at != null ? Number(labelRow.label_computed_at) : null,
+    } : null;
+    return NextResponse.json({ address, stats, activity, vault, breakdown, history, influence, recentMissions, label });
   } catch (err) { return NextResponse.json({ error: err.message }, { status: 500 }); }
 }

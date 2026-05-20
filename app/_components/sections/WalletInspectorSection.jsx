@@ -1,8 +1,9 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { Region, KV, KVSep, GridCell, fmt } from '../terminal.jsx';
+import { Region, KV, KVSep, GridCell, fmt, LabelChip } from '../terminal.jsx';
 import { OP_LABELS_SHORT, usePagedRows, Pager } from '../trade-helpers.jsx';
 import { durationToOpType } from '../../../lib/chain-constants.js';
+import { WalletEnterprisesSection } from './WalletEnterprisesSection.jsx';
 
 function relTime(ts) {
   const diff = Math.floor(Date.now() / 1000) - Number(ts);
@@ -102,8 +103,12 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0, liveData =
   }, [dbData, syntheticInProgress]);
 
   // ── Region: indexed stats (4) ─────────────────────────────────────────
+  const walletLabel = dbData?.label?.label || null;
   const indexedStats = dbData?.stats ? (
-    <Region title="indexed stats">
+    <Region
+      title="indexed stats"
+      actions={walletLabel ? <LabelChip label={walletLabel} /> : null}
+    >
       <KV k="made man" v={fmtMadeMan(dbData.stats.first_active)} sub={dbData.stats.first_active ? `${relTime(dbData.stats.first_active)} ago` : null} cls="hdr" />
       <KVSep />
       {liveData?.influenceBalance != null && (
@@ -124,14 +129,22 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0, liveData =
       <KV k="dex sold"     v={fmt.k(dbData.stats.dex_sold)}   sub={`${dbData.breakdown?.dex_sold?.cnt   ?? 0} txs`} cls="neg" />
       <KVSep />
       <KV k="vault claimed" v={`$${fmt.k(dbData.stats.vault_claimed)}`} cls="hdr" sub={`${dbData.stats.vault_count} payouts`} />
+      {dbData.stats.vault_allocated > 0 && (
+        <KV
+          k="vault allocated"
+          v={`$${fmt.k(dbData.stats.vault_allocated)}`}
+          cls="hdr"
+          sub={`${dbData.stats.vault_cycles} cycles · ${dbData.stats.vault_loadouts} loadouts`}
+        />
+      )}
       <KVSep />
       <KV
         k="hits made"
         v={
           <>
-            <span className="pos">{dbData.stats.hits_made_won ?? 0}</span>
+            <span className="tm-pos">{dbData.stats.hits_made_won ?? 0}</span>
             <span className="dim"> · </span>
-            <span className="neg">{dbData.stats.hits_made_lost ?? 0}</span>
+            <span className="tm-neg">{dbData.stats.hits_made_lost ?? 0}</span>
           </>
         }
         sub="this cycle"
@@ -314,8 +327,14 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0, liveData =
 
   return (
     <section id="sec-inspect" className="tm-grid-12">
-      <GridCell id="indexed-stats"   span={spans['indexed-stats']}   height={heights['indexed-stats']}   onResize={(r) => resize('indexed-stats', r)}>{indexedStats}</GridCell>
+      {/* Render order matches the layout we want on wide screens too:
+          row 1: recent-activity | enterprises
+          row 2: indexed-stats  | farmed-daily
+          Medium screens override via CSS `order:` rules but land on the
+          same visual layout. */}
       <GridCell id="recent-activity" span={spans['recent-activity']} height={heights['recent-activity']} onResize={(r) => resize('recent-activity', r)}>{recentActivity}</GridCell>
+      <WalletEnterprisesSection address={address} grid={grid} />
+      <GridCell id="indexed-stats"   span={spans['indexed-stats']}   height={heights['indexed-stats']}   onResize={(r) => resize('indexed-stats', r)}>{indexedStats}</GridCell>
       <GridCell id="farmed-daily"    span={spans['farmed-daily']}    height={heights['farmed-daily']}    onResize={(r) => resize('farmed-daily', r)}>{farmedDaily}</GridCell>
     </section>
   );

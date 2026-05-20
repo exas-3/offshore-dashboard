@@ -48,9 +48,14 @@ export async function GET(request) {
         FROM transfers WHERE kind = 'MINT' AND timestamp >= ${now - 86400}
       `.catch(() => [{ cnt: 0 }]) : Promise.resolve([{ cnt: 0 }]),
       db ? db`
-        SELECT COUNT(*)::int AS cnt
-        FROM transfers WHERE kind = 'MINT' AND timestamp >= ${now - 60}
-      `.catch(() => [{ cnt: 0 }]) : Promise.resolve([{ cnt: 0 }]),
+        SELECT
+          COUNT(*) FILTER (WHERE timestamp >= ${now - 60})::int   AS per_min,
+          COUNT(*) FILTER (WHERE timestamp >= ${now - 3600})::int AS per_hour
+        FROM transfers
+        WHERE kind = 'MINT'
+          AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL')
+          AND timestamp >= ${now - 3600}
+      `.catch(() => [{ per_min: 0, per_hour: 0 }]) : Promise.resolve([{ per_min: 0, per_hour: 0 }]),
       db ? db`
         SELECT to_addr, op_type, amount, timestamp FROM transfers
         WHERE kind = 'MINT' AND op_type != ''
@@ -96,7 +101,7 @@ export async function GET(request) {
       `.catch(() => []) : Promise.resolve([]),
       db ? db`
         SELECT c.address, c.owner, c.liq_price, c.end_time, c.active, c.auto_trade,
-               c.trade_type AS op_type
+               c.trade_type AS op_type, c.location_id
         FROM companies c
         WHERE c.active = TRUE
         ORDER BY c.end_time ASC NULLS LAST
@@ -111,7 +116,7 @@ export async function GET(request) {
       // Ops that started in the last 5 minutes: start_time = end_time - duration per trade_type.
       db ? db`
         SELECT * FROM (
-          SELECT address, owner, end_time, trade_type, liq_price,
+          SELECT address, owner, end_time, trade_type, liq_price, location_id,
                  (end_time - (CASE trade_type
                                 WHEN 'EXTORTION' THEN 300
                                 WHEN 'ARMS_DEAL' THEN 1800
@@ -150,6 +155,7 @@ export async function GET(request) {
         ethPrice,
         buffer:   Math.round((ethPrice - liq) * 100) / 100,
         opType:   c.op_type ? mapOpType(c.op_type) : '—',
+        locationId: c.location_id != null ? Number(c.location_id) : null,
       };
     });
 
@@ -234,6 +240,7 @@ export async function GET(request) {
       startTime:  Number(r.start_time),
       endTime:    Number(r.end_time),
       liqPrice:   liqPriceUsd(r.liq_price),
+      locationId: r.location_id != null ? Number(r.location_id) : null,
     }));
 
     return new NextResponse(JSON.stringify({
@@ -244,7 +251,8 @@ export async function GET(request) {
       eth:         ethPriceFeed.getLatest() ?? ethFromDb ?? null,
       gas:         0.001,
       daw:         Number(dawRow[0]?.cnt ?? 0),
-      opsMin:      Number(opsRow[0]?.cnt ?? 0),
+      opsMin:      Number(opsRow[0]?.per_min ?? 0),
+      opsHour:     Number(opsRow[0]?.per_hour ?? 0),
       activeOps:   Number(activeOpsRow[0]?.cnt ?? 0),
       companiesStats: (() => {
         const total       = Number(companiesStatsRow[0]?.total ?? 0);

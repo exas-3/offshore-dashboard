@@ -107,9 +107,14 @@ export async function GET() {
         FROM transfers WHERE kind = 'MINT' AND timestamp >= ${now - 86400}
       `.catch(() => [{ cnt: 0 }]),
       db`
-        SELECT COUNT(*)::int AS cnt
-        FROM transfers WHERE kind = 'MINT' AND timestamp >= ${now - 60}
-      `.catch(() => [{ cnt: 0 }]),
+        SELECT
+          COUNT(*) FILTER (WHERE timestamp >= ${now - 60})::int   AS per_min,
+          COUNT(*) FILTER (WHERE timestamp >= ${now - 3600})::int AS per_hour
+        FROM transfers
+        WHERE kind = 'MINT'
+          AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL')
+          AND timestamp >= ${now - 3600}
+      `.catch(() => [{ per_min: 0, per_hour: 0 }]),
       // Demo wallet aggregate stats
       db`
         SELECT
@@ -255,13 +260,16 @@ export async function GET() {
       net24h: infNetFlow24hResult.net,
     };
 
-    // ── burnedDaily ───────────────────────────────────────────────────────────
-    const burnedDaily = burnBuckets.slice(-9).map(r => ({
+    // ── burnedDaily — full series from protocol launch (first SPEND/BURN
+    // tx) through today. Was previously sliced to last 9 days; user wants
+    // the full timeline.
+    const burnedDaily = burnBuckets.map(r => ({
       ts: Number(r.ts), x: fmtDate(r.ts),
       protocolBurn: r.burned,
       asset:        r.assets,
       levelUp:      r.levels,
       enterprise:   r.enterprise,
+      hits:         r.hits,
     }));
 
     // ── participants & active wallets ─────────────────────────────────────────
@@ -485,7 +493,8 @@ export async function GET() {
     const counterInit = {
       block:  latestBlock ?? 0,
       daw:    Number(todayActiveRow[0]?.cnt ?? 0),
-      opsMin: Number(recentOpsRow[0]?.cnt ?? 0),
+      opsMin:  Number(recentOpsRow[0]?.per_min  ?? 0),
+      opsHour: Number(recentOpsRow[0]?.per_hour ?? 0),
       dirty:  dirtyPrice,
       opCost: infCost,
       gas:    0.001,

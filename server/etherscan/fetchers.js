@@ -265,24 +265,37 @@ export async function getEntryPrices(companyAddrs) {
   return out;
 }
 
-const KUMBAYA_POOL_ID = '0x6bD9eeF21c2419FeffafbF4850153A3b3A74A5E1-4326';
+// V3 DIRTY/USDM pool — chain-of-truth price source (Kumbaya API used to
+// proxy this, but their pool endpoint returns 404 as of 2026-05-19).
+// Reading slot0() directly removes the third-party dependency entirely.
+//
+// Pool layout (verified empirically):
+//   token0 = DIRTY (18 decimals)
+//   token1 = USDM  (18 decimals)
+// → sqrtPriceX96 encodes sqrt(USDM/DIRTY) so `price = (sqrtPriceX96/2^96)^2`
+//   gives dirty price in USDM. Both tokens are 18-decimal so no further
+//   decimal adjustment is needed.
+const DIRTY_USDM_V3_POOL = '0x6bD9eeF21c2419FeffafbF4850153A3b3A74A5E1';
+const SEL_SLOT0          = '0x3850c7bd'; // slot0() on Uniswap-V3-style pools
+const Q96                = 2n ** 96n;
 
 export async function fetchDirtyPrice() {
-  const ctrl  = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 8000);
-  try {
-    const res = await fetch(
-      `https://exchange.kumbaya.xyz/api/v1/pools/${KUMBAYA_POOL_ID}`,
-      { signal: ctrl.signal }
-    );
-    if (!res.ok) throw new Error(`Kumbaya HTTP ${res.status}`);
-    const data = await res.json();
-    const price = parseFloat(data.pool?.token1Price);
-    if (!isFinite(price) || price <= 0) throw new Error('invalid price');
-    return price;
-  } finally {
-    clearTimeout(timer);
-  }
+  const res = await rpcPost('eth_call', [
+    { to: DIRTY_USDM_V3_POOL, data: SEL_SLOT0 }, 'latest',
+  ]);
+  if (!res || res === '0x') throw new Error('slot0 read empty');
+  // slot0 returns a packed tuple — sqrtPriceX96 is the first uint160.
+  const hex = res.startsWith('0x') ? res.slice(2) : res;
+  const sqrtPriceX96 = BigInt('0x' + hex.slice(0, 64));
+  if (sqrtPriceX96 === 0n) throw new Error('pool uninitialized');
+  // price = (sqrtPriceX96 ** 2) / 2^192  (both tokens 18-dec → no adjust)
+  // Multiply numerator by 1e18 before dividing to retain precision, then
+  // convert to float.
+  const SCALE = 10n ** 18n;
+  const scaled = (sqrtPriceX96 * sqrtPriceX96 * SCALE) / (Q96 * Q96);
+  const price  = Number(scaled) / 1e18;
+  if (!isFinite(price) || price <= 0) throw new Error('invalid price');
+  return price;
 }
 
 const ZERO_TOPIC = '0x0000000000000000000000000000000000000000000000000000000000000000';

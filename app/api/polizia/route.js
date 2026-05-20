@@ -32,7 +32,7 @@ async function fetchPool(ethPrice) {
     ? (BigInt(Math.floor(ethPrice * 1e6)) * (10n ** 12n)).toString()
     : '0';
   const rows = await db`
-    SELECT address, owner, liq_price, end_time, active
+    SELECT address, owner, liq_price, end_time, active, location_id
     FROM companies
     WHERE active = TRUE
       AND CAST(liq_price AS NUMERIC) <= CAST(${ethWeiCap} AS NUMERIC)
@@ -54,7 +54,8 @@ function buildList(pool, ethPrice) {
       wallet:      c.owner || c.address,
       walletShort: shortAddr(c.owner || c.address),
       liqPrice:    liqPriceUsd(c.liq_price),
-      endTime:  c.active ? Number(c.end_time) : null,
+      endTime:     c.active ? Number(c.end_time) : null,
+      locationId:  c.location_id != null ? Number(c.location_id) : null,
     }))
     .map(c => ({ ...c, buffer: Math.round((ethPrice - c.liqPrice) * 100) / 100 }))
     .filter(c => c.buffer >= 0 && c.buffer < 3 && !(c.endTime > 0 && c.endTime <= now))

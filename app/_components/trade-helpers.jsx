@@ -123,10 +123,52 @@ export function processTradeRows(rows, range, ethPrice = 0) {
   });
 }
 
-export function renderTradeRow(r, onWallet, aliases = {}) {
+// Inline behavior chip — single letter (E/N/C) so it fits in the tight
+// criminal column. Tooltip shows the full label.
+function BehaviorDot({ label }) {
+  if (!label) return null;
+  const color = label === 'extractor' ? 'var(--t-neg)'
+              : label === 'contributor' ? 'var(--t-pos)'
+              : 'var(--t-fg-mut)';
+  const letter = label === 'extractor' ? 'E'
+              : label === 'contributor' ? 'C'
+              : 'N';
+  return (
+    <span
+      title={`behavior: ${label}`}
+      style={{
+        display: 'inline-block',
+        marginRight: 5,
+        padding: '0 3px',
+        color: 'var(--t-bg)',
+        background: color,
+        fontSize: 9,
+        fontWeight: 600,
+        lineHeight: '12px',
+        height: 12,
+        letterSpacing: 0,
+        verticalAlign: 'middle',
+      }}
+    >{letter}</span>
+  );
+}
+
+export function renderTradeRow(r, onWallet, aliases = {}, locations, labels) {
+  // Flag rendered inline; locations is a Map(id → {flag_emoji, city, country}).
+  const loc = locations?.get?.(Number(r.locationId));
+  const flag = loc ? (
+    <span title={`${loc.city ?? ''}${loc.country ? `, ${loc.country}` : ''}`.trim() || loc.short_name}
+          style={{ fontSize: 11, marginRight: 4 }}>{loc.flag_emoji || ''}</span>
+  ) : null;
+  const ownerLc = (r.owner || '').toLowerCase();
+  const behaviorLabel = labels?.[ownerLc] || null;
   return (
     <tr key={r.id}>
-      <td style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span className="tm-num" style={{ cursor: 'pointer', color: 'var(--t-hdr)' }} onClick={() => onWallet && onWallet(r.owner || r.id)}>{aliases[r.owner] || r.ownerShort || r.id}</span></td>
+      <td style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <BehaviorDot label={behaviorLabel} />
+        {flag}
+        <span className="tm-num" style={{ cursor: 'pointer', color: 'var(--t-hdr)' }} onClick={() => onWallet && onWallet(r.owner || r.id)}>{aliases[r.owner] || r.ownerShort || r.id}</span>
+      </td>
       <td style={{ width: 72, color: 'var(--t-fg-mut)', fontSize: 'var(--t-fs-xs)', whiteSpace: 'nowrap' }}>{r.opType || '—'}</td>
       <td style={{ width: 60, whiteSpace: 'nowrap' }} className={r.active ? 'warn' : 'dim'}>{r.liveEndsIn}</td>
       <td className={`num ${r.liveBuffer < 1 ? 'neg' : r.liveBuffer < 2 ? 'warn' : 'pos'}`} style={{ width: 52, maxWidth: 52 }}>+{r.liveBuffer.toFixed(2)}</td>

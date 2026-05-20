@@ -69,13 +69,17 @@ export function TokenSection({ D, grid }) {
               <Bar dataKey="protocolBurn" name="protocol burn"  stackId="a" fill="var(--t-neg)"  maxBarSize={40} />
               <Bar dataKey="asset"        name="asset purchase" stackId="a" fill="var(--t-fg)"   maxBarSize={40} />
               <Bar dataKey="levelUp"      name="level up"       stackId="a" fill="var(--t-hdr)"  maxBarSize={40} />
-              <Bar dataKey="enterprise"   name="enterprise"     stackId="a" fill="var(--t-warn)" maxBarSize={40} radius={[2,2,0,0]} />
+              <Bar dataKey="enterprise"   name="enterprise"     stackId="a" fill="var(--t-warn)" maxBarSize={40} />
+              <Bar dataKey="hits"         name="hits"           stackId="a" fill="var(--t-pos)"  maxBarSize={40} radius={[2,2,0,0]} />
             </BarChart>
           </ResponsiveContainer>
-          <div style={{ marginTop: 4, fontSize: 'var(--t-fs-sm)', color: 'var(--t-fg-soft)', display: 'flex', gap: 12, fontFamily: 'var(--t-font)' }}>
+          <div style={{ marginTop: 4, fontSize: 'var(--t-fs-sm)', color: 'var(--t-fg-soft)', display: 'flex', gap: 12, fontFamily: 'var(--t-font)', flexWrap: 'wrap' }}>
             <span><span style={{ color: 'var(--t-neg)' }}>█</span> protocol</span>
             <span><span style={{ color: 'var(--t-fg)' }}>█</span> asset</span>
             <span><span style={{ color: 'var(--t-hdr)' }}>█</span> level-up</span>
+            <span title="30 dirty per random/hit-back, 60 per targeted">
+              <span style={{ color: 'var(--t-pos)' }}>█</span> hits
+            </span>
             <span>
               <span style={{ color: 'var(--t-warn)' }}>█</span> enterprise
               {typeof D.loadout4PriceNow === 'number' && (

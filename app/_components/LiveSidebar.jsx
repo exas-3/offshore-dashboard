@@ -1,7 +1,13 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { fmt } from './terminal.jsx';
+import { fmt, useLocations } from './terminal.jsx';
 import { fmtCountdownLocal } from './trade-helpers.jsx';
+
+function flagFor(locations, id) {
+  if (id == null) return '';
+  const loc = locations?.get?.(Number(id));
+  return loc?.flag_emoji || '';
+}
 
 function Counter({ k, v, cls, tickKey }) {
   const [last, setLast] = useState(tickKey);
@@ -22,11 +28,12 @@ function Counter({ k, v, cls, tickKey }) {
   );
 }
 
-const OP_SHORT = { DRUG_DEAL: 'drug', ARMS_DEAL: 'arms', EXTORTION: 'ext' };
+const OP_SHORT = { DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion' };
 
 export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = [], onWallet, aliases = {} }) {
   const [opsMatrix, setOpsMatrix] = useState(() => D.opsMatrix ?? null);
   const [tick, setTick] = useState(0);
+  const locations = useLocations();
 
   useEffect(() => {
     const load = () => fetch('/api/ops-matrix').then(r => r.json()).then(setOpsMatrix).catch(() => {});
@@ -82,8 +89,8 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
         </div>
         <Counter k="active players /24" v={counters.daw.toLocaleString()} />
         <Counter k="total players"    v={D.newParticipantsTotal.toLocaleString()} />
-        <Counter k="finished ops/min"  v={Math.round(counters.opsMin).toLocaleString()}        tickKey={counters._bump} />
-        <Counter k="finished ops/hour" v={Math.round(counters.opsMin * 60).toLocaleString()}    tickKey={counters._bump} />
+        <Counter k="finished ops/min"  v={Math.round(counters.opsMin  ?? 0).toLocaleString()} tickKey={counters._bump} />
+        <Counter k="finished ops/hour" v={Math.round(counters.opsHour ?? 0).toLocaleString()} tickKey={counters._bump} />
         <Counter k="active ops"        v={counters.activeOps.toLocaleString()}                  tickKey={counters._bump} />
         <Counter k="$dirty"     v={`$${counters.dirty.toFixed(4)}`} cls="warn"   tickKey={counters._bump} />
         <Counter k="op cost"    v={`${counters.opCost.toFixed(2)} INF`}          tickKey={counters._bump} />
@@ -104,7 +111,7 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
           return [(
             <div key={r.id} className={`tm-watch ${cls}`} style={{ cursor: 'pointer' }} onClick={() => onWallet && onWallet(r.wallet)}>
               <span className="l">
-                <span className="id">{aliases[r.wallet] || r.walletShort}</span>
+                <span className="id">{flagFor(locations, r.locationId) && <span style={{ marginRight: 3 }}>{flagFor(locations, r.locationId)}</span>}{aliases[r.wallet] || r.walletShort}</span>
                 <span className="sub">liq {r.liqPrice.toLocaleString()}</span>
               </span>
               <span className="r">
@@ -144,7 +151,7 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
               onClick={() => s.walletFull && onWallet && onWallet(s.walletFull)}
             >
               <span className="l">
-                <span className="id">{aliases[s.walletFull] || s.wallet}</span>
+                <span className="id">{flagFor(locations, s.locationId) && <span style={{ marginRight: 3 }}>{flagFor(locations, s.locationId)}</span>}{aliases[s.walletFull] || s.wallet}</span>
                 <span className={`sub ${opCls}`}>{opLabel}</span>
               </span>
               <span className="r">
@@ -243,7 +250,6 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
         <div className="tm-live-panel-h">
           <span><b>dirty</b> transactions</span>
           <span className="rule" />
-          <span className="v">live</span>
         </div>
         <div className="tm-opfeed">
           {trades.filter(t => t.kind === 'buy' || t.kind === 'sell').slice(0, 6).map((t, i) => {

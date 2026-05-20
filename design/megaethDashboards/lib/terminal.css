@@ -1235,13 +1235,16 @@ a.tm-toast-noop, .tm-toast a.addr {
   }
   .tm-zone-criminal > section.tm-grid-12 { display: contents; }
 
-  /* small/medium order: watch-chart → watch-companies → recent activity →
-     farmed daily → indexed stats (dropped to the bottom). */
-  [data-cell-id="watch-chart"]     { grid-column: span 12 !important; order: 0; }
-  [data-cell-id="watch-companies"] { grid-column: span 6  !important; order: 1; }
-  [data-cell-id="recent-activity"] { grid-column: span 6  !important; order: 2; }
-  [data-cell-id="farmed-daily"]    { grid-column: span 6  !important; order: 3; }
-  [data-cell-id="indexed-stats"]   { grid-column: span 6  !important; order: 4; }
+  /* medium screens: watch-chart full → watch-companies full →
+     row A: recent-activity | enterprises  →  row B: indexed-stats | farmed-daily.
+     Pairing recent-activity with enterprises and indexed-stats with farmed-daily
+     keeps the two halves balanced and avoids dead space on the right. */
+  [data-cell-id="watch-chart"]      { grid-column: span 12 !important; order: 0; }
+  [data-cell-id="watch-companies"]  { grid-column: span 12 !important; order: 1; }
+  [data-cell-id="recent-activity"]  { grid-column: span 6  !important; order: 2; }
+  [data-cell-id="enterprises-user"] { grid-column: span 6  !important; order: 3; }
+  [data-cell-id="indexed-stats"]    { grid-column: span 6  !important; order: 4; }
+  [data-cell-id="farmed-daily"]     { grid-column: span 6  !important; order: 5; }
 
   /* Tight (but not flush) vertical gaps between containers on medium
      screens — stacks read close without dead space between regions. */
@@ -1258,11 +1261,12 @@ a.tm-toast-noop, .tm-toast a.addr {
   }
   .tm-zone-criminal > section.tm-grid-12 { display: contents; }
 
-  [data-cell-id="watch-chart"]     { grid-column: span 12 !important; order: 0; }
-  [data-cell-id="watch-companies"] { grid-column: span 12 !important; order: 1; }
-  [data-cell-id="recent-activity"] { grid-column: span 12 !important; order: 2; }
-  [data-cell-id="farmed-daily"]    { grid-column: span 12 !important; order: 3; }
-  [data-cell-id="indexed-stats"]   { grid-column: span 12 !important; order: 4; }
+  [data-cell-id="watch-chart"]      { grid-column: span 12 !important; order: 0; }
+  [data-cell-id="watch-companies"]  { grid-column: span 12 !important; order: 1; }
+  [data-cell-id="recent-activity"]  { grid-column: span 12 !important; order: 2; }
+  [data-cell-id="indexed-stats"]    { grid-column: span 12 !important; order: 3; }
+  [data-cell-id="enterprises-user"] { grid-column: span 12 !important; order: 4; }
+  [data-cell-id="farmed-daily"]     { grid-column: span 12 !important; order: 5; }
 
   /* Tight (but not flush) vertical gaps between containers on small
      screens — stacks read close without dead space between regions. */

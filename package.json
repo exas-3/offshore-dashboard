@@ -8,6 +8,11 @@
     "start": "next start",
     "poller": "node --env-file=.env server/poller-main.js",
     "aliases": "bash scripts/run-aliases.sh",
+    "fetch-game-leaderboard": "node --env-file=.env scripts/fetch-game-leaderboard.mjs",
+    "label-wallets": "node --env-file=.env scripts/label-wallets.mjs",
+    "fetch-game-data": "node --env-file=.env scripts/fetch-game-data.mjs",
+    "backfill-company-locations": "node --env-file=.env scripts/backfill-company-locations.mjs",
+    "backfill-influence-daily": "node --env-file=.env scripts/backfill-influence-daily.js",
     "start:prod": "next start",
     "test": "node --test --test-reporter=spec server/etherscan/classification.test.js"
   },

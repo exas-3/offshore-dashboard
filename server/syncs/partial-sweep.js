@@ -41,16 +41,18 @@ function resolveResult(fromPayout) {
   return fromPayout ? 'completed' : 'busted';
 }
 
-// Retry on rate-limit errors with exponential backoff. Other errors throw
-// immediately so they surface in the caller's log.
+// Retry on transient RPC failures with exponential backoff: rate-limit
+// throttles, fetch aborts (timeout), and 502s. Other errors throw
+// immediately so genuine bugs surface in the caller's log.
 async function withRetry(label, fn) {
-  const delays = [0, 3000, 8000, 20000];
+  const delays = [0, 3000, 8000, 20000, 45000];
+  const isTransient = (msg) => /rate limit|operation was aborted|HTTP 50[2-4]|fetch failed|timeout/i.test(msg || '');
   let lastErr;
   for (const wait of delays) {
     if (wait) await new Promise(r => setTimeout(r, wait));
     try { return await fn(); } catch (err) {
       lastErr = err;
-      if (!/rate limit/i.test(err.message)) throw err;
+      if (!isTransient(err.message)) throw err;
     }
   }
   throw lastErr;

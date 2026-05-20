@@ -19,6 +19,7 @@ export async function GET(req) {
     const data = { rows: rows.map(r => ({
       address:    r.address,
       alias:      r.alias || null,
+      label:      r.label || null,
       earned:     Number(r.earned     || 0),
       spent:      Number(r.spent      || 0),
       dex_sold:   Number(r.dex_sold   || 0),

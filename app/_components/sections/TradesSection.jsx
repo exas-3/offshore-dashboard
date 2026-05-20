@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { Region, Seg, Sortable, GridCell, fmt } from '../terminal.jsx';
+import { Region, Seg, Sortable, GridCell, fmt, useLocations, useWalletLabels } from '../terminal.jsx';
 import { processTradeRows, renderTradeRow, usePagedRows, Pager } from '../trade-helpers.jsx';
 
 export function TradesSection({ grid, liveTrades, ops, search, ethPrice, aliases, onWallet }) {
@@ -9,6 +9,8 @@ export function TradesSection({ grid, liveTrades, ops, search, ethPrice, aliases
   const [sortKey,  setSortKey]  = useState('buffer');
   const [sortDir,  setSortDir]  = useState('asc');
   const [focusPane] = useState(null);
+  const locations = useLocations();
+  const labels    = useWalletLabels();
 
   // 1s tick — only re-renders this section, keeping the live countdown/buffer fresh.
   const [tick, setTick] = useState(0);
@@ -34,20 +36,22 @@ export function TradesSection({ grid, liveTrades, ops, search, ethPrice, aliases
     else { setSortKey(k); setSortDir('asc'); }
   }
 
-  // Process + paginate ongoing crimes (sorted/filtered before pagination so
-  // total pages reflects the visible filtered set).
+  // Process + cap ongoing crimes to top-250 of the *currently sorted* set.
+  // When the user clicks a column header, the table flips to display the
+  // top (or bottom) 250 rows by that column — no pagination, single
+  // scrollable list. ASC → bottom-250 by value; DESC → top-250 by value.
   const ongoingProcessed = useMemo(
-    () => processTradeRows(tradesFiltered, trxRange, ethPrice),
+    () => processTradeRows(tradesFiltered, trxRange, ethPrice).slice(0, 250),
     [tradesFiltered, trxRange, ethPrice, tick]
   );
-  const ongoingPager = usePagedRows(ongoingProcessed);
-  const opsPager     = usePagedRows(ops);
+  const opsPager = usePagedRows(ops);
 
   return (
     <section id="sec-trades" className="tm-grid-12">
       <GridCell id="trades" span={spans['trades']} height={heights['trades']} onResize={(r) => resize('trades', r)}>
         <Region
           title="ongoing crimes"
+          sub={`top 250 by ${sortKey === 'buffer' ? 'buffer' : sortKey === 'endsIn' ? 'ends' : sortKey === 'liqPrice' ? 'busted price' : sortKey}`}
           focus={focusPane === 'trades'}
           actions={<Seg value={trxRange} options={['all','active','auto']} onChange={setTrxRange} />}
         >
@@ -64,11 +68,10 @@ export function TradesSection({ grid, liveTrades, ops, search, ethPrice, aliases
                 </tr>
               </thead>
               <tbody>
-                {ongoingPager.pageRows.map((r) => renderTradeRow(r, onWallet, aliases))}
+                {ongoingProcessed.map((r) => renderTradeRow(r, onWallet, aliases, locations, labels))}
               </tbody>
             </table>
           </div>
-          <Pager {...ongoingPager} />
         </Region>
       </GridCell>
 
