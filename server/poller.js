@@ -1,6 +1,7 @@
 import {
   fetchTransferLogs, fetchTxInputs, classifyTransfer, FUNCTION_OP_TYPES, DIRTY, getLatestBlock,
 } from './etherscan.js';
+import { logSyncError } from './syncs/log-throttle.js';
 import {
   getDistinctMintHashes, batchUpdateMintOpTypes, upsertTransfers,
 } from '../lib/index.js';
@@ -13,7 +14,7 @@ import { syncCompanies } from './syncs/companies.js';
 import { syncCompanyStarts, startCompanyStartsWs, COMPANY_STARTS_INTERVAL_MS } from './syncs/company-starts.js';
 import { getWsClient } from './etherscan/ws-client.js';
 import { syncPartialSweep, PARTIAL_SWEEP_INTERVAL_MS } from './syncs/partial-sweep.js';
-import { syncLiquidations, startLiquidationsWs, LIQ_INTERVAL_MS } from './syncs/liquidations.js';
+import { syncLiquidations, startLiquidationsWs } from './syncs/liquidations.js';
 import { syncStaking, syncStakingClaims, syncStakingRotations, startStakingWs } from './syncs/staking.js';
 
 // Job status (mutated by the long-running reconcile/reclassify jobs, read by admin routes).
@@ -26,7 +27,7 @@ export const reconcileStatus = { running: false, done: 0, total: 0, added: 0, er
 const TX_INTERVAL_MS        = 60_000;
 const SNAPSHOT_INTERVAL_MS  = 60_000;
 const HOLDERS_INTERVAL_MS   = 15 * 60_000;
-const COMPANIES_INTERVAL_MS = 2 * 60_000;
+const COMPANIES_INTERVAL_MS = 10 * 60_000;
 
 const DIRTY_START = 15_190_000;
 const BATCH       = 20_000;
@@ -152,13 +153,25 @@ export async function startPoller() {
   startStakingWs();
   startHitsWs();
   getWsClient().start();
-  setInterval(syncInfluence,        TX_INTERVAL_MS);
-  setInterval(syncTransfers,        TX_INTERVAL_MS);
-  setInterval(syncVault,            TX_INTERVAL_MS);
-  setInterval(syncLiquidations,     LIQ_INTERVAL_MS);
-  setInterval(syncStaking,          TX_INTERVAL_MS);
-  setInterval(syncStakingClaims,    TX_INTERVAL_MS);
-  setInterval(syncStakingRotations, TX_INTERVAL_MS);
+  // Shared 60s tick: fetch the chain head once and fan it out to every
+  // gap-fill sync. Cuts 6 redundant eth_blockNumber calls per minute and
+  // lets all syncs short-circuit (via runBlockSync's fromBlock > latest
+  // check) on the same snapshot of the head.
+  let lastTickHead = 0;
+  setInterval(async () => {
+    let head;
+    try { head = await getLatestBlock(); }
+    catch (err) { logSyncError('tick getLatestBlock', err); return; }
+    if (head <= lastTickHead) return;
+    lastTickHead = head;
+    syncInfluence(head);
+    syncTransfers(head);
+    syncVault(head);
+    syncLiquidations(head);
+    syncStaking(head);
+    syncStakingClaims(head);
+    syncStakingRotations(head);
+  }, TX_INTERVAL_MS);
   setInterval(syncSnapshots,     SNAPSHOT_INTERVAL_MS);
   setInterval(syncHolders,       HOLDERS_INTERVAL_MS);
   setInterval(syncCompanies,     COMPANIES_INTERVAL_MS);

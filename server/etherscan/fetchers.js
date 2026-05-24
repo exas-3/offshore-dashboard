@@ -205,6 +205,41 @@ export async function getCompanyTradeTypesFromStorage(companyAddrs, blockMap = n
   return out;
 }
 
+// Same as getCompanyTradeTypesFromStorage but only reads slot 4 (start ts),
+// reusing the endTime caller already has from BATCH_RESOLVER's getTradeStates.
+// Halves the eth_getStorageAt count on the syncCompanies path.
+// endTimeByAddr: Map<companyAddrLower, number(seconds)>.
+export async function getCompanyTypesFromKnownEndTimes(endTimeByAddr, timeoutMs = 20000) {
+  if (!endTimeByAddr?.size) return new Map();
+  const addrs = [...endTimeByAddr.keys()];
+  const out = new Map();
+  const CHUNK = 100;
+  for (let i = 0; i < addrs.length; i += CHUNK) {
+    const chunk = addrs.slice(i, i + CHUNK);
+    const reqs = chunk.map((addr, j) => ({
+      method: 'eth_getStorageAt',
+      params: [addr, '0x4', 'latest'],
+      id: j,
+    }));
+    const res = await rpcBatch(reqs, timeoutMs).catch(() => []);
+    const byId = new Map();
+    for (const r of (Array.isArray(res) ? res : [])) byId.set(r.id, r.result);
+    for (let j = 0; j < chunk.length; j++) {
+      const s4 = byId.get(j);
+      if (!s4) continue;
+      try {
+        const start = Number(BigInt(s4));
+        const end   = endTimeByAddr.get(chunk[j]);
+        if (!end || !start) continue;
+        const type = durationToOpType(end - start);
+        if (type) out.set(chunk[j], type);
+      } catch { /* skip */ }
+    }
+    if (i + CHUNK < addrs.length) await new Promise(r => setTimeout(r, 150));
+  }
+  return out;
+}
+
 // Batch-reads the current trade's start (slot 4) and end (slot 5) timestamps
 // per company. Returns Map<companyAddrLower, { startTime, endTime }>.
 // Used by the criminal-watch chart to render the "trade started" vertical

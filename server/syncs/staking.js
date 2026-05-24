@@ -18,11 +18,12 @@ const STAKING_ADDR  = STAKING.toLowerCase();
 
 // ── Polling path factory (safety net) ─────────────────────────────────────
 function makeStakingSync({ name, getLast, setLast, fetcher, upsert, ignoreFetchErr = false }) {
-  return () => runBlockSync({
+  return (latestBlock) => runBlockSync({
     name,
     getLast,
     setLast,
     fromStart: STAKING_START,
+    latestBlock,
     async processBatch(start, end) {
       const events = ignoreFetchErr
         ? await fetcher(start, end).catch(() => [])

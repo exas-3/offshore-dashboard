@@ -68,12 +68,12 @@ async function processLiquidationBatch(start, end) {
 }
 
 // ── Polling path (safety net) ─────────────────────────────────────────────
-export async function syncLiquidations() {
+export async function syncLiquidations(latestBlockArg) {
   if (liqSyncing) return;
   liqSyncing = true;
   try {
     const fromBlock   = Math.max(await getLastLiqBlock() + 1, LIQ_START);
-    const latestBlock = await getLatestBlock();
+    const latestBlock = latestBlockArg ?? await getLatestBlock();
     if (fromBlock > latestBlock) return;
 
     let total = 0;

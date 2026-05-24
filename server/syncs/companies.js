@@ -1,4 +1,4 @@
-import { getUserCompaniesBatch, getTradeStates, getCompanyTradeTypesFromStorage } from '../etherscan.js';
+import { getUserCompaniesBatch, getTradeStates, getCompanyTypesFromKnownEndTimes } from '../etherscan.js';
 import { getAllPlayerAddresses, upsertCompanies } from '../../lib/index.js';
 import { logSyncError } from './log-throttle.js';
 
@@ -30,11 +30,16 @@ export async function syncCompanies() {
       if (i + STATE_CHUNK < allCompanies.length) await new Promise(r => setTimeout(r, 500));
     }
 
-    // Resolve trade_type for active companies via storage slots 4 & 5 (start/end ts).
-    // duration = slot5 - slot4 → 300=EXTORTION, 1800=ARMS_DEAL, 5400=DRUG_DEAL.
-    const activeAddrs = allStates.filter(s => s.active).map(s => s.company);
-    const typeMap = activeAddrs.length > 0
-      ? await getCompanyTradeTypesFromStorage(activeAddrs).catch(() => new Map())
+    // Resolve trade_type for active companies. endTime is already in BATCH_RESOLVER's
+    // tradeState (slot 5 equivalent); only slot 4 (start ts) still needs an
+    // eth_getStorageAt — halves the storage-read CU vs. reading both slots.
+    // duration = endTime - startTime → 300=EXTORTION, 1800=ARMS_DEAL, 5400=DRUG_DEAL.
+    const endTimeByAddr = new Map(
+      allStates.filter(s => s.active && s.endTime > 0)
+               .map(s => [s.company.toLowerCase(), s.endTime])
+    );
+    const typeMap = endTimeByAddr.size > 0
+      ? await getCompanyTypesFromKnownEndTimes(endTimeByAddr).catch(() => new Map())
       : new Map();
     for (const s of allStates) {
       const t = typeMap.get(s.company.toLowerCase());

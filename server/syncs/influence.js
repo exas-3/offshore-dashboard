@@ -8,12 +8,13 @@ const INFLUENCE_START  = 15_194_000;
 const TRANSFER_TOPIC   = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
 // ── Polling path (safety net) ─────────────────────────────────────────────
-export function syncInfluence() {
+export function syncInfluence(latestBlock) {
   return runBlockSync({
     name: 'influence',
     getLast: getLastInfluenceBlock,
     setLast: setLastInfluenceBlock,
     fromStart: INFLUENCE_START,
+    latestBlock,
     async processBatch(start, end) {
       const rows = await fetchTransferLogs(INFLUENCE, start, end);
       if (rows.length > 0) await upsertInfluenceTransfers(rows);

@@ -14,12 +14,13 @@ export async function runBlockSync({
   sleepMs  = 1200,
   retries  = 4,
   processBatch,
+  latestBlock: latestBlockArg,
 }) {
   if (inflight.has(name)) return 0;
   inflight.add(name);
   try {
     const fromBlock   = Math.max(await getLast() + 1, fromStart);
-    const latestBlock = await getLatestBlock();
+    const latestBlock = latestBlockArg ?? await getLatestBlock();
     if (fromBlock > latestBlock) return 0;
 
     let total = 0;

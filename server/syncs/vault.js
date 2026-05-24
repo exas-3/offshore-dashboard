@@ -23,13 +23,14 @@ function toPayout(log) {
 }
 
 // ── Polling path (safety net) ─────────────────────────────────────────────
-export function syncVault() {
+export function syncVault(latestBlock) {
   return runBlockSync({
     name: 'vault',
     getLast: getLastVaultBlock,
     setLast: setLastVaultBlock,
     fromStart: VAULT_START,
     batch: 2_000,
+    latestBlock,
     async processBatch(start, end) {
       const logs    = await fetchTransferLogs(USDM, start, end);
       const payouts = logs.filter(l => l.fromAddr === VAULT_ADDR);

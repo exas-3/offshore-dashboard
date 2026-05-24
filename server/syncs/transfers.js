@@ -186,12 +186,13 @@ async function processTransferBatch({ start, end, prefetched }) {
 // ── Polling path (safety net) ─────────────────────────────────────────────
 // Cadence used to be 15 s; with the WS path live it can be slowed (the
 // poller's TX_INTERVAL_MS knob controls this from server/poller.js).
-export function syncTransfers() {
+export function syncTransfers(latestBlock) {
   return runBlockSync({
     name: 'DIRTY',
     getLast: getLastBlock,
     setLast: setLastBlock,
     fromStart: DIRTY_START,
+    latestBlock,
     async processBatch(start, end) {
       return processTransferBatch({ start, end });
     },
