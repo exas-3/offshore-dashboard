@@ -87,7 +87,7 @@ export async function GET() {
     // Raw DB queries that need the connection directly
     const [heatmapRows, cycleRows, todayActiveRow, recentOpsRow,
            walletStats, walletEarnedByOp, walletSpentByOp,
-           walletFarmedEarned, walletFarmedSpent, infHistRows, opsMatrixRows] = db ? await Promise.all([
+           walletFarmedEarned, walletFarmedSpent, infHistRows, opsMatrixRows, opsMatrixActiveRows] = db ? await Promise.all([
       db`
         SELECT
           FLOOR(timestamp / 86400)::int                  AS day_idx,
@@ -163,21 +163,34 @@ export async function GET() {
         WHERE inf_cost IS NOT NULL
         ORDER BY timestamp ASC
       `.catch(() => []),
-      // ops matrix seed — structural completed/busted via the `result` column
+      // ops matrix seed — structural completed/busted via the `result` column.
+      // Must mirror /api/ops-matrix's windows (including h24 + PARTIAL) so the
+      // SSR-hydrated matrix doesn't flash 0/0 for the 24h row before the
+      // client-side /api/ops-matrix fetch lands.
       db`
         SELECT op_type,
           (result = 'completed') AS is_ok,
-          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 60})   AS m1,
-          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 300})  AS m5,
-          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 900})  AS m15,
-          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 1800}) AS m30,
-          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 3600}) AS m60
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 60})    AS m1,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 300})   AS m5,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 900})   AS m15,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 1800})  AS m30,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 3600})  AS m60,
+          COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 86400}) AS h24
         FROM transfers
-        WHERE kind = 'MINT' AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION')
-          AND timestamp::bigint >= ${now - 3600}
+        WHERE kind = 'MINT' AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL')
+          AND timestamp::bigint >= ${now - 86400}
         GROUP BY op_type, is_ok
       `.catch(() => []),
-    ]) : [[], [], [{ cnt: 0 }], [{ cnt: 0 }], [{}], [], [], [], [], [], []];
+      // active counts from companies.trade_type (mirrors /api/ops-matrix).
+      db`
+        SELECT trade_type, COUNT(*)::int AS cnt
+        FROM companies
+        WHERE active = TRUE
+          AND trade_type IS NOT NULL
+          AND end_time > ${now}
+        GROUP BY trade_type
+      `.catch(() => []),
+    ]) : [[], [], [{ cnt: 0 }], [{ cnt: 0 }], [{}], [], [], [], [], [], [], []];
 
     // ── Resolve prices ───────────────────────────────────────────────────────
     const dirtyPrice = dirtyPriceResult ?? 0;
@@ -631,15 +644,23 @@ export async function GET() {
       priceBase25h,
       infCostHistory: (infHistRows || []).map(r => ({ v: Number(r.v), t: Number(r.t) })),
       opsMatrix: (() => {
-        const keyMap = { DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion' };
-        const windows = ['m1', 'm5', 'm15', 'm30', 'm60'];
+        const keyMap = { DRUG_DEAL: 'drugs', ARMS_DEAL: 'arms', EXTORTION: 'extortion', PARTIAL: null };
+        const windows = ['m1', 'm5', 'm15', 'm30', 'm60', 'h24'];
         const empty = () => Object.fromEntries(windows.map(w => [w, { ok: 0, bust: 0 }]));
-        const result = { drugs: empty(), arms: empty(), extortion: empty() };
+        const result = {
+          drugs:     { ...empty(), active: 0 },
+          arms:      { ...empty(), active: 0 },
+          extortion: { ...empty(), active: 0 },
+        };
         for (const row of (opsMatrixRows || [])) {
           const key = keyMap[row.op_type];
           if (!key) continue;
           const field = row.is_ok ? 'ok' : 'bust';
           for (const w of windows) result[key][w][field] += Number(row[w] ?? 0);
+        }
+        for (const row of (opsMatrixActiveRows || [])) {
+          const key = keyMap[row.trade_type];
+          if (key) result[key].active = Number(row.cnt ?? 0);
         }
         return result;
       })(),
