@@ -5,6 +5,7 @@ import { InfTooltip, computeWatch, fmtK } from './trade-helpers.jsx';
 import { DEMO, GENESIS, bucketAt } from '../../lib/demo-constants.js';
 import { useVirtualClock, useVirtualNow } from './hooks/use-virtual-clock.js';
 import { TimeBar } from './TimeBar.jsx';
+import { DemoIntro } from './DemoIntro.jsx';
 import { getCycleStart, SEASON2_START, isWeekendTs } from '../api/offshore-data/helpers.js';
 
 function nowHMS() {
@@ -836,26 +837,6 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
       density={density}
     >
       <div className="tm-content">
-        {showDemoNote && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '4px 12px',
-            fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs-xs)',
-            color: 'var(--t-fg-soft)',
-            background: 'var(--t-bg-soft, transparent)',
-            borderBottom: '1px dotted var(--t-rule)',
-          }}>
-            <span style={{ opacity: 0.9 }}>
-              <b style={{ color: 'var(--t-fg)' }}>recorded data · may 5 – 31 2026</b>
-              <span> · the protocol is paused — you're watching a replay. drag the timeline or press ▶</span>
-            </span>
-            <span
-              title="dismiss"
-              onClick={() => { setShowDemoNote(false); try { sessionStorage.setItem('offshoreDemoNoteDismissed', '1'); } catch {} }}
-              style={{ cursor: 'pointer', marginLeft: 'auto', padding: '0 4px', color: 'var(--t-fg-mut)' }}
-            >×</span>
-          </div>
-        )}
         {showSmallScreenNote && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
@@ -925,6 +906,12 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
       </div>
 
       {showToasts && <Toasts items={filteredTicker} />}
+      {showDemoNote && (
+        <DemoIntro
+          moment={new Date(vnow * 1000).toISOString().slice(0, 16).replace('T', ' ')}
+          onClose={() => { setShowDemoNote(false); try { sessionStorage.setItem('offshoreDemoNoteDismissed', '1'); } catch {} }}
+        />
+      )}
       <FeedbackTerminal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </TerminalShell>
   );
