@@ -200,7 +200,11 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
   const [showSmallScreenNote, setShowSmallScreenNote] = useState(false);
   const [showDemoNote, setShowDemoNote] = useState(() => {
     if (!DEMO || typeof window === 'undefined') return false;
-    try { return sessionStorage.getItem('offshoreDemoNoteDismissed') !== '1'; } catch { return true; }
+    try {
+      // ?intro=0 suppresses the intro modal (embeds / screenshots).
+      if (new URL(window.location.href).searchParams.get('intro') === '0') return false;
+      return sessionStorage.getItem('offshoreDemoNoteDismissed') !== '1';
+    } catch { return true; }
   });
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   // F2 toggles the feedback terminal (matches the bottom-bar chip's keybinding).
