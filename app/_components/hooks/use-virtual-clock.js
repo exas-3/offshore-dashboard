@@ -75,8 +75,9 @@ export function VirtualClockProvider({ initialAt = null, initialSpeed = 0, child
       try {
         const url = new URL(window.location.href);
         url.searchParams.set('at', new Date(now * 1000).toISOString().slice(0, 19) + 'Z');
-        if (state.speed > 0) url.searchParams.set('speed', String(state.speed));
-        else url.searchParams.delete('speed');
+        // Always write speed — absent means "default (60×)", explicit 0 keeps
+        // a shared paused moment frozen on open.
+        url.searchParams.set('speed', String(state.speed));
         window.history.replaceState(window.history.state, '', url);
       } catch { /* ignore */ }
     };

@@ -16,9 +16,12 @@ function parseUrlAt() {
       const n = /^\d{9,12}$/.test(raw) ? Number(raw) : Math.floor(Date.parse(raw) / 1000);
       if (Number.isFinite(n)) at = clampAt(n);
     }
-    const spd = Number(sp.get('speed'));
-    return { at, speed: [1, 60, 3600].includes(spd) ? spd : 0 };
-  } catch { return { at: DEMO_DEFAULT_AT, speed: 0 }; }
+    // Default: the replay is already running at 60× when you land. An
+    // explicit ?speed=0 keeps a shared moment frozen.
+    const rawSpeed = sp.get('speed');
+    const spd = rawSpeed == null ? 60 : Number(rawSpeed);
+    return { at, speed: [0, 1, 60, 3600].includes(spd) ? spd : 60 };
+  } catch { return { at: DEMO_DEFAULT_AT, speed: 60 }; }
 }
 
 const THEME_FAVICON = {

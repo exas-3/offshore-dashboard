@@ -63,7 +63,6 @@ import { FeedbackTerminal } from './FeedbackTerminal.jsx';
 import { CriminalChartSection } from './sections/CriminalChartSection.jsx';
 import { WalletInspectorSection } from './sections/WalletInspectorSection.jsx';
 import { StakingSection } from './sections/StakingSection.jsx';
-import { ExtractorsSection } from './sections/ExtractorsSection.jsx';
 import { CycleEarnersSection } from './sections/CycleEarnersSection.jsx';
 
 // Paired grid cells resize as complements (span + partner = 12).
@@ -111,8 +110,7 @@ const DEFAULT_SPANS = {
   'staking-chart':      7,
   'hits-table':         7,
   'hits-chart':         5,
-  'extractors':         6,
-  'cycle-earners':      6,
+  'cycle-earners':     12,
   'enterprises':       12,
 };
 
@@ -898,7 +896,6 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
         <VaultSection    D={D} grid={grid} />
         <TradesSection   grid={grid} liveTrades={liveTrades} ops={ops} search={search} ethPrice={counters.eth} aliases={aliases} onWallet={openWallet} now={vnow} />
         <section id="sec-leaderboards" className="tm-grid-12">
-          <ExtractorsSection   grid={grid} aliases={aliases} onWallet={openWallet} noSection />
           <CycleEarnersSection grid={grid} aliases={aliases} onWallet={openWallet} noSection />
         </section>
         <HitsSection     D={D} grid={grid} aliases={aliases} onWallet={openWallet} />

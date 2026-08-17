@@ -91,7 +91,7 @@ export function DemoIntro({ onClose, moment = null }) {
             padding: '6px 0', marginBottom: 16,
             fontSize: 'var(--t-fs-sm)',
           }}>
-            {row('▸', 'var(--t-pos)', <>press play in the top bar — replay at 1×, 60× or 3600×</>)}
+            {row('▸', 'var(--t-pos)', <>the tape is already rolling at 60× — switch to 1× or 3600×, or pause</>)}
             {row('◆', 'var(--t-warn, var(--t-hdr))', <>drag the timeline or pick any date &amp; time to jump</>)}
             {row('⇗', 'var(--t-hdr)', <>every moment is a shareable link — copy the URL to freeze it</>)}
           </div>
