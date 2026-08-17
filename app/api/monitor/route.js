@@ -6,12 +6,79 @@ import {
   durationToOpType,
 } from '../../../server/etherscan.js';
 import { ethPriceFeed } from '../../../lib/eth-price-feed.js';
-import { getPlayerStats, getWalletLabel, getDb } from '../../../lib/index.js';
+import { getPlayerStats, getWalletLabel, getDb, getActiveTradesAt, getPricesAt } from '../../../lib/index.js';
+import { resolveAsOf, nowCap } from '../../../lib/demo-clock.js';
+import { getCycleStart } from '../offshore-data/helpers.js';
 
 export async function GET(req) {
   const wallet = new URL(req.url).searchParams.get('wallet')?.toLowerCase().trim();
   if (!wallet || !/^0x[0-9a-f]{40}$/i.test(wallet)) {
     return NextResponse.json({ error: 'Invalid wallet address' }, { status: 400 });
+  }
+
+  const asOf = resolveAsOf(req);
+  if (asOf != null) {
+    // Demo branch: zero RPC. Active trades reconstructed from settled ops;
+    // balances from transfer deltas as of the virtual moment.
+    try {
+      const { now, cap } = nowCap(asOf);
+      const db = getDb();
+      const [trades, balRow, infRow, prices, playerStats, labelRow] = await Promise.all([
+        getActiveTradesAt(asOf, { owner: wallet }).catch(() => []),
+        db`
+          SELECT COALESCE(SUM(CASE WHEN to_addr=${wallet} THEN amount ELSE -amount END), 0)::float AS bal
+          FROM transfers WHERE (to_addr=${wallet} OR from_addr=${wallet}) AND timestamp <= ${cap}
+        `.catch(() => [{ bal: 0 }]),
+        db`
+          SELECT COALESCE(SUM(CASE WHEN to_addr=${wallet} THEN amount ELSE -amount END), 0)::float AS bal
+          FROM influence_transfers WHERE (to_addr=${wallet} OR from_addr=${wallet}) AND timestamp <= ${cap}
+        `.catch(() => [{ bal: 0 }]),
+        getPricesAt(asOf).catch(() => ({ dirty: null, infCost: null })),
+        getPlayerStats(wallet, getCycleStart(now), asOf).catch(() => null),
+        getWalletLabel(wallet).catch(() => null),
+      ]);
+
+      const companies = trades.map(t => ({
+        company:          t.hash,
+        active:           true,
+        completable:      false,
+        liquidatable:     false,
+        endTime:          t.endTime,
+        liqPrice:         '0',
+        autoTradeEnabled: false,
+        cooldownEnd:      0,
+        entryPrice:       0,
+        startTime:        t.startTime,
+        tradeType:        t.opType,
+        locationId:       null,
+      }));
+
+      return NextResponse.json({
+        demo: true,
+        wallet,
+        influenceBalance: Math.max(0, Number(infRow[0]?.bal ?? 0)),
+        dirtyBalance:     Math.max(0, Number(balRow[0]?.bal ?? 0)),
+        currentEthPrice:  null,
+        infCost:          prices.infCost,
+        companies,
+        summary: {
+          total: companies.length,
+          autoTradeOn: 0,
+          autoTradeOff: companies.length,
+          activeCount: companies.length,
+          liquidatable: 0,
+          completable: 0,
+        },
+        playerStats,
+        label: labelRow ? {
+          label:             labelRow.label || null,
+          label_score:       labelRow.label_score != null ? Number(labelRow.label_score) : null,
+          label_computed_at: labelRow.label_computed_at != null ? Number(labelRow.label_computed_at) : null,
+        } : null,
+      });
+    } catch (err) {
+      return NextResponse.json({ error: err.message }, { status: 500 });
+    }
   }
 
   try {

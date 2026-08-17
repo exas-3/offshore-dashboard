@@ -1,10 +1,13 @@
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { getTradeStates } from '../../../../server/etherscan.js';
+import { guardDemoDisabled } from '../../../../lib/api-guard.js';
 
 const CORS = { 'Access-Control-Allow-Origin': '*' };
 
 export async function GET(req) {
+  const blocked = guardDemoDisabled();
+  if (blocked) return blocked;
   const raw = new URL(req.url).searchParams.get('addrs') ?? '';
   const addrs = raw.split(',').map(a => a.trim().toLowerCase()).filter(a => /^0x[0-9a-f]{40}$/.test(a));
   if (!addrs.length) return NextResponse.json({ error: 'no valid addrs' }, { status: 400, headers: CORS });

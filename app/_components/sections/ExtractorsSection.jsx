@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Region, GridCell, Sortable, fmt, LabelChip } from '../terminal.jsx';
 import { usePagedRows, Pager } from '../trade-helpers.jsx';
+import { useAtParam } from '../hooks/use-virtual-clock.js';
 
 function shortAddr(a) {
   if (!a) return '—';
@@ -19,10 +20,11 @@ export function ExtractorsSection({ grid, aliases = {}, onWallet, noSection = fa
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState('score');
   const [sortDir, setSortDir] = useState('desc');
+  const at = useAtParam(300); // heavy query — 5-min virtual buckets
 
   useEffect(() => {
     let alive = true;
-    const refresh = () => fetch('/api/extractors')
+    const refresh = () => fetch(`/api/extractors${at ? `?${at}` : ''}`)
       .then(r => r.json())
       .then(d => {
         if (!alive || !d || d.error) return;
@@ -33,7 +35,7 @@ export function ExtractorsSection({ grid, aliases = {}, onWallet, noSection = fa
     refresh();
     const t = setInterval(refresh, 60_000);
     return () => { alive = false; clearInterval(t); };
-  }, []);
+  }, [at]);
 
   function sortBy(k) {
     if (sortKey === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');

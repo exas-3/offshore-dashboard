@@ -19,13 +19,14 @@ function pickBucket(span) {
   return '1m';
 }
 
-export function useEthCandles({ span, xMin, xMax, tick }) {
+export function useEthCandles({ span, xMin, xMax, tick, enabled = true }) {
   const bucketName = useMemo(() => pickBucket(span), [span]);
   const bucketSec  = BUCKET_SEC[bucketName];
 
   const [serverCandles, setServerCandles] = useState([]);
 
   useEffect(() => {
+    if (!enabled) return;
     let live = true;
     const interval = bucketSec * 1000;
     const load = () => fetch(`/api/eth-candles?bucket=${bucketName}`, { cache: 'no-cache' })
@@ -35,7 +36,7 @@ export function useEthCandles({ span, xMin, xMax, tick }) {
     load();
     const t = setInterval(load, Math.min(5000, interval));
     return () => { live = false; clearInterval(t); };
-  }, [bucketName, bucketSec]);
+  }, [bucketName, bucketSec, enabled]);
 
   // Visible candles. tick is read so the in-progress last candle visually
   // advances each second between server fetches.

@@ -1,12 +1,14 @@
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { getDb } from '../../../../lib/index.js';
-import { getLatestEthPrice } from '../../../../lib/index.js';
+import { getLatestEthPrice, getPricesAt, getActiveTradesAt, getRecentStartsAt } from '../../../../lib/index.js';
 import {
   fetchDirtyPrice, fetchLatestInfCost, getLatestBlock, fetchTps,
   mapOpType, EARN_OPS, tickerKind, tickerLabel,
 } from '../../../../server/etherscan.js';
 import { ethPriceFeed } from '../../../../lib/eth-price-feed.js';
+import { resolveAsOf, nowCap } from '../../../../lib/demo-clock.js';
+import { GENESIS } from '../../../../lib/chain-constants.js';
 
 const CORS = { 'Access-Control-Allow-Origin': '*' };
 
@@ -34,18 +36,20 @@ async function getCachedInfCost() {
 export async function GET(request) {
   try {
     const since = Number(new URL(request.url).searchParams.get('since') || '0');
-    const now   = Math.floor(Date.now() / 1000);
+    const asOf  = resolveAsOf(request);
+    const demo  = asOf != null;
+    const { now, cap } = nowCap(asOf);
     const db    = getDb();
 
-    const [dirtyPrice, infCost, latestBlock, tps, ethFromDb, dawRow, opsRow, latestOpRow, newOpsRows, latestEventRow, companiesRow, activeOpsRow, companiesStatsRow, recentStartsRows, newLiqsRows] = await Promise.all([
-      getCachedDirtyPrice().catch(() => null),
-      getCachedInfCost().catch(() => null),
-      getLatestBlock().catch(() => null),
-      fetchTps().catch(() => null),
-      getLatestEthPrice().catch(() => null),
+    const [dirtyPrice, infCost, latestBlock, tps, ethFromDb, dawRow, opsRow, latestOpRow, newOpsRows, latestEventRow, companiesRow, activeOpsRow, companiesStatsRow, recentStartsRows, newLiqsRows, pricesAt] = await Promise.all([
+      demo ? Promise.resolve(null) : getCachedDirtyPrice().catch(() => null),
+      demo ? Promise.resolve(null) : getCachedInfCost().catch(() => null),
+      demo ? Promise.resolve(now - GENESIS) : getLatestBlock().catch(() => null),
+      demo ? Promise.resolve(null) : fetchTps().catch(() => null),
+      getLatestEthPrice(asOf).catch(() => null), // demo: as-of oracle tape value
       db ? db`
         SELECT COUNT(DISTINCT to_addr)::int AS cnt
-        FROM transfers WHERE kind = 'MINT' AND timestamp >= ${now - 86400}
+        FROM transfers WHERE kind = 'MINT' AND timestamp >= ${now - 86400} AND timestamp <= ${now}
       `.catch(() => [{ cnt: 0 }]) : Promise.resolve([{ cnt: 0 }]),
       db ? db`
         SELECT
@@ -54,67 +58,70 @@ export async function GET(request) {
         FROM transfers
         WHERE kind = 'MINT'
           AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL')
-          AND timestamp >= ${now - 3600}
+          AND timestamp >= ${now - 3600} AND timestamp <= ${now}
       `.catch(() => [{ per_min: 0, per_hour: 0 }]) : Promise.resolve([{ per_min: 0, per_hour: 0 }]),
       db ? db`
         SELECT to_addr, op_type, amount, timestamp FROM transfers
-        WHERE kind = 'MINT' AND op_type != ''
+        WHERE kind = 'MINT' AND op_type != '' AND timestamp <= ${cap}
         ORDER BY timestamp DESC, log_index DESC LIMIT 1
       `.catch(() => []) : Promise.resolve([]),
-      // New ops since last poll
+      // New ops since last poll (bounded above by virtual now in demo)
       db && since > 0 ? db`
         (SELECT t.hash, t.to_addr AS addr, NULL AS from_addr2, t.op_type, t.amount::float AS amount, t.timestamp, 'MINT' AS kind, t.result, h.cost::float AS hit_cost, h.stolen::float AS hit_stolen
           FROM transfers t LEFT JOIN hits h ON h.tx_hash = t.hash
-          WHERE t.kind='MINT' AND t.timestamp > ${since}
+          WHERE t.kind='MINT' AND t.timestamp > ${since} AND t.timestamp <= ${now}
             AND t.op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP','HIT','HIT_REFUND')
           ORDER BY t.timestamp ASC LIMIT 60)
         UNION ALL
         (SELECT hash, NULL, from_addr, op_type, amount::float, timestamp, 'SPEND', NULL::text, NULL::float, NULL::float
-          FROM transfers WHERE kind='SPEND' AND timestamp > ${since}
+          FROM transfers WHERE kind='SPEND' AND timestamp > ${since} AND timestamp <= ${now}
             AND op_type IN ('BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE','FOURTH_ENTERPRISE','ENTERPRISE')
           ORDER BY timestamp ASC LIMIT 20)
         ORDER BY timestamp ASC LIMIT 60
       `.catch(() => []) : Promise.resolve([]),
       db ? db`
         (SELECT hash, 'DEX_SELL' AS etype, from_addr AS addr, amount, timestamp, NULL::text AS result
-          FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_SELL' AND amount >= 1000
+          FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_SELL' AND amount >= 1000 AND timestamp <= ${cap}
           ORDER BY timestamp DESC LIMIT 1)
         UNION ALL
         (SELECT hash, 'DEX_BUY', to_addr, amount, timestamp, NULL::text
-          FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_BUY' AND amount >= 1000
+          FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_BUY' AND amount >= 1000 AND timestamp <= ${cap}
           ORDER BY timestamp DESC LIMIT 1)
         UNION ALL
         (SELECT hash, op_type, to_addr, amount, timestamp, result
           FROM transfers WHERE kind='MINT'
             AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL','SCRAP','HIT','HIT_REFUND')
+            AND timestamp <= ${cap}
           ORDER BY timestamp DESC LIMIT 1)
         UNION ALL
         (SELECT hash, op_type, from_addr, amount, timestamp, NULL::text
           FROM transfers WHERE kind='SPEND'
             AND op_type IN ('BUY_ASSET','LEVEL_UP','THIRD_ENTERPRISE','FOURTH_ENTERPRISE','ENTERPRISE')
+            AND timestamp <= ${cap}
           ORDER BY timestamp DESC LIMIT 1)
         UNION ALL
         (SELECT NULL::text AS hash, 'STAKE' AS etype, user_addr AS addr, amount::numeric, timestamp, NULL::text
           FROM staking_deposits
+          WHERE timestamp <= ${cap}
           ORDER BY timestamp DESC LIMIT 1)
         ORDER BY timestamp DESC LIMIT 1
       `.catch(() => []) : Promise.resolve([]),
-      db ? db`
+      demo ? getActiveTradesAt(asOf).catch(() => []) : (db ? db`
         SELECT c.address, c.owner, c.liq_price, c.end_time, c.active, c.auto_trade,
                c.trade_type AS op_type, c.location_id
         FROM companies c
         WHERE c.active = TRUE
         ORDER BY c.end_time ASC NULLS LAST
-      `.catch(() => []) : Promise.resolve([]),
-      db ? db`SELECT COUNT(*)::int AS cnt FROM companies WHERE active = TRUE`.catch(() => []) : Promise.resolve([]),
-      db ? db`
+      `.catch(() => []) : Promise.resolve([])),
+      demo ? Promise.resolve(null) : (db ? db`SELECT COUNT(*)::int AS cnt FROM companies WHERE active = TRUE`.catch(() => []) : Promise.resolve([])),
+      demo ? Promise.resolve(null) : (db ? db`
         SELECT COUNT(*)::int AS total,
                COUNT(DISTINCT owner)::int AS unique_owners,
                COUNT(*) FILTER (WHERE active AND auto_trade)::int AS auto_on
         FROM companies
-      `.catch(() => []) : Promise.resolve([]),
+      `.catch(() => []) : Promise.resolve([])),
       // Ops that started in the last 5 minutes: start_time = end_time - duration per trade_type.
-      db ? db`
+      demo ? getRecentStartsAt(asOf).catch(() => []) : (db ? db`
         SELECT * FROM (
           SELECT address, owner, end_time, trade_type, liq_price, location_id,
                  (end_time - (CASE trade_type
@@ -125,16 +132,26 @@ export async function GET(request) {
           FROM companies
           WHERE active = TRUE AND trade_type IS NOT NULL AND end_time > 0
         ) s
-        WHERE start_time >= EXTRACT(EPOCH FROM now())::bigint - 300
+        WHERE start_time >= ${now - 300}
         ORDER BY start_time DESC
-      `.catch(() => []) : Promise.resolve([]),
-      // Newly-liquidated positions since last poll
-      db && since > 0 ? db`
+      `.catch(() => []) : Promise.resolve([])),
+      // Newly-liquidated positions since last poll. Demo: busted game-op MINTs
+      // in (since, now] — companies.deactivated_at only stores the LAST
+      // deactivation per company, historically wrong.
+      db && since > 0 ? (demo ? db`
+        SELECT to_addr AS addr, NULL AS liq_price, timestamp
+        FROM transfers
+        WHERE kind='MINT' AND result='busted'
+          AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION')
+          AND timestamp > ${since} AND timestamp <= ${now}
+        ORDER BY timestamp ASC LIMIT 10
+      `.catch(() => []) : db`
         SELECT owner AS addr, liq_price, deactivated_at AS timestamp
         FROM companies
         WHERE deactivated_at > ${since}
         ORDER BY deactivated_at ASC LIMIT 10
-      `.catch(() => []) : Promise.resolve([]),
+      `.catch(() => [])) : Promise.resolve([]),
+      demo ? getPricesAt(asOf).catch(() => ({ dirty: null, infCost: null })) : Promise.resolve(null),
     ]);
 
     const ethPrice = typeof ethFromDb === 'number' ? ethFromDb : 0;
@@ -142,22 +159,40 @@ export async function GET(request) {
       if (!raw || raw === '0') return 0;
       try { return Number(BigInt(raw) / 10n ** 12n) / 1e6; } catch { return 0; }
     }
-    const liveTrades = (companiesRow || []).map(c => {
-      const liq = liqPriceUsd(c.liq_price);
-      return {
-        id:         shortAddr(c.address),
-        owner:      c.owner,
-        ownerShort: shortAddr(c.owner),
-        auto:     c.auto_trade,
-        active:   c.active,
-        endTime:  c.active ? Number(c.end_time) : null,
-        liqPrice: liq,
-        ethPrice,
-        buffer:   Math.round((ethPrice - liq) * 100) / 100,
-        opType:   c.op_type ? mapOpType(c.op_type) : '—',
-        locationId: c.location_id != null ? Number(c.location_id) : null,
-      };
-    });
+    const liveTrades = demo
+      ? (companiesRow || []).map(t => ({
+          id:         shortAddr(t.hash),
+          owner:      t.owner,
+          ownerShort: shortAddr(t.owner),
+          auto:     null,
+          active:   true,
+          endTime:  t.endTime,
+          liqPrice: null,
+          ethPrice: null,
+          buffer:   null,
+          opType:   mapOpType(t.opType),
+          locationId: null,
+        }))
+      : (companiesRow || []).map(c => {
+          const liq = liqPriceUsd(c.liq_price);
+          return {
+            id:         shortAddr(c.address),
+            owner:      c.owner,
+            ownerShort: shortAddr(c.owner),
+            auto:     c.auto_trade,
+            active:   c.active,
+            endTime:  c.active ? Number(c.end_time) : null,
+            liqPrice: liq,
+            ethPrice,
+            buffer:   Math.round((ethPrice - liq) * 100) / 100,
+            opType:   c.op_type ? mapOpType(c.op_type) : '—',
+            locationId: c.location_id != null ? Number(c.location_id) : null,
+          };
+        });
+
+    const ic = demo
+      ? (typeof pricesAt?.infCost === 'number' ? pricesAt.infCost : 12.41)
+      : (typeof infCost === 'number' ? infCost : 12.41);
 
     const op = latestOpRow[0];
     const latestOp = op ? {
@@ -165,10 +200,8 @@ export async function GET(request) {
       op:     mapOpType(op.op_type),
       result: EARN_OPS.has(op.op_type) ? (op.result ?? 'busted') : 'ok',
       dirty:  Math.round(Number(op.amount) * 100) / 100,
-      inf:    typeof infCost === 'number' ? infCost : 12.41,
+      inf:    ic,
     } : null;
-
-    const ic = typeof infCost === 'number' ? infCost : 12.41;
     // Deduplicate: same wallet + same tx → collapse into one entry (sum amounts)
     const dedupMap = new Map();
     for (const r of (newOpsRows || [])) {
@@ -232,29 +265,42 @@ export async function GET(request) {
       _ts:      Number(r.timestamp),
     }));
 
-    const recentStarts = (recentStartsRows || []).map(r => ({
-      company:    r.address,
-      wallet:     shortAddr(r.owner),
-      walletFull: r.owner,
-      opType:     r.trade_type,
-      startTime:  Number(r.start_time),
-      endTime:    Number(r.end_time),
-      liqPrice:   liqPriceUsd(r.liq_price),
-      locationId: r.location_id != null ? Number(r.location_id) : null,
-    }));
+    const recentStarts = demo
+      ? (recentStartsRows || []).map(t => ({
+          company:    t.hash,
+          wallet:     shortAddr(t.owner),
+          walletFull: t.owner,
+          opType:     t.opType,
+          startTime:  t.startTime,
+          endTime:    t.endTime,
+          liqPrice:   null,
+          locationId: null,
+        }))
+      : (recentStartsRows || []).map(r => ({
+          company:    r.address,
+          wallet:     shortAddr(r.owner),
+          walletFull: r.owner,
+          opType:     r.trade_type,
+          startTime:  Number(r.start_time),
+          endTime:    Number(r.end_time),
+          liqPrice:   liqPriceUsd(r.liq_price),
+          locationId: r.location_id != null ? Number(r.location_id) : null,
+        }));
 
     return new NextResponse(JSON.stringify({
+      demo,
+      asOf:        demo ? now : null,
       block:       latestBlock ?? null,
       tps:         tps ?? null,
-      dirty:       dirtyPrice ?? null,
-      opCost:      typeof infCost === 'number' ? infCost : null,
-      eth:         ethPriceFeed.getLatest() ?? ethFromDb ?? null,
+      dirty:       demo ? (pricesAt?.dirty ?? null) : (dirtyPrice ?? null),
+      opCost:      demo ? (pricesAt?.infCost ?? null) : (typeof infCost === 'number' ? infCost : null),
+      eth:         demo ? (ethFromDb ?? null) : (ethPriceFeed.getLatest() ?? ethFromDb ?? null),
       gas:         0.001,
       daw:         Number(dawRow[0]?.cnt ?? 0),
       opsMin:      Number(opsRow[0]?.per_min ?? 0),
       opsHour:     Number(opsRow[0]?.per_hour ?? 0),
-      activeOps:   Number(activeOpsRow[0]?.cnt ?? 0),
-      companiesStats: (() => {
+      activeOps:   demo ? liveTrades.length : Number(activeOpsRow[0]?.cnt ?? 0),
+      companiesStats: demo ? null : (() => {
         const total       = Number(companiesStatsRow[0]?.total ?? 0);
         const autoOn      = Number(companiesStatsRow[0]?.auto_on ?? 0);
         const activeCount = Number(activeOpsRow[0]?.cnt ?? 0);

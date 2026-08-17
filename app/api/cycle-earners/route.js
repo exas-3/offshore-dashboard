@@ -1,26 +1,31 @@
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { getDb } from '../../../lib/db/connection.js';
+import { resolveAsOf, nowCap, bucketAt } from '../../../lib/demo-clock.js';
 
 const CORS = { 'Access-Control-Allow-Origin': '*' };
-let _cache = new Map(); // keyed on cycle_id
+let _cache = new Map(); // keyed on cycle_id (+asOf bucket)
 const TTL = 60_000;
+const CACHE_MAX = 32;
 
 export async function GET(req) {
   try {
     const url = new URL(req.url);
     let cycleId = Number(url.searchParams.get('cycle'));
     const limit = Math.min(500, Number(url.searchParams.get('limit')) || 100);
+    const asOf = resolveAsOf(req);
+    const { cap } = nowCap(asOf);
 
     const db = getDb();
 
-    // Default to the most recent cycle present in cycle_rewards.
+    // Default to the most recent cycle present in cycle_rewards as of the
+    // viewing moment (created_at is the API-ingest time — ±hours precision).
     if (!cycleId || !Number.isFinite(cycleId)) {
-      const [latest] = await db`SELECT MAX(cycle_id)::int AS m FROM cycle_rewards`;
+      const [latest] = await db`SELECT MAX(cycle_id)::int AS m FROM cycle_rewards WHERE created_at <= to_timestamp(${cap})`;
       cycleId = latest?.m ?? 1;
     }
 
-    const cacheKey = `${cycleId}:${limit}`;
+    const cacheKey = `${cycleId}:${limit}:${asOf != null ? bucketAt(asOf, 300) : 'live'}`;
     const cached = _cache.get(cacheKey);
     if (cached && Date.now() - cached.ts < TTL) {
       return NextResponse.json(cached.data, { headers: CORS });
@@ -38,7 +43,7 @@ export async function GET(req) {
         w.label                                 AS label
       FROM cycle_rewards cr
       LEFT JOIN wallet_aliases w ON w.address = cr.user_address
-      WHERE cr.cycle_id = ${cycleId}
+      WHERE cr.cycle_id = ${cycleId} AND cr.created_at <= to_timestamp(${cap})
       ORDER BY cr.reward_amount_wei::numeric DESC
       LIMIT ${limit}`;
 
@@ -57,6 +62,7 @@ export async function GET(req) {
     const cycles = await db`
       SELECT cycle_id::int AS id, COUNT(*)::int AS users, SUM(reward_amount_wei::numeric)/1e18 AS pool
       FROM cycle_rewards
+      WHERE created_at <= to_timestamp(${cap})
       GROUP BY cycle_id
       ORDER BY cycle_id DESC`;
 
@@ -66,6 +72,7 @@ export async function GET(req) {
       items,
     };
     _cache.set(cacheKey, { ts: Date.now(), data });
+    while (_cache.size > CACHE_MAX) _cache.delete(_cache.keys().next().value);
     return NextResponse.json(data, { headers: CORS });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500, headers: CORS });

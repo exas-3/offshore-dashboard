@@ -1,6 +1,7 @@
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { getDexActivity } from '../../../lib/index.js';
+import { resolveAsOf } from '../../../lib/demo-clock.js';
 
 const LP = '0x6bd9eef21c2419feffafbf4850153a3b3a74a5e1';
 function normalizeTx(t) {
@@ -12,7 +13,7 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const since = parseInt(searchParams.get('since') ?? '0', 10);
     const limit = Math.min(parseInt(searchParams.get('limit') ?? '50', 10), 100);
-    const rows  = (await getDexActivity(since, limit)).map(t => ({
+    const rows  = (await getDexActivity(since, limit, resolveAsOf(req))).map(t => ({
       ...normalizeTx(t),
       wallet: t.from_addr === LP ? t.to_addr : t.from_addr,
       kind: 'SWAP',

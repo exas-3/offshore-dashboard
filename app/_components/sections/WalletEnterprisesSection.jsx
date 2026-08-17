@@ -39,7 +39,7 @@ export function WalletEnterprisesSection({ address, grid }) {
     setLoading(true);
     fetch(`/api/wallet-enterprises/${address.toLowerCase()}`)
       .then(r => r.json())
-      .then(d => { if (alive && !d.error) { setData(d); setLoading(false); } })
+      .then(d => { if (alive) { if (!d.error) setData(d); setLoading(false); } })
       .catch(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [address]);
@@ -61,7 +61,9 @@ export function WalletEnterprisesSection({ address, grid }) {
           <div className="dim" style={{ fontSize: 'var(--t-fs-xs)', padding: '4px 0' }}>loading…</div>
         )}
         {!loading && generators.length === 0 && (
-          <div className="dim" style={{ fontSize: 'var(--t-fs-xs)', padding: '4px 0' }}>no loadouts</div>
+          <div className="dim" style={{ fontSize: 'var(--t-fs-xs)', padding: '4px 0' }}>
+            {data ? 'no loadouts' : 'unavailable in replay — loadouts are live-chain data'}
+          </div>
         )}
 
         {generators.map((g, gi) => (

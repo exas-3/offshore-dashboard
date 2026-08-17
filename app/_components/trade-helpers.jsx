@@ -82,9 +82,9 @@ export const LEADERBOARD = [
   { wallet: '0x6883…8806', ops: 998,  earned: '46.8k', net: '+34.0k', rank: -2,  spark: [12, 14, 17, 20, 22, 24, 26, 28, 30, 31, 33, 35] },
 ];
 
-export function fmtCountdownLocal(endTime) {
+export function fmtCountdownLocal(endTime, nowTs = null) {
   if (!endTime) return '—';
-  const diff = endTime - Math.floor(Date.now() / 1000);
+  const diff = endTime - (nowTs ?? Math.floor(Date.now() / 1000));
   if (diff <= 0) return '—';
   if (diff < 60) return `${diff}s`;
   const m = Math.floor(diff / 60), s = diff % 60;
@@ -92,34 +92,37 @@ export function fmtCountdownLocal(endTime) {
   return `${Math.floor(diff / 3600)}h ${String(m % 60).padStart(2, '0')}m`;
 }
 
-export function computeWatch(raw, ethPrice) {
-  const now = Math.floor(Date.now() / 1000);
+export function computeWatch(raw, ethPrice, nowTs = null) {
+  const now = nowTs ?? Math.floor(Date.now() / 1000);
   return raw
     .filter(c => c.active)
     .map(c => ({
       ...c,
-      endsIn: fmtCountdownLocal(c.endTime),
-      buffer: ethPrice > 0 ? Math.round((ethPrice - c.liqPrice) * 100) / 100 : c.buffer,
+      endsIn: fmtCountdownLocal(c.endTime, now),
+      buffer: ethPrice > 0 && c.liqPrice != null ? Math.round((ethPrice - c.liqPrice) * 100) / 100 : c.buffer,
     }))
-    .filter(c => c.buffer >= 0 && !(c.endTime > 0 && c.endTime <= now))
-    .sort((a, b) => a.buffer - b.buffer)
+    .filter(c => (c.buffer == null || c.buffer >= 0) && !(c.endTime > 0 && c.endTime <= now))
+    // null buffers (demo mode — no liq data) sort by soonest end instead
+    .sort((a, b) => (a.buffer == null || b.buffer == null)
+      ? (a.endTime ?? Infinity) - (b.endTime ?? Infinity)
+      : a.buffer - b.buffer)
     .slice(0, 5);
 }
 
 // Process raw live trades into the displayable list (active first, idle
 // second) with computed liveBuffer + liveEndsIn. Splitting filter from
 // render lets the caller paginate the FILTERED set.
-export function processTradeRows(rows, range, ethPrice = 0) {
-  const now = Math.floor(Date.now() / 1000);
+export function processTradeRows(rows, range, ethPrice = 0, nowTs = null) {
+  const now = nowTs ?? Math.floor(Date.now() / 1000);
   const filtered = (range === 'active' ? rows.filter((r) => r.active)
                   : range === 'auto'   ? rows.filter((r) => r.auto)
                   : rows).filter((r) => r.endTime > now);
   const active = filtered.filter((r) => r.active);
   const idle   = filtered.filter((r) => !r.active);
   return [...active, ...idle].flatMap((r) => {
-    const liveBuffer = ethPrice > 0 ? Math.round((ethPrice - r.liqPrice) * 100) / 100 : r.buffer;
-    if (liveBuffer < 0) return [];
-    return [{ ...r, liveBuffer, liveEndsIn: fmtCountdownLocal(r.endTime) }];
+    const liveBuffer = ethPrice > 0 && r.liqPrice != null ? Math.round((ethPrice - r.liqPrice) * 100) / 100 : r.buffer;
+    if (liveBuffer != null && liveBuffer < 0) return [];
+    return [{ ...r, liveBuffer, liveEndsIn: fmtCountdownLocal(r.endTime, now) }];
   });
 }
 
@@ -171,9 +174,9 @@ export function renderTradeRow(r, onWallet, aliases = {}, locations, labels) {
       </td>
       <td style={{ width: 72, color: 'var(--t-fg-mut)', fontSize: 'var(--t-fs-xs)', whiteSpace: 'nowrap' }}>{r.opType || '—'}</td>
       <td style={{ width: 60, whiteSpace: 'nowrap' }} className={r.active ? 'warn' : 'dim'}>{r.liveEndsIn}</td>
-      <td className={`num ${r.liveBuffer < 1 ? 'neg' : r.liveBuffer < 2 ? 'warn' : 'pos'}`} style={{ width: 52, maxWidth: 52 }}>+{r.liveBuffer.toFixed(2)}</td>
-      <td className="num">{r.liqPrice.toLocaleString()}</td>
-      <td><span className={`tm-pill ${r.auto ? 'on' : 'off'}`}>{r.auto ? 'on' : 'off'}</span></td>
+      <td className={`num ${r.liveBuffer == null ? 'dim' : r.liveBuffer < 1 ? 'neg' : r.liveBuffer < 2 ? 'warn' : 'pos'}`} style={{ width: 52, maxWidth: 52 }}>{r.liveBuffer == null ? '—' : `+${r.liveBuffer.toFixed(2)}`}</td>
+      <td className="num">{r.liqPrice == null ? '—' : r.liqPrice.toLocaleString()}</td>
+      <td>{r.auto == null ? <span className="dim">—</span> : <span className={`tm-pill ${r.auto ? 'on' : 'off'}`}>{r.auto ? 'on' : 'off'}</span>}</td>
     </tr>
   );
 }

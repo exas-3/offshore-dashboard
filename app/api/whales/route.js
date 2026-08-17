@@ -10,6 +10,10 @@ let _cache = null, _cacheTs = 0;
 const TTL = 120_000;
 
 export async function GET() {
+  // token_holders is a mutable current-state snapshot — not time-travelable.
+  const { guardDemoDisabled } = await import('../../../lib/api-guard.js');
+  const blocked = guardDemoDisabled();
+  if (blocked) return blocked;
   try {
     if (_cache && Date.now() - _cacheTs < TTL) return NextResponse.json(_cache);
 

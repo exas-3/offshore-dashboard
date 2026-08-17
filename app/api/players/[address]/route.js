@@ -6,19 +6,22 @@ import {
   getPlayerRecentMissionStats, getWalletLabel,
 } from '../../../../lib/index.js';
 import { getCycleStart } from '../../offshore-data/helpers.js';
+import { resolveAsOf, nowCap } from '../../../../lib/demo-clock.js';
 
-export async function GET(_req, { params }) {
+export async function GET(req, { params }) {
   try {
     const address = params.address.toLowerCase();
     if (!/^0x[0-9a-f]{40}$/i.test(address)) {
       return NextResponse.json({ error: 'invalid address' }, { status: 400 });
     }
-    const cycleStart = getCycleStart(Math.floor(Date.now() / 1000));
+    const asOf = resolveAsOf(req);
+    const { now } = nowCap(asOf);
+    const cycleStart = getCycleStart(now);
     const [stats, activity, vault, breakdown, history, influence, recentMissions, labelRow] = await Promise.all([
-      getPlayerStats(address, cycleStart), getPlayerActivity(address, 10000, 0),
-      getPlayerVaultPayouts(address, 50), getPlayerOpsBreakdown(address),
-      getPlayerDailyHistory(address), getPlayerInfluenceStats(address),
-      getPlayerRecentMissionStats(address), getWalletLabel(address),
+      getPlayerStats(address, cycleStart, asOf), getPlayerActivity(address, 10000, 0, asOf),
+      getPlayerVaultPayouts(address, 50, asOf), getPlayerOpsBreakdown(address, asOf),
+      getPlayerDailyHistory(address, asOf), getPlayerInfluenceStats(address, asOf),
+      getPlayerRecentMissionStats(address, asOf), getWalletLabel(address),
     ]);
     const label = labelRow ? {
       label:             labelRow.label || null,

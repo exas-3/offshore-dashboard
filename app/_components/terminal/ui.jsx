@@ -125,7 +125,7 @@ export function BeaconMark({ size = 32 }) {
 
 // ── Shell ─────────────────────────────────────────────────────────────────
 
-export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, activeTab, onTabChange, search, onSearch, fkeys, sideFooter, children, rail, clock, theme = 'purple', density = 'regular', mode = 'standalone', nav, brand, sideContent, railLabel = 'criminal', onThemeChange, notifPrefs, onNotifChange, openRailRef, topBand, bottomBand, searchSuggestions, onPickSuggestion, clockExtras }) {
+export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, activeTab, onTabChange, search, onSearch, fkeys, sideFooter, children, rail, clock, theme = 'purple', density = 'regular', mode = 'standalone', nav, brand, sideContent, railLabel = 'criminal', onThemeChange, notifPrefs, onNotifChange, openRailRef, topBand, bottomBand, searchSuggestions, onPickSuggestion, clockExtras, timeBar }) {
   const [now, setNow] = useState(clock || nowUTC());
   const [activeSection, setActiveSection] = useState(nav && nav[0] ? nav[0].id : null);
   const [railOpen, setRailOpen] = useState(false);
@@ -290,7 +290,8 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
           </span>
         ))}
         {clockExtras}
-        <span className="tm-ticker-clock">{now}</span>
+        {/* controlled clock prop must win over the internal wall-clock state */}
+        <span className="tm-ticker-clock">{clock || now}</span>
       </div>
 
       <aside className="tm-side">
@@ -382,6 +383,7 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
       </aside>
 
       <main className="tm-main">
+        {timeBar}
         {topBand}
         <div className="tm-cmd" style={{ position: 'relative' }}>
           <span className="prompt">&gt;</span>
@@ -505,7 +507,7 @@ export function TerminalShell({ apps, activeAppId, onAppChange, ticker, tabs, ac
             </span>
           );
         })}
-        <span className="right">Developed with <span style={{ color: 'var(--t-heart)' }}>♥</span> by <a href="https://x.com/s_exas" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>@s_exas</a></span>
+        <span className="right">Developed with <span style={{ color: 'var(--t-heart)' }}>♥</span> by <a href="https://x.com/0xExas" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>@0xExas</a></span>
       </div>
 
       {tickerTooltip && (ticker || [])[tickerTooltip.idx]?.tooltip && (

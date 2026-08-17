@@ -1,21 +1,28 @@
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
-import { getDb } from '../../../lib/index.js';
+import { getDb, getActiveTradeCountsAt } from '../../../lib/index.js';
+import { resolveAsOf, nowCap, bucketAt, DEMO_CACHE_HEADERS } from '../../../lib/demo-clock.js';
 
-let _cache = null, _cacheTs = 0;
+const _cache = new Map(); // bucketed-asOf | 'live' → { data, ts }
 const TTL = 10_000;
+const CACHE_MAX = 32;
 
 const WINDOWS = ['m1', 'm5', 'm15', 'm30', 'm60', 'h24'];
 const EMPTY_WIN = () => Object.fromEntries(WINDOWS.map(w => [w, { ok: 0, bust: 0 }]));
 
-export async function GET() {
+export async function GET(request) {
   try {
-    if (_cache && Date.now() - _cacheTs < TTL) {
-      return NextResponse.json(_cache);
+    const asOf = resolveAsOf(request);
+    const demo = asOf != null;
+    const key  = demo ? String(bucketAt(asOf, 60)) : 'live';
+    const headers = demo ? DEMO_CACHE_HEADERS : {};
+    const hit = _cache.get(key);
+    if (hit && (demo || Date.now() - hit.ts < TTL)) {
+      return NextResponse.json(hit.data, { headers });
     }
 
     const db = getDb();
-    const now = Math.floor(Date.now() / 1000);
+    const { now } = nowCap(asOf);
 
     // ok / bust comes from the structural `result` column populated at sync
     // time: transfers.js (DirtyPaid) → 'completed', liquidations.js
@@ -38,13 +45,14 @@ export async function GET() {
         FROM transfers
         WHERE kind = 'MINT'
           AND op_type IN ('DRUG_DEAL', 'ARMS_DEAL', 'EXTORTION', 'PARTIAL')
-          AND timestamp::bigint >= ${now - 86400}
+          AND timestamp::bigint >= ${now - 86400} AND timestamp::bigint <= ${now}
         GROUP BY op_type, is_ok
       `,
       // currently-active counts come from companies.trade_type (populated by syncCompanies).
       // trade_type is sticky (COALESCE upsert) so we must also require end_time > now —
       // otherwise finished trades show as phantom active entries.
-      db`
+      // Demo: companies is mutable current-state — reconstruct instead.
+      demo ? getActiveTradeCountsAt(asOf) : db`
         SELECT trade_type, COUNT(*)::int AS cnt
         FROM companies
         WHERE active = TRUE
@@ -73,9 +81,9 @@ export async function GET() {
       if (key) result[key].active = Number(row.cnt ?? 0);
     }
 
-    _cache = result;
-    _cacheTs = Date.now();
-    return NextResponse.json(result);
+    _cache.set(key, { data: result, ts: Date.now() });
+    while (_cache.size > CACHE_MAX) _cache.delete(_cache.keys().next().value);
+    return NextResponse.json(result, { headers });
   } catch (e) {
     return NextResponse.json({ drugs: {}, arms: {}, extortion: {} }, { status: 500 });
   }

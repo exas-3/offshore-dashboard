@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Region, Seg, Sortable, GridCell, fmt, useLocations, useWalletLabels } from '../terminal.jsx';
 import { processTradeRows, renderTradeRow, usePagedRows, Pager } from '../trade-helpers.jsx';
 
-export function TradesSection({ grid, liveTrades, ops, search, ethPrice, aliases, onWallet }) {
+export function TradesSection({ grid, liveTrades, ops, search, ethPrice, aliases, onWallet, now = null }) {
   const { spans, heights, resize } = grid;
   const [trxRange, setTrxRange] = useState('all');
   const [sortKey,  setSortKey]  = useState('buffer');
@@ -41,8 +41,8 @@ export function TradesSection({ grid, liveTrades, ops, search, ethPrice, aliases
   // top (or bottom) 250 rows by that column — no pagination, single
   // scrollable list. ASC → bottom-250 by value; DESC → top-250 by value.
   const ongoingProcessed = useMemo(
-    () => processTradeRows(tradesFiltered, trxRange, ethPrice).slice(0, 250),
-    [tradesFiltered, trxRange, ethPrice, tick]
+    () => processTradeRows(tradesFiltered, trxRange, ethPrice, now).slice(0, 250),
+    [tradesFiltered, trxRange, ethPrice, tick, now]
   );
   const opsPager = usePagedRows(ops);
 

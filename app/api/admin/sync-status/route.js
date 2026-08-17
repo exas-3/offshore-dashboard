@@ -2,8 +2,11 @@ export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { getLastBlock, getLastInfluenceBlock, getLastVaultBlock } from '../../../../lib/index.js';
 import { getLatestBlock, GENESIS } from '../../../../server/etherscan.js';
+import { guardAdmin } from '../../../../lib/api-guard.js';
 
-export async function GET() {
+export async function GET(req) {
+  const blocked = guardAdmin(req);
+  if (blocked) return blocked;
   try {
     const [chainHead, dirtyBlock, influenceBlock, vaultBlock] = await Promise.all([
       getLatestBlock(),

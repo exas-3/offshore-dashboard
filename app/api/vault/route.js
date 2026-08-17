@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getVaultStats, getVaultCycleHistory, getVaultTopEarners, getVaultRecentPayouts, getVaultFirstPayouts, getTopStakers24h } from '../../../lib/index.js';
 import { fetchVaultBalance } from '../../../server/etherscan.js';
 import { getCycleStart } from '../offshore-data/helpers.js';
+import { resolveAsOf, bucketAt, DEMO_CACHE_HEADERS } from '../../../lib/demo-clock.js';
 
 function fmtCycleLabel(ts) {
   const d = new Date(ts * 1000);
@@ -13,14 +14,20 @@ function fmtCycleLabel(ts) {
   return `${mon} ${day} ${hh}:${mm}`;
 }
 
-let _cache = null, _cacheTs = 0;
+const _cache = new Map();
 const TTL = 15_000;
+const CACHE_MAX = 32;
 
-export async function GET() {
+export async function GET(request) {
   try {
-    if (!_cache || Date.now() - _cacheTs >= TTL) {
+    const asOf = resolveAsOf(request);
+    const demo = asOf != null;
+    const key  = demo ? String(bucketAt(asOf, 60)) : 'live';
+    const headers = demo ? DEMO_CACHE_HEADERS : {};
+    let entry = _cache.get(key);
+    if (!entry || (!demo && Date.now() - entry.ts >= TTL)) {
       const [rawStats, rawPayouts, rawEarners, recentPayouts, firstPayouts, rawTopStakers] = await Promise.all([
-        getVaultStats(), getVaultCycleHistory(), getVaultTopEarners(50), getVaultRecentPayouts(100), getVaultFirstPayouts(), getTopStakers24h(),
+        getVaultStats(asOf), getVaultCycleHistory(asOf), getVaultTopEarners(50, asOf), getVaultRecentPayouts(100, asOf), getVaultFirstPayouts(asOf), getTopStakers24h(asOf),
       ]);
 
       // Group payouts by actual cycle
@@ -63,11 +70,14 @@ export async function GET() {
 
       const topEarners = rawEarners.map(r => ({ addr: r.recipient, total: Number(r.total), payouts: Number(r.payouts), best: Number(r.best), last_ts: r.last_ts }));
       const topStakers24h = rawTopStakers.map(r => ({ addr: r.user_addr, total: Number(r.total), deposits: Number(r.deposits) }));
-      _cache = { stats, cycleHistory, topEarners, recentPayouts, topStakers24h };
-      _cacheTs = Date.now();
+      entry = { data: { stats, cycleHistory, topEarners, recentPayouts, topStakers24h }, ts: Date.now() };
+      _cache.set(key, entry);
+      while (_cache.size > CACHE_MAX) _cache.delete(_cache.keys().next().value);
     }
     let currentBalance = null;
-    try { currentBalance = await fetchVaultBalance(); } catch { /* non-critical */ }
-    return NextResponse.json({ ..._cache, currentBalance });
+    if (!demo) {
+      try { currentBalance = await fetchVaultBalance(); } catch { /* non-critical */ }
+    }
+    return NextResponse.json({ ...entry.data, currentBalance }, { headers });
   } catch (err) { return NextResponse.json({ error: err.message }, { status: 500 }); }
 }

@@ -9,12 +9,12 @@ import { useEffect, useRef, useState } from 'react';
 // Returns { span, xMin, xMax, panSec, userSpan, setUserSpan, setPanSec,
 //           resetView, dragRef, attachWheelTo(elementRef) }.
 
-const SPAN_MIN    = 5 * 60;          // 5 min
-const SPAN_MAX    = 2 * 60 * 60;     // 2 h
+const DEFAULT_SPAN_MIN = 5 * 60;          // 5 min
+const DEFAULT_SPAN_MAX = 2 * 60 * 60;     // 2 h
 const PAST_FRAC   = 0.4;
 const FUTURE_FRAC = 0.6;
 
-export function useChartViewport({ activeOps, now }) {
+export function useChartViewport({ activeOps, now, spanMin = DEFAULT_SPAN_MIN, spanMax = DEFAULT_SPAN_MAX }) {
   const [userSpan, setUserSpan] = useState(null); // null = auto
   const [panSec,   setPanSec]   = useState(0);
   const dragRef = useRef(null);
@@ -26,14 +26,14 @@ export function useChartViewport({ activeOps, now }) {
 
   let xMin, xMax, span;
   if (userOverride) {
-    span = userSpan ?? Math.min(SPAN_MAX, Math.max(SPAN_MIN, maxEndIn * 1.4 + 10 * 60));
+    span = userSpan ?? Math.min(spanMax, Math.max(spanMin, maxEndIn * 1.4 + 10 * 60));
     const anchor = now + panSec;
     xMin = anchor - span * PAST_FRAC;
     xMax = anchor + span * FUTURE_FRAC;
   } else {
     const futureSec = Math.max(maxEndIn * 1.1, 5 * 60);
     const pastSec   = Math.max(futureSec * PAST_FRAC, 5 * 60);
-    span = Math.min(SPAN_MAX, Math.max(SPAN_MIN, futureSec + pastSec));
+    span = Math.min(spanMax, Math.max(spanMin, futureSec + pastSec));
     xMax = now + futureSec;
     xMin = xMax - span;
   }
@@ -45,6 +45,7 @@ export function useChartViewport({ activeOps, now }) {
     panSec, userSpan, userOverride,
     setUserSpan, setPanSec,
     dragRef, resetView,
+    spanMin, spanMax,
   };
 }
 
@@ -62,10 +63,10 @@ export function useChartWheelZoom(elRef, viewport) {
       const factor = delta > 0 ? 1.15 : 1 / 1.15;
       viewport.setUserSpan(prev => {
         const base = prev ?? viewport.span;
-        return Math.min(SPAN_MAX, Math.max(SPAN_MIN, base * factor));
+        return Math.min(viewport.spanMax ?? DEFAULT_SPAN_MAX, Math.max(viewport.spanMin ?? DEFAULT_SPAN_MIN, base * factor));
       });
     };
     el.addEventListener('wheel', handler, { passive: false, capture: true });
     return () => el.removeEventListener('wheel', handler, { capture: true });
-  }, [elRef, viewport.span, viewport.setUserSpan]);
+  }, [elRef, viewport.span, viewport.setUserSpan, viewport.spanMin, viewport.spanMax]);
 }

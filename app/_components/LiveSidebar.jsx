@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react';
 import { fmt, useLocations } from './terminal.jsx';
 import { fmtCountdownLocal } from './trade-helpers.jsx';
+import { DEMO } from '../../lib/demo-constants.js';
+import { useAtParam, useVirtualNow } from './hooks/use-virtual-clock.js';
 
 function flagFor(locations, id) {
   if (id == null) return '';
@@ -34,13 +36,16 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
   const [opsMatrix, setOpsMatrix] = useState(() => D.opsMatrix ?? null);
   const [tick, setTick] = useState(0);
   const locations = useLocations();
+  const vnow = useVirtualNow();
+  const at = useAtParam();
+  const atPolizia = useAtParam(10);
 
   useEffect(() => {
-    const load = () => fetch('/api/ops-matrix').then(r => r.json()).then(setOpsMatrix).catch(() => {});
+    const load = () => fetch(`/api/ops-matrix${at ? `?${at}` : ''}`).then(r => r.json()).then(setOpsMatrix).catch(() => {});
     load();
     const t = setInterval(load, 10_000);
     return () => clearInterval(t);
-  }, []);
+  }, [at]);
 
   useEffect(() => {
     const t = setInterval(() => setTick(n => n + 1), 1000);
@@ -53,9 +58,10 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
 
   useEffect(() => {
     let live = true;
+    let timer = null;
     const poll = async () => {
       try {
-        const res = await fetch('/api/polizia', { cache: 'no-cache' });
+        const res = await fetch(`/api/polizia${atPolizia ? `?${atPolizia}` : ''}`, { cache: 'no-cache' });
         if (res.ok) {
           const { list, events, total } = await res.json();
           for (const ev of events) {
@@ -68,11 +74,11 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
           if (total != null) setPoliziaTotal(total);
         }
       } catch {}
-      if (live) setTimeout(poll, 5_000);
+      if (live) timer = setTimeout(poll, 5_000);
     };
     poll();
-    return () => { live = false; };
-  }, []);
+    return () => { live = false; if (timer) clearTimeout(timer); };
+  }, [atPolizia]);
 
   const WINDOWS = ['active', 'm1', 'm5', 'm15', 'm30', 'm60', 'h24'];
   const WIN_LABELS = { active: 'active', m1: '1m', m5: '5m', m15: '15m', m30: '30m', m60: '60m', h24: '24h' };
@@ -98,22 +104,25 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
         <div className="tm-live-panel-h">
           <span><b>polizia</b></span>
           <span className="rule" />
-          <span className="v">&lt;3$ · {poliziaTotal}</span>
+          <span className="v">{DEMO ? 'ending' : '<3$'} · {poliziaTotal}</span>
         </div>
         {poliziaList.flatMap((r) => {
-          const liveBuffer = Math.round((counters.eth - r.liqPrice) * 100) / 100;
-          if (liveBuffer < 0) return [];
-          const endsIn = fmtCountdownLocal(r.endTime);
+          // Demo rows carry no liq price — render the op instead of a buffer.
+          const liveBuffer = r.liqPrice != null && counters.eth > 0
+            ? Math.round((counters.eth - r.liqPrice) * 100) / 100
+            : null;
+          if (liveBuffer != null && liveBuffer < 0) return [];
+          const endsIn = fmtCountdownLocal(r.endTime, vnow);
           const urgent = r.endTime > 0 && endsIn !== '—' && endsIn.length <= 5;
           const cls = urgent ? 'urgent' : 'safe';
           return [(
             <div key={r.id} className={`tm-watch ${cls}`} style={{ cursor: 'pointer' }} onClick={() => onWallet && onWallet(r.wallet)}>
               <span className="l">
                 <span className="id">{flagFor(locations, r.locationId) && <span style={{ marginRight: 3 }}>{flagFor(locations, r.locationId)}</span>}{aliases[r.wallet] || r.walletShort}</span>
-                <span className="sub">liq {r.liqPrice.toLocaleString()}</span>
+                <span className="sub">{r.liqPrice != null ? `liq ${r.liqPrice.toLocaleString()}` : (OP_SHORT[r.opType] || r.opType?.toLowerCase() || '—')}</span>
               </span>
               <span className="r">
-                <span className={`buf ${liveBuffer < 1 ? 'tm-neg' : liveBuffer < 2 ? 'tm-warn' : 'tm-pos'}`}>+{liveBuffer.toFixed(2)}</span>
+                <span className={`buf ${liveBuffer == null ? '' : liveBuffer < 1 ? 'tm-neg' : liveBuffer < 2 ? 'tm-warn' : 'tm-pos'}`}>{liveBuffer == null ? '' : `+${liveBuffer.toFixed(2)}`}</span>
                 <span className="ends">{endsIn}</span>
               </span>
             </div>
@@ -134,7 +143,7 @@ export function LiveSidebar({ D, counters, ops, watch, trades, recentStarts = []
           <span className="v">5m · {recentStarts.length}</span>
         </div>
         {recentStarts.slice(0, 5).map(s => {
-          const endsIn  = fmtCountdownLocal(s.endTime);
+          const endsIn  = fmtCountdownLocal(s.endTime, vnow);
           const opLabel = OP_SHORT[s.opType] || s.opType?.toLowerCase() || '—';
           const opCls   = s.opType === 'EXTORTION' ? 'neg' : s.opType === 'ARMS_DEAL' ? 'warn' : 'pos';
           const buffer  = (counters.eth && s.liqPrice)

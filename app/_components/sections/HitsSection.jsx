@@ -3,14 +3,15 @@ import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Region, GridCell, fmt } from '../terminal.jsx';
 import { CHART_AXIS, TmTooltip, fmtLocalHour, usePagedRows, Pager } from '../trade-helpers.jsx';
+import { useAtParam, useVirtualNow } from '../hooks/use-virtual-clock.js';
 
 function shortAddr(a) {
   if (!a) return '—';
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
 
-function relTime(ts) {
-  const diff = Math.max(0, Math.floor(Date.now() / 1000) - Number(ts));
+function relTime(ts, nowSec = null) {
+  const diff = Math.max(0, (nowSec ?? Math.floor(Date.now() / 1000)) - Number(ts));
   if (diff < 60)        return `${diff}s ago`;
   if (diff < 3600)      return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400)     return `${Math.floor(diff / 3600)}h ago`;
@@ -19,6 +20,8 @@ function relTime(ts) {
 
 export function HitsSection({ D, grid, aliases = {}, onWallet }) {
   const { spans, heights, resize } = grid;
+  const at = useAtParam();
+  const vnow = useVirtualNow();
   // Seed from the slow /api/offshore-data payload so the panel is populated on
   // first paint, then poll /api/hits every 5s so newly-resolved hits appear
   // without waiting for the 60s offshore-data refresh. The poller already
@@ -26,13 +29,14 @@ export function HitsSection({ D, grid, aliases = {}, onWallet }) {
   const [hitsData, setHitsData] = useState(D?.hits ?? { recent: [], summary: {}, buckets: [] });
   useEffect(() => {
     let alive = true;
-    const refresh = () => fetch('/api/hits')
+    const refresh = () => fetch(`/api/hits${at ? `?${at}` : ''}`)
       .then(r => r.json())
       .then(d => { if (alive && d && !d.error) setHitsData(d); })
       .catch(() => {});
+    if (at) refresh(); // demo: refetch when the virtual minute moves
     const t = setInterval(refresh, 5000);
     return () => { alive = false; clearInterval(t); };
-  }, []);
+  }, [at]);
   const data    = hitsData;
   const summary = data.summary ?? {};
   const recent  = Array.isArray(data.recent)  ? data.recent  : [];
@@ -83,7 +87,7 @@ export function HitsSection({ D, grid, aliases = {}, onWallet }) {
                   const vLabel = aliases[h.victim]   || shortAddr(h.victim);
                   return (
                     <tr key={`${h.tx_hash}`}>
-                      <td className="dim" style={{ fontSize: 'var(--t-fs-xs)' }}>{relTime(h.timestamp)}</td>
+                      <td className="dim" style={{ fontSize: 'var(--t-fs-xs)' }}>{relTime(h.timestamp, vnow)}</td>
                       <td style={{ fontSize: 'var(--t-fs-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {onWallet
                           ? <span style={{ cursor: 'pointer' }} onClick={() => onWallet(h.attacker)}>{aLabel}</span>

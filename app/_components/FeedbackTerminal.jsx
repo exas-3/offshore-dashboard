@@ -98,7 +98,7 @@ export function FeedbackTerminal({ open, onClose }) {
         }}>
           <span style={{ color: 'var(--t-hdr)' }}>feedback</span>
           <span style={{ color: 'var(--t-fg-soft)', marginLeft: 8 }}>
-            — send a note to @s_exas via Telegram
+            — send a note to @0xExas via Telegram
           </span>
           <span style={{ flex: 1 }} />
           <span style={{ color: 'var(--t-fg-mut)', fontSize: 'var(--t-fs-xs)', marginRight: 12 }}>

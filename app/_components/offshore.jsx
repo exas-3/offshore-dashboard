@@ -2,11 +2,23 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { TerminalShell, Toasts, LabelChip } from './terminal.jsx';
 import { InfTooltip, computeWatch, fmtK } from './trade-helpers.jsx';
+import { DEMO, GENESIS, bucketAt } from '../../lib/demo-constants.js';
+import { useVirtualClock, useVirtualNow } from './hooks/use-virtual-clock.js';
+import { TimeBar } from './TimeBar.jsx';
+import { getCycleStart, SEASON2_START, isWeekendTs } from '../api/offshore-data/helpers.js';
 
 function nowHMS() {
   const d = new Date();
   const z = (n) => String(n).padStart(2, '0');
   return `${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
+}
+
+// Feed rows carry their own on-chain timestamp — in demo/replay the wall
+// clock is meaningless, so format the row's virtual moment (UTC).
+function tsHMS(ts) {
+  const d = new Date(Number(ts) * 1000);
+  const z = (n) => String(n).padStart(2, '0');
+  return `${z(d.getUTCHours())}:${z(d.getUTCMinutes())}:${z(d.getUTCSeconds())}`;
 }
 
 const shortAddr = (a) => a ? a.slice(0, 6) + '…' + a.slice(-3) : '';
@@ -32,8 +44,8 @@ function scrollBandToTop(band, stickyTop = 0) {
   scrollEl.scrollTo({ top: target, behavior: 'smooth' });
 }
 
-function relAgo(ts) {
-  const diff = Math.floor(Date.now() / 1000) - Number(ts);
+function relAgo(ts, nowSec = null) {
+  const diff = (nowSec ?? Math.floor(Date.now() / 1000)) - Number(ts);
   if (!ts || !isFinite(diff) || diff < 0) return null;
   if (diff < 60)    return `${diff}s`;
   if (diff < 3600)  return `${Math.floor(diff / 60)}m`;
@@ -113,21 +125,51 @@ const NAV = [
 ];
 
 export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = true, theme = 'amber', density = 'regular', onThemeChange, initialAddress = '' }) {
+  // Virtual clock: in live mode this ticks at 1× wall time; in demo it's the
+  // replay clock every panel renders against.
+  const clock = useVirtualClock();
+  const vnow  = useVirtualNow(1000);
+  // vnow lags one render behind the clock on seeks — vnowNow() reads the
+  // authoritative value; vnowRef serves closures that run between renders.
+  const clockRef = useRef(clock);
+  clockRef.current = clock;
+  const vnowNow = () => (clockRef.current ? clockRef.current.nowSec() : Math.floor(Date.now() / 1000));
+  const vnowRef = useRef(vnow);
+  vnowRef.current = vnow;
+  const seekNonce = clock?.seekNonce ?? 0;
+  const playSpeed = clock?.speed ?? 0;
+  const seekNonceRef = useRef(seekNonce);
+  seekNonceRef.current = seekNonce;
+  const speedRef = useRef(playSpeed);
+  speedRef.current = playSpeed;
+
   // Mirror the initial server payload into state, then refresh it from
-  // /api/offshore-data every 60 s so aggregate stats (hero, charts,
-  // influence totals, leaderboard, etc.) don't drift on long sessions.
-  // The 800 ms live tick already handles counters / ops / trades /
-  // companiesStats — this is the slower backstop for everything else.
+  // /api/offshore-data so aggregate stats (hero, charts, influence totals,
+  // leaderboard, etc.) don't drift on long sessions. Live: every 60s. Demo:
+  // immediately on seek, then on a real-time cadence matched to replay speed
+  // (paused → no refetch; the minute-bucketed `at` makes server caching easy).
   const [D, setD] = useState(initialD);
   useEffect(() => {
     let live = true;
-    const refresh = () => fetch('/api/offshore-data')
-      .then(r => r.json())
-      .then(d => { if (live && d && !d.error) setD(d); })
-      .catch(() => {});
-    const t = setInterval(refresh, 60_000);
+    const refresh = () => {
+      const url = DEMO
+        ? `/api/offshore-data?at=${bucketAt(vnowNow(), 60)}`
+        : '/api/offshore-data';
+      return fetch(url)
+        .then(r => r.json())
+        .then(d => { if (live && d && !d.error) setD(d); })
+        .catch(() => {});
+    };
+    if (!DEMO) {
+      const t = setInterval(refresh, 60_000);
+      return () => { live = false; clearInterval(t); };
+    }
+    refresh(); // seek / mount → immediate as-of payload
+    if (playSpeed <= 0) return () => { live = false; };
+    const cadence = playSpeed >= 3600 ? 15_000 : playSpeed >= 60 ? 30_000 : 60_000;
+    const t = setInterval(refresh, cadence);
     return () => { live = false; clearInterval(t); };
-  }, []);
+  }, [seekNonce, playSpeed]);
 
   // ── Shell state ──────────────────────────────────────────────────────────
   const [activeApp, setActiveApp] = useState('offshore');
@@ -157,6 +199,10 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
   const alarmOnRef = useRef(false);
   alarmOnRef.current = alarmOn;
   const [showSmallScreenNote, setShowSmallScreenNote] = useState(false);
+  const [showDemoNote, setShowDemoNote] = useState(() => {
+    if (!DEMO || typeof window === 'undefined') return false;
+    try { return sessionStorage.getItem('offshoreDemoNoteDismissed') !== '1'; } catch { return true; }
+  });
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   // F2 toggles the feedback terminal (matches the bottom-bar chip's keybinding).
   useEffect(() => {
@@ -187,23 +233,28 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
   // user navigates back to '/' (URL doesn't have the address but band still
   // shows the last-viewed wallet).
   const [liveData, setBandLive] = useState(null);
+  // Demo: refetch when the 10-virtual-second bucket moves (paused ⇒ one load).
+  const monitorAtBucket = DEMO ? bucketAt(vnow, 10) : null;
   useEffect(() => {
     if (!/^0x[0-9a-fA-F]{40}$/.test(sessionWallet)) { setBandLive(null); return; }
     let live = true;
     const addr = sessionWallet.toLowerCase();
-    const load = () => fetch(`/api/monitor?wallet=${addr}`)
+    const load = () => fetch(`/api/monitor?wallet=${addr}${DEMO ? `&at=${bucketAt(vnowRef.current, 10)}` : ''}`)
       .then(r => r.json())
       .then(d => { if (live && d && !d.error) setBandLive(d); })
       .catch(() => {});
     load();
+    if (DEMO) return () => { live = false; };
     const t = setInterval(load, 3_000);
     return () => { live = false; clearInterval(t); };
-  }, [sessionWallet]);
+  }, [sessionWallet, monitorAtBucket]);
 
-  // Live cycle state from the offshoreprotocol.fun upstream API. 15 s poll
-  // is plenty — the cycle counter only advances once per 96 s on chain.
+  // Cycle chip state. Live: polled from the offshoreprotocol.fun upstream.
+  // Demo: computed locally from the virtual clock via the Season-aware
+  // getCycleStart — it ticks at replay speed and handles the S1 8h branch.
   const [cycleInfo, setCycleInfo] = useState(null);
   useEffect(() => {
+    if (DEMO) return;
     let live = true;
     const load = () => fetch('/api/cycles/current')
       .then(r => r.json())
@@ -213,17 +264,41 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
     const t = setInterval(load, 15_000);
     return () => { live = false; clearInterval(t); };
   }, []);
+  const demoCycle = useMemo(() => {
+    if (!DEMO) return null;
+    const start = getCycleStart(vnow);
+    const dur = vnow >= SEASON2_START ? 86400 : (isWeekendTs(vnow) ? 86400 : 28800);
+    const totalTicks = Math.floor(dur / 96);
+    // The payload's ordinal is as of D.asOf; advance it by cycle boundaries
+    // the replay has crossed since, so it doesn't freeze between refetches.
+    let cycleId = D?.currentCycleId ?? null;
+    if (cycleId != null && D?.asOf != null) {
+      let t = getCycleStart(Number(D.asOf));
+      let guard = 0;
+      while (t + (t >= SEASON2_START ? 86400 : (isWeekendTs(t) ? 86400 : 28800)) <= vnow && guard++ < 512) {
+        t += t >= SEASON2_START ? 86400 : (isWeekendTs(t) ? 86400 : 28800);
+        cycleId += 1;
+      }
+    }
+    return {
+      cycleId,
+      currentTick: Math.min(totalTicks, Math.floor((vnow - start) / 96)),
+      totalTicks,
+      timeRemaining: Math.max(0, start + dur - vnow),
+    };
+  }, [vnow, D?.currentCycleId, D?.asOf]);
 
   // Two-way URL ↔ walletAddr sync.
   // Whenever walletAddr changes (rail input, table clicks, anything),
   // push `/criminal/<addr>` into history; clearing the address resets to `/`.
+  // The query string (?at=…&speed=…) must survive the pathname swap.
   // The popstate listener handles back/forward navigation the other way.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const isFullAddr = /^0x[0-9a-fA-F]{40}$/.test(walletAddr);
     const target = isFullAddr ? `/criminal/${walletAddr.toLowerCase()}` : '/';
     if (window.location.pathname !== target) {
-      window.history.pushState({}, '', target);
+      window.history.pushState({}, '', target + window.location.search);
     }
   }, [walletAddr]);
 
@@ -232,10 +307,15 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
     const onPop = () => {
       const m = window.location.pathname.match(/^\/criminal\/(0x[0-9a-fA-F]{40})/);
       setWalletAddr(m ? m[1].toLowerCase() : '');
+      if (DEMO && clock) {
+        const raw = new URL(window.location.href).searchParams.get('at');
+        const n = raw ? (/^\d{9,12}$/.test(raw) ? Number(raw) : Math.floor(Date.parse(raw) / 1000)) : NaN;
+        if (Number.isFinite(n) && Math.abs(n - clock.nowSec()) > 90) clock.seek(n);
+      }
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, []);
+  }, [clock]);
 
   // ── Grid layout (shared across sections) ─────────────────────────────────
   const [spans, setSpans] = useState(DEFAULT_SPANS);
@@ -282,7 +362,7 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
     dirty:     ci.dirty   || 0.0706,
     opCost:    ci.opCost  || 12.41,
     gas:       ci.gas     || 0.001,
-    eth:       D.liveTrades[0]?.ethPrice ?? 0,
+    eth:       ci.eth ?? D.liveTrades[0]?.ethPrice ?? 0,
     activeOps: D.activeCompanies ?? 0,
     tps:       0,
     _bump:     0,
@@ -290,7 +370,7 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
   }));
   const [ops, setOps] = useState(() =>
     (D.recentOps && D.recentOps.length > 0)
-      ? D.recentOps.slice(0, 250).map(o => ({ ...o, time: nowHMS() }))
+      ? D.recentOps.slice(0, 250).map(o => ({ ...o, time: DEMO ? tsHMS(o._ts) : nowHMS() }))
       : []
   );
   const [liveTrades, setLiveTrades] = useState(() => D.liveTrades || []);
@@ -324,9 +404,41 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
     (D.recentOps && D.recentOps.length > 0) ? (D.recentOps[0]._ts || 0) : 0
   );
   const lastLiqTsRef = useRef(0);
+  // Ticker-event cursor — a ref (not a pump-closure variable) so seeks can
+  // reset it; the pump effect mounts once and would otherwise hold it stale.
+  const lastEventTsRef = useRef((initialD.liveTradeTicker && initialD.liveTradeTicker[0]?._ts) || 0);
 
-  // ETH price (1s)
+  // Seek handling (demo): clear the animated feeds, reset the pump cursor to
+  // the new virtual moment, and reseed from the next as-of payload.
+  const pendingSeedRef = useRef(false);
+  const firstSeekRef = useRef(true);
   useEffect(() => {
+    if (!DEMO) return;
+    if (firstSeekRef.current) { firstSeekRef.current = false; return; }
+    lastOpTsRef.current = vnowNow();
+    lastEventTsRef.current = 0;
+    pendingSeedRef.current = true;
+    setOps([]);
+    setLiveTicker([]);
+    setLatestNewOps([]);
+    setRecentStarts([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seekNonce]);
+  useEffect(() => {
+    if (!DEMO || !pendingSeedRef.current || !D) return;
+    pendingSeedRef.current = false;
+    setOps((D.recentOps || []).slice(0, 250).map(o => ({ ...o, time: tsHMS(o._ts) })));
+    setLiveTicker(D.liveTradeTicker || []);
+    lastEventTsRef.current = (D.liveTradeTicker && D.liveTradeTicker[0]?._ts) || 0;
+    setRecentStarts(D.recentStarts || []);
+    setWatchRaw(D.liveTrades || []);
+    setLiveTrades(D.liveTrades || []);
+    if (D.recentOps?.length) lastOpTsRef.current = Math.max(lastOpTsRef.current, D.recentOps[0]._ts || 0);
+  }, [D]);
+
+  // ETH price (1s) — live only; the demo dataset has no ETH history.
+  useEffect(() => {
+    if (DEMO) return;
     const update = () =>
       fetch('/api/eth-price', { cache: 'no-cache' })
         .then(r => r.json())
@@ -337,18 +449,34 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
     return () => clearInterval(t);
   }, []);
 
-  // Live tick (800ms): counters, new ops, live trades, ticker events
+  // Live tick (800ms): counters, new ops, live trades, ticker events.
+  // In demo the same cadence pumps the recorded tape forward: ?at= is the
+  // virtual moment and ?since= the cursor, so each tick returns the ops that
+  // "happened" since the previous one at the current replay speed.
   useEffect(() => {
     let live = true;
     let inflight = false;  // skip overlapping ticks when RPC is slow
-    let lastEventTs = (D.liveTradeTicker && D.liveTradeTicker[0]?._ts) || 0;
     const tick = async () => {
       if (!live || inflight) return;
       inflight = true;
       try {
-        const res = await fetch(`/api/offshore-data/live?since=${lastOpTsRef.current}`, { cache: 'no-cache' });
+        const nonce = seekNonceRef.current;
+        const vnowAt = vnowNow();
+        if (DEMO && speedRef.current > 0) {
+          // At high replay speed the tape emits far more ops than LIMIT 60
+          // per tick can drain — clamp the cursor to a trailing window (~3
+          // real seconds of virtual time) so the feed samples near "now"
+          // instead of falling ever further behind.
+          const minSince = vnowAt - Math.max(120, speedRef.current * 3);
+          if (lastOpTsRef.current < minSince) lastOpTsRef.current = minSince;
+        }
+        const at = DEMO ? `at=${vnowAt}&` : '';
+        const res = await fetch(`/api/offshore-data/live?${at}since=${lastOpTsRef.current}`, { cache: 'no-cache' });
         if (!res.ok) throw new Error('non-ok');
         const d = await res.json();
+        // A seek happened while this tick was in flight — its data belongs
+        // to the previous virtual moment; drop it.
+        if (nonce !== seekNonceRef.current) return;
         setCounters((c) => ({
           ...c,
           block:   d.block   ?? c.block,
@@ -358,36 +486,43 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
           dirty:   d.dirty   ?? c.dirty,
           opCost:  d.opCost  ?? c.opCost,
           gas:     d.gas     ?? c.gas,
-          eth:       c.eth,
+          // Demo: the live tick carries the as-of oracle value; live mode
+          // keeps the dedicated 1s /api/eth-price poll as the source.
+          eth:       DEMO ? (d.eth ?? c.eth) : c.eth,
           activeOps: d.activeOps ?? c.activeOps,
           tps:       d.tps       ?? c.tps,
           _bump:  c._bump + 1,
           _lastOkAt: Date.now(),
         }));
         if (d.newOps && d.newOps.length > 0) {
-          const ts = nowHMS();
+          // Always advance the cursor to the newest returned row — at 3600×
+          // each tick spans ~48 virtual minutes and the server LIMIT
+          // saturates; drop-oldest sampling keeps the feed a fast tape
+          // instead of an ever-lagging backlog.
           lastOpTsRef.current = d.newOps[d.newOps.length - 1]._ts;
+          const rows = DEMO ? d.newOps.slice(-30) : d.newOps;
           setOps((prev) => {
             // Dedupe against existing — overlapping polls can return the same row twice.
             // Key: hash + walletFull + op (matches server-side dedup); fall back to wallet+op+_ts.
             const seen = new Set(prev.map(o => `${o.hash || ''}:${o.walletFull || o.wallet}:${o.op}:${o._ts || ''}`));
-            const incoming = d.newOps
+            const incoming = rows
               .filter(o => !seen.has(`${o.hash || ''}:${o.walletFull || o.wallet}:${o.op}:${o._ts || ''}`))
-              .map(o => ({ ...o, time: ts }))
+              .map(o => ({ ...o, time: DEMO ? tsHMS(o._ts) : nowHMS() }))
               .reverse();
             return [...incoming, ...prev].slice(0, 250);
           });
-          setLatestNewOps(d.newOps);
+          setLatestNewOps(rows);
         }
-        if (d.liveTrades && d.liveTrades.length > 0) {
+        if (d.liveTrades && (d.liveTrades.length > 0 || DEMO)) {
           setWatchRaw(d.liveTrades);
           setLiveTrades(d.liveTrades);
         }
         // Keep the previous list if the tick returns an empty/missing payload —
         // an empty response (e.g. transient DB hiccup) shouldn't clear the panel.
-        if (Array.isArray(d.recentStarts) && d.recentStarts.length > 0) setRecentStarts(d.recentStarts);
-        if (d.latestEvent && d.latestEvent._ts > lastEventTs) {
-          lastEventTs = d.latestEvent._ts;
+        // Demo reconstruction is authoritative, so empty is real there.
+        if (Array.isArray(d.recentStarts) && (d.recentStarts.length > 0 || DEMO)) setRecentStarts(d.recentStarts);
+        if (d.latestEvent && d.latestEvent._ts > lastEventTsRef.current) {
+          lastEventTsRef.current = d.latestEvent._ts;
           setLiveTicker((prev) => {
             // Dedupe by tx hash to handle multi-hop swaps that emit two events
             // for the same tx, or repeated polls hitting the same event.
@@ -413,7 +548,7 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
   }, []);
 
   // ── Derived ──────────────────────────────────────────────────────────────
-  const watch = useMemo(() => computeWatch(watchRaw, counters.eth), [watchRaw, counters.eth]);
+  const watch = useMemo(() => computeWatch(watchRaw, counters.eth, vnow), [watchRaw, counters.eth, vnow]);
 
   // Set of addresses that have actually farmed ≥1 $dirty from a game op.
   // Used to narrow the search dropdown to real players (funders / ENS-only
@@ -475,40 +610,50 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
   // CYCLE chip — sits immediately to the left of the clock (right side of
   // the ticker), not interleaved with the regular cells. Format: "29 ·
   // 493/900 · 10:50:32".
+  const activeCycle = DEMO ? demoCycle : cycleInfo;
   const cycleChip = (() => {
-    if (!cycleInfo) return null;
-    const tr = Number(cycleInfo.timeRemaining) || 0;
+    if (!activeCycle) return null;
+    const tr = Number(activeCycle.timeRemaining) || 0;
     const hh = String(Math.floor(tr / 3600)).padStart(2, '0');
     const mm = String(Math.floor((tr % 3600) / 60)).padStart(2, '0');
     const ss = String(tr % 60).padStart(2, '0');
+    const id = activeCycle.cycleId ?? '—';
     return (
       <span
         className="tm-ticker-cell"
         style={{ marginLeft: 'auto' }}  // pin to the right, just before the clock
-        title={`cycle ${cycleInfo.cycleId} · tick ${cycleInfo.currentTick}/${cycleInfo.totalTicks} · ends in ${hh}:${mm}:${ss}`}
+        title={`cycle ${id} · tick ${activeCycle.currentTick}/${activeCycle.totalTicks} · ends in ${hh}:${mm}:${ss}`}
       >
         <span className="tm-ticker-k">CYCLE</span>
         <span className="tm-ticker-v">
-          {cycleInfo.cycleId} · {cycleInfo.currentTick}/{cycleInfo.totalTicks} · {hh}:{mm}:{ss}
+          {id} · {activeCycle.currentTick}/{activeCycle.totalTicks} · {hh}:{mm}:{ss}
         </span>
       </span>
     );
   })();
 
+  // ETH comes from the backfilled RedStone oracle tape in demo — the exact
+  // as-of value; demo also adds a VAULT cell (cumulative distributed).
   const ticker = [
     { k: '$DIRTY',  v: `$${counters.dirty.toFixed(4)}`,     trend: pct(counters.dirty,  base.dirty) },
     { k: 'OP COST', v: `${counters.opCost.toFixed(2)} INF`, trend: pct(counters.opCost, base.infCost), tooltip: <InfTooltip data={D.infCostHistory || []} current={counters.opCost} trend={pct(counters.opCost, base.infCost)} /> },
     { k: 'ETH',     v: `$${counters.eth.toLocaleString(undefined, { maximumFractionDigits: 2 })}`, trend: pct(counters.eth, base.eth) },
+    ...(DEMO ? [{ k: 'VAULT', v: `$${fmtK(D.distributionTotals?.total ?? 0)}` }] : []),
     { k: 'SUPPLY',  v: fmtK(D.hero.supply) },
     { k: 'MC',      v: `$${fmtK(latestMc)}` },
   ];
 
   // 5s grace before we flip to "down" so brief blips don't flicker the indicator.
   const rpcLive = Date.now() - (counters._lastOkAt ?? 0) < 5000;
-  const sideFoot = [
-    { k: 'rpc',   v: rpcLive ? 'live' : 'down', cls: rpcLive ? 'pos' : 'neg' },
-    { k: 'block', v: counters.block.toLocaleString() },
-  ];
+  const sideFoot = DEMO
+    ? [
+        { k: 'mode',  v: playSpeed > 0 ? `replay ${playSpeed}×` : 'as-of', cls: playSpeed > 0 ? 'pos' : 'warn' },
+        { k: 'block', v: (vnow - GENESIS).toLocaleString() },
+      ]
+    : [
+        { k: 'rpc',   v: rpcLive ? 'live' : 'down', cls: rpcLive ? 'pos' : 'neg' },
+        { k: 'block', v: counters.block.toLocaleString() },
+      ];
 
   // PROTOCOL band — single visible copy at any time.
   //   emissions vs burn is BELOW the viewport (user hasn't scrolled to it
@@ -567,16 +712,18 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
   const criminalBand = /^0x[0-9a-fA-F]{40}$/.test(sessionWallet) ? (() => {
     const allComp = liveData?.companies ?? [];
     const activeComps = allComp.filter(c => c.active && c.endTime > 0);
-    // Count companies with buffer < $3 (matches the polizia panel rule
-     // for "at risk" — anything thinner than $3 between ETH and liq price).
-    const underwater = activeComps.filter(c => {
-      if (!c.liqPrice) return false;
-      const liqUsd = Number(BigInt(c.liqPrice) / 10n ** 12n) / 1e6;
-      return counters.eth > 0 && (counters.eth - liqUsd) < 3;
-    }).length;
+    // Live: count companies with buffer < $3 (matches the polizia rule).
+    // Demo: liq buffers don't exist historically — count trades ending <5m.
+    const underwater = DEMO
+      ? activeComps.filter(c => c.endTime > vnow && c.endTime - vnow < 300).length
+      : activeComps.filter(c => {
+          if (!c.liqPrice) return false;
+          const liqUsd = Number(BigInt(c.liqPrice) / 10n ** 12n) / 1e6;
+          return counters.eth > 0 && (counters.eth - liqUsd) < 3;
+        }).length;
     const walletLc = sessionWallet.toLowerCase();
     const lastOp   = ops.find(o => (o.walletFull || '').toLowerCase() === walletLc);
-    const lastOpAgo = lastOp ? relAgo(lastOp._ts) : null;
+    const lastOpAgo = lastOp ? relAgo(lastOp._ts, vnow) : null;
     // Hide the address badge while the user is mid-typing in the search box.
     // It only shows again when the input is empty or holds a complete 0x...
     // address (40 hex chars).
@@ -606,7 +753,7 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
         )}
         <span className="ctx">
           <b>{activeComps.length}</b> active ·{' '}
-          <b>{underwater}</b> underwater ·{' '}
+          <b>{underwater}</b> {DEMO ? 'ending <5m' : 'underwater'} ·{' '}
           last op <b>{lastOpAgo ?? '—'}</b> ago
         </span>
       </div>
@@ -646,6 +793,8 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
       activeAppId={activeApp}
       onAppChange={setActiveApp}
       ticker={ticker}
+      clock={DEMO ? `${tsHMS(vnow)} UTC` : undefined}
+      timeBar={DEMO ? <TimeBar /> : null}
       clockExtras={cycleChip}
       // Top search reflects the watched criminal when one is loaded;
       // otherwise it's the free-text filter consumed by TradesSection.
@@ -687,6 +836,26 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
       density={density}
     >
       <div className="tm-content">
+        {showDemoNote && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '4px 12px',
+            fontFamily: 'var(--t-font)', fontSize: 'var(--t-fs-xs)',
+            color: 'var(--t-fg-soft)',
+            background: 'var(--t-bg-soft, transparent)',
+            borderBottom: '1px dotted var(--t-rule)',
+          }}>
+            <span style={{ opacity: 0.9 }}>
+              <b style={{ color: 'var(--t-fg)' }}>recorded data · may 5 – 31 2026</b>
+              <span> · the protocol is paused — you're watching a replay. drag the timeline or press ▶</span>
+            </span>
+            <span
+              title="dismiss"
+              onClick={() => { setShowDemoNote(false); try { sessionStorage.setItem('offshoreDemoNoteDismissed', '1'); } catch {} }}
+              style={{ cursor: 'pointer', marginLeft: 'auto', padding: '0 4px', color: 'var(--t-fg-mut)' }}
+            >×</span>
+          </div>
+        )}
         {showSmallScreenNote && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
@@ -706,8 +875,8 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
         )}
         {/^0x[0-9a-fA-F]{40}$/.test(walletAddr) && (
           <div className="tm-zone-criminal">
-            <CriminalChartSection   address={walletAddr} grid={grid} ethPrice={counters.eth} alarmOn={alarmOn} onAlarmToggle={() => setAlarmOn(v => !v)} liveData={liveData} />
-            <WalletInspectorSection address={walletAddr} grid={grid} ethPrice={counters.eth} liveData={liveData} />
+            <CriminalChartSection   address={walletAddr} grid={grid} ethPrice={counters.eth} alarmOn={alarmOn} onAlarmToggle={() => setAlarmOn(v => !v)} liveData={liveData} now={vnow} />
+            <WalletInspectorSection address={walletAddr} grid={grid} ethPrice={counters.eth} liveData={liveData} now={vnow} />
           </div>
         )}
 
@@ -746,7 +915,7 @@ export function OffshoreDashboard({ D: initialD, showToasts = true, showRail = t
         <TokenSection    D={{ ...D, companies: companiesLive || D.companies }} grid={grid} />
         <PlayersSection  D={D} grid={grid} />
         <VaultSection    D={D} grid={grid} />
-        <TradesSection   grid={grid} liveTrades={liveTrades} ops={ops} search={search} ethPrice={counters.eth} aliases={aliases} onWallet={openWallet} />
+        <TradesSection   grid={grid} liveTrades={liveTrades} ops={ops} search={search} ethPrice={counters.eth} aliases={aliases} onWallet={openWallet} now={vnow} />
         <section id="sec-leaderboards" className="tm-grid-12">
           <ExtractorsSection   grid={grid} aliases={aliases} onWallet={openWallet} noSection />
           <CycleEarnersSection grid={grid} aliases={aliases} onWallet={openWallet} noSection />

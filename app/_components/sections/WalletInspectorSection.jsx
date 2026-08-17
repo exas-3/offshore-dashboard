@@ -4,9 +4,10 @@ import { Region, KV, KVSep, GridCell, fmt, LabelChip } from '../terminal.jsx';
 import { OP_LABELS_SHORT, usePagedRows, Pager } from '../trade-helpers.jsx';
 import { durationToOpType } from '../../../lib/chain-constants.js';
 import { WalletEnterprisesSection } from './WalletEnterprisesSection.jsx';
+import { useAtParam } from '../hooks/use-virtual-clock.js';
 
-function relTime(ts) {
-  const diff = Math.floor(Date.now() / 1000) - Number(ts);
+function relTime(ts, nowSec = null) {
+  const diff = (nowSec ?? Math.floor(Date.now() / 1000)) - Number(ts);
   if (diff < 0)     return 'now';
   if (diff < 60)    return `${diff}s`;
   if (diff < 3600)  return `${Math.floor(diff / 60)}m`;
@@ -21,9 +22,10 @@ function fmtMadeMan(ts) {
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;
 }
 
-export function WalletInspectorSection({ address, grid, ethPrice = 0, liveData = null }) {
+export function WalletInspectorSection({ address, grid, ethPrice = 0, liveData = null, now = null }) {
   const { spans, heights, resize } = grid;
   const isFullAddr = /^0x[0-9a-fA-F]{40}$/.test(address);
+  const at = useAtParam();
   if (!isFullAddr) return null;
 
   const [dbData,   setDbData]   = useState(null);
@@ -43,7 +45,7 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0, liveData =
     const addr = address.toLowerCase();
     const loadPlayers = (showLoader) => {
       if (showLoader) setLoading(true);
-      return fetch(`/api/players/${addr}`)
+      return fetch(`/api/players/${addr}${at ? `?${at}` : ''}`)
         .then(r => r.json())
         .then(db => {
           if (live) setDbData(db?.error ? null : db);
@@ -54,7 +56,7 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0, liveData =
     loadPlayers(true);
     const t = setInterval(() => loadPlayers(false), 10_000);
     return () => { live = false; clearInterval(t); };
-  }, [address]);
+  }, [address, at]);
 
   // Synthetic "in-progress" activity rows derived from the live companies
   // array — duration → op_type lets the recent-activity table surface a
@@ -109,7 +111,7 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0, liveData =
       title="indexed stats"
       actions={walletLabel ? <LabelChip label={walletLabel} /> : null}
     >
-      <KV k="made man" v={fmtMadeMan(dbData.stats.first_active)} sub={dbData.stats.first_active ? `${relTime(dbData.stats.first_active)} ago` : null} cls="hdr" />
+      <KV k="made man" v={fmtMadeMan(dbData.stats.first_active)} sub={dbData.stats.first_active ? `${relTime(dbData.stats.first_active, now)} ago` : null} cls="hdr" />
       <KVSep />
       {liveData?.influenceBalance != null && (
         <>
@@ -204,7 +206,7 @@ export function WalletInspectorSection({ address, grid, ethPrice = 0, liveData =
               const stolen   = isRefund ? Number(a.hit_stolen) || 0 : 0;
               return (
                 <tr key={`${a.hash}:${a.log_index}`}>
-                  <td className="dim" style={{ fontSize: 'var(--t-fs-xs)' }}>{relTime(a.timestamp)}</td>
+                  <td className="dim" style={{ fontSize: 'var(--t-fs-xs)' }}>{relTime(a.timestamp, now)}</td>
                   <td style={{ fontSize: 'var(--t-fs-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {mark && <span className={markCls} style={{ marginRight: 4 }}>{mark}</span>}
                     {baseLabel}

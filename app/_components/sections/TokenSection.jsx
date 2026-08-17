@@ -27,7 +27,7 @@ export function TokenSection({ D, grid }) {
     : '—';
   const lastInfDay = D.influenceFlow.days.at(-1) || {};
 
-  const idleCount     = Math.max(0, D.companies.totalCompanies - D.companies.activeTrades);
+  const idleCount     = Math.max(0, D.companies.totalCompanies - (D.companies.activeTrades ?? 0));
   const expiredCount  = Math.max(0, idleCount - Math.round(idleCount * 0.6));
   const trueIdleCount = idleCount - expiredCount;
 
@@ -107,8 +107,8 @@ export function TokenSection({ D, grid }) {
       <GridCell id="company-state" span={spans['company-state']} height={heights['company-state']} onResize={(r) => resize('company-state', r)}>
         <Region title="company state" sub={`${D.companies.totalCompanies.toLocaleString()} total`}>
           {(() => {
-            const active = Math.max(0, D.companies.activeTrades - D.companies.autoTradeOn);
-            const auto   = D.companies.autoTradeOn;
+            const auto   = D.companies.autoTradeOn ?? 0; // null in demo (unreconstructible)
+            const active = Math.max(0, (D.companies.activeTrades ?? 0) - auto);
             // Combine expired + true-idle into a single "idle" bucket, keeping
             // the expired (red) color so the bar still signals dead state.
             const idle   = expiredCount + trueIdleCount;
@@ -137,8 +137,8 @@ export function TokenSection({ D, grid }) {
             <span><span style={{ color: 'var(--t-neg)' }}>█</span> idle</span>
           </div>
           <KVSep />
-          <KV k="active trades"  v={D.companies.activeTrades.toLocaleString()} cls="pos" />
-          <KV k="auto-trade on"  v={D.companies.autoTradeOn.toLocaleString()} sub={D.companies.autoTradeShareLabel} />
+          <KV k="active trades"  v={(D.companies.activeTrades ?? 0).toLocaleString()} cls="pos" />
+          <KV k="auto-trade on"  v={D.companies.autoTradeOn == null ? '—' : D.companies.autoTradeOn.toLocaleString()} sub={D.companies.autoTradeShareLabel} />
           <KV k="unique owners"  v={D.companies.uniqueOwners.toLocaleString()} />
           {D.leaderboard && D.leaderboard[0] && <KV k="largest co" v={D.leaderboard[0].wallet} cls="dim" sub={`${D.leaderboard[0].ops.toLocaleString()} ops · ${D.leaderboard[0].earned} earned`} />}
         </Region>
@@ -198,7 +198,7 @@ export function TokenSection({ D, grid }) {
             // start of every hour.
             if (infGran === 'hourly' && src.length > 0) {
               const last  = src[src.length - 1];
-              const nowS  = Math.floor(Date.now() / 1000);
+              const nowS  = Number(D.asOf) || Math.floor(Date.now() / 1000);
               const tsNum = Number(last?.ts) || 0;
               if (tsNum > 0 && nowS - tsNum < 1800) src = src.slice(0, -1);
             }

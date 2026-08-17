@@ -1,7 +1,8 @@
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
-import { getDb } from '../../../lib/index.js';
+import { getDb, getActiveTradesAt } from '../../../lib/index.js';
 import { ethPriceFeed } from '../../../lib/eth-price-feed.js';
+import { resolveAsOf } from '../../../lib/demo-clock.js';
 
 let _list    = [];   // current canonical list (top 5)
 let _pool    = [];   // full pool of candidates near current ETH price
@@ -73,7 +74,30 @@ function diff(prev, next) {
   return events;
 }
 
-export async function GET() {
+export async function GET(request) {
+  const asOf = resolveAsOf(request);
+  if (asOf != null) {
+    // Demo: no ETH price / liq buffers exist historically. The panel becomes
+    // "ending soon" — the 5 reconstructed active trades closest to settling.
+    const trades = await getActiveTradesAt(asOf).catch(() => []);
+    const list = trades
+      .sort((a, b) => a.endTime - b.endTime)
+      .slice(0, 5)
+      .map(t => ({
+        id:          shortAddr(t.hash),
+        address:     t.hash,
+        wallet:      t.owner,
+        walletShort: shortAddr(t.owner),
+        opType:      t.opType,
+        liqPrice:    null,
+        endTime:     t.endTime,
+        locationId:  null,
+        buffer:      null,
+      }));
+    // events omitted in demo (they only drive splash animations and would
+    // cross-talk between viewers at different virtual times).
+    return NextResponse.json({ list, events: [], ethPrice: null, total: trades.length });
+  }
   const ethPrice = ethPriceFeed.getLatest() ?? 0;
   const pool     = await fetchPool(ethPrice);
   const { list: next, total } = buildList(pool, ethPrice);

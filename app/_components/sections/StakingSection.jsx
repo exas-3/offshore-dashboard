@@ -1,17 +1,19 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Region, LineChart, GridCell } from '../terminal.jsx';
+import { useAtParam } from '../hooks/use-virtual-clock.js';
 
 export function StakingSection({ grid, aliases, onWallet }) {
   const { spans, heights, resize } = grid;
   const [stakingData, setStakingData] = useState(null);
+  const at = useAtParam();
 
   useEffect(() => {
-    const load = () => fetch('/api/staking').then(r => r.json()).then(setStakingData).catch(() => {});
+    const load = () => fetch(`/api/staking${at ? `?${at}` : ''}`).then(r => r.json()).then(setStakingData).catch(() => {});
     load();
     const t = setInterval(load, 60_000);
     return () => clearInterval(t);
-  }, []);
+  }, [at]);
 
   return (
     <section id="sec-staking" className="tm-grid-12">

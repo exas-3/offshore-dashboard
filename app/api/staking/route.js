@@ -1,9 +1,11 @@
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { getStakingStats, getStakingHistory, getStakingRecent, getTopStakers24h } from '../../../lib/index.js';
+import { resolveAsOf, bucketAt, DEMO_CACHE_HEADERS } from '../../../lib/demo-clock.js';
 
-let _cache = null, _cacheTs = 0;
+const _cache = new Map();
 const TTL = 15_000;
+const CACHE_MAX = 32;
 
 function fmtMinute(date) {
   return date.toLocaleString('en-US', {
@@ -13,14 +15,19 @@ function fmtMinute(date) {
   });
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
-    if (!_cache || Date.now() - _cacheTs >= TTL) {
+    const asOf = resolveAsOf(request);
+    const demo = asOf != null;
+    const key  = demo ? String(bucketAt(asOf, 60)) : 'live';
+    const headers = demo ? DEMO_CACHE_HEADERS : {};
+    const hit = _cache.get(key);
+    if (!hit || (!demo && Date.now() - hit.ts >= TTL)) {
       const [stats, history, recent, top24h] = await Promise.all([
-        getStakingStats(),
-        getStakingHistory(),
-        getStakingRecent(50),
-        getTopStakers24h(),
+        getStakingStats(asOf),
+        getStakingHistory(asOf),
+        getStakingRecent(50, asOf),
+        getTopStakers24h(asOf),
       ]);
 
       const dailyChart = history.map(r => ({
@@ -44,10 +51,10 @@ export async function GET() {
         alias:    r.alias || null,
       }));
 
-      _cache = { stats, dailyChart, recent: recentRows, top24h: top24hRows };
-      _cacheTs = Date.now();
+      _cache.set(key, { data: { stats, dailyChart, recent: recentRows, top24h: top24hRows }, ts: Date.now() });
+      while (_cache.size > CACHE_MAX) _cache.delete(_cache.keys().next().value);
     }
-    return NextResponse.json(_cache);
+    return NextResponse.json(_cache.get(key).data, { headers });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

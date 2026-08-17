@@ -2,6 +2,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Region, GridCell, Sortable, fmt, LabelChip } from '../terminal.jsx';
 import { usePagedRows, Pager } from '../trade-helpers.jsx';
+import { useAtParam } from '../hooks/use-virtual-clock.js';
 
 function shortAddr(a) {
   if (!a) return '—';
@@ -18,10 +19,12 @@ export function CycleEarnersSection({ grid, aliases = {}, onWallet, noSection = 
   const [sortKey, setSortKey] = useState('rank');
   const [sortDir, setSortDir] = useState('asc');
 
+  const at = useAtParam(300);
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    const url = cycle ? `/api/cycle-earners?cycle=${cycle}` : '/api/cycle-earners';
+    const qs = [cycle ? `cycle=${cycle}` : null, at || null].filter(Boolean).join('&');
+    const url = `/api/cycle-earners${qs ? `?${qs}` : ''}`;
     fetch(url)
       .then(r => r.json())
       .then(d => {
@@ -32,7 +35,7 @@ export function CycleEarnersSection({ grid, aliases = {}, onWallet, noSection = 
       })
       .catch(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [cycle]);
+  }, [cycle, at]);
 
   function sortBy(k) {
     if (sortKey === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');

@@ -1,6 +1,25 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { OffshoreDashboard } from './offshore.jsx';
+import { VirtualClockProvider } from './hooks/use-virtual-clock.js';
+import { DEMO, DEMO_DEFAULT_AT, clampAt, bucketAt } from '../../lib/demo-constants.js';
+
+// ?at=<unix|ISO> and ?speed=<1|60|3600> deep links (demo mode only).
+function parseUrlAt() {
+  if (!DEMO) return { at: null, speed: 0 }; // live: clock anchors to real now
+  if (typeof window === 'undefined') return { at: DEMO_DEFAULT_AT, speed: 0 };
+  try {
+    const sp = new URL(window.location.href).searchParams;
+    const raw = sp.get('at');
+    let at = DEMO_DEFAULT_AT;
+    if (raw) {
+      const n = /^\d{9,12}$/.test(raw) ? Number(raw) : Math.floor(Date.parse(raw) / 1000);
+      if (Number.isFinite(n)) at = clampAt(n);
+    }
+    const spd = Number(sp.get('speed'));
+    return { at, speed: [1, 60, 3600].includes(spd) ? spd : 0 };
+  } catch { return { at: DEMO_DEFAULT_AT, speed: 0 }; }
+}
 
 const THEME_FAVICON = {
   amber:  { fg: '#ffb000', bg: '#000000' },
@@ -25,6 +44,7 @@ export default function PageClient({ initialAddress = '' } = {}) {
   const [data, setData] = useState(null);
   const [slowLoad, setSlowLoad] = useState(false);
   const [theme, setTheme] = useState('amber');
+  const [initialClock] = useState(parseUrlAt);
 
   useEffect(() => {
     const saved = typeof window !== 'undefined' && localStorage.getItem('offshore-theme');
@@ -47,14 +67,19 @@ export default function PageClient({ initialAddress = '' } = {}) {
   }
 
   useEffect(() => {
+    const url = DEMO
+      ? `/api/offshore-data?at=${bucketAt(initialClock.at, 60)}`
+      : '/api/offshore-data';
     const load = () =>
-      fetch('/api/offshore-data', { cache: 'no-cache' })
+      fetch(url, DEMO ? undefined : { cache: 'no-cache' })
         .then(r => r.json())
         .then(setData)
         .catch(console.error);
     load();
+    if (DEMO) return; // OffshoreDashboard owns refreshes in demo mode
     const t = setInterval(load, 60_000);
     return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!data) {
@@ -79,5 +104,9 @@ export default function PageClient({ initialAddress = '' } = {}) {
     );
   }
 
-  return <OffshoreDashboard D={data} theme={theme} onThemeChange={handleThemeChange} initialAddress={initialAddress} />;
+  return (
+    <VirtualClockProvider initialAt={initialClock.at} initialSpeed={initialClock.speed}>
+      <OffshoreDashboard D={data} theme={theme} onThemeChange={handleThemeChange} initialAddress={initialAddress} />
+    </VirtualClockProvider>
+  );
 }

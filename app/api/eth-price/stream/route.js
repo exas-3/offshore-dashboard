@@ -1,7 +1,10 @@
 export const runtime = 'nodejs';
 import { ethPriceFeed } from '../../../../lib/eth-price-feed.js';
+import { DEMO_MODE } from '../../../../lib/demo-clock.js';
 
 export async function GET() {
+  // Demo: no live feed exists; close immediately (no known consumers).
+  if (DEMO_MODE) return new Response(null, { status: 204 });
   const encoder = new TextEncoder();
   let unsub;
 

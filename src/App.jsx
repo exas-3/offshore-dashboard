@@ -194,7 +194,7 @@ export default function App() {
 
       <footer style={{ textAlign: 'center', padding: '24px 0 16px', fontSize: 11, color: 'var(--text-2)', letterSpacing: '0.04em' }}>
         made with love by{' '}
-        <a href="https://x.com/s_exas" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-2)', textDecoration: 'underline' }}>s_exas</a>
+        <a href="https://x.com/0xExas" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-2)', textDecoration: 'underline' }}>0xExas</a>
         {' '}and{' '}
         <span style={{ color: 'var(--text-2)' }}>dragonslayer42069.mega</span>
       </footer>

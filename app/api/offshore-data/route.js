@@ -17,32 +17,45 @@ import {
   fetchDirtyPrice, fetchLatestInfCost, getLatestBlock,
   TRADE_DURATIONS, EARN_OPS, mapOpType, tickerKind, tickerLabel,
 } from '../../../server/etherscan.js';
-import { loadout4PriceAt } from '../../../lib/chain-constants.js';
+import { loadout4PriceAt, GENESIS } from '../../../lib/chain-constants.js';
 import { getHitsDashboard } from '../../../lib/db/hits.js';
+import { getPricesAt, getHolderCountAt } from '../../../lib/db/token.js';
+import { getActiveTradesAt, getActiveTradeCountsAt, getRecentStartsAt } from '../../../lib/db/demo-trades.js';
 import { ethPriceFeed } from '../../../lib/eth-price-feed.js';
+import { resolveAsOf, nowCap, bucketAt, DEMO_CACHE_HEADERS, DEMO_START, DEMO_END } from '../../../lib/demo-clock.js';
 import {
   CORS, getCycleStart, cycleQuarter,
   fmtDate, fmtDateHour, fmtCycleTime, fmtM, shortAddr, liqPriceUsd, fmtCountdown,
 } from './helpers.js';
 
 // ── Cache ──────────────────────────────────────────────────────────────────────
-let _cache = null, _cacheTs = 0;
+// Keyed by minute-bucketed asOf ('live' when following real time). asOf-keyed
+// entries never expire (data is immutable); the live entry uses a 30s TTL.
+const _cache = new Map(); // key → { data, ts }
 const TTL = 30_000;
+const CACHE_MAX = 32;
 
 const DEMO_WALLET = '0x75d6cec583ca2ec96850659b6b4a55dae071d40b';
 
-export async function GET() {
+export async function GET(request) {
   try {
-    if (_cache && Date.now() - _cacheTs < TTL) {
-      return new NextResponse(JSON.stringify(_cache), {
-        headers: { 'Content-Type': 'application/json', ...CORS },
+    const asOf = resolveAsOf(request);
+    const demo = asOf != null;
+    const cacheKey = demo ? String(bucketAt(asOf, 60)) : 'live';
+    const extraHeaders = demo ? DEMO_CACHE_HEADERS : {};
+
+    const hit = _cache.get(cacheKey);
+    if (hit && (demo || Date.now() - hit.ts < TTL)) {
+      _cache.delete(cacheKey); _cache.set(cacheKey, hit); // LRU refresh
+      return new NextResponse(JSON.stringify(hit.data), {
+        headers: { 'Content-Type': 'application/json', ...CORS, ...extraHeaders },
       });
     }
 
-    const now = Math.floor(Date.now() / 1000);
+    const { now, cap } = nowCap(asOf);
     // Heatmap shows full history: every UTC day from the first recorded MINT
-    // to today. Day-range is derived from the heatmapRows query result
-    // (minDayId .. todayDayId).
+    // to the as-of day. Day-range is derived from the heatmapRows query
+    // result (minDayId .. todayDayId).
     const todayDayId      = Math.floor(now / 86400);
     const todayUtcMidnight = todayDayId * 86400;
     const db = getDb();
@@ -59,30 +72,44 @@ export async function GET() {
       rawLeaderboard, marketCapHistory, priceBase25h,
       influenceDailyRows, infNetFlow24hResult,
     ] = await Promise.all([
-      getStats(), getLatestTokenInfo(), getHolderCount(), getPlayerCount(),
-      getFlowBuckets(3600).catch(() => []),
-      getFlowBuckets(86400).catch(() => []),
-      getBurnBuckets(86400).catch(() => []),
-      getInfluenceBuckets(86400).catch(() => []),
-      getInfluenceBuckets(3600).catch(() => []),
-      getParticipantBuckets(86400).catch(() => []),
-      getActiveWalletBuckets(86400).catch(() => []),
-      getInfluenceStats(), getVaultStats(),
-      getCompanyStats(), getCompanies('active'),
-      getSupplyHistoryForChart(86400).catch(() => []),
-      getDexRecentSwaps(20).catch(() => []),
-      getRecentTransfers(250).catch(() => []),
-      getLatestEthPrice().catch(() => null),
-      fetchDirtyPrice().catch(() => null),
-      fetchLatestInfCost().catch(() => null),
-      getLatestBlock().catch(() => null),
-      Promise.resolve(ethPriceFeed.getLatest()),
-      getEnhancedLeaderboard(15).catch(() => []),
-      getDirtyMarketCapHistory().catch(() => []),
-      getPriceBaseline25h().catch(() => ({ dirty: null, infCost: null, eth: null })),
-      getInfluenceDaily().catch(() => []),
-      getInfNetFlow24h().catch(() => ({ net: 0, hours: [] })),
+      getStats(asOf), getLatestTokenInfo(asOf),
+      demo ? getHolderCountAt(asOf) : getHolderCount(),
+      getPlayerCount(asOf),
+      getFlowBuckets(3600, asOf).catch(() => []),
+      getFlowBuckets(86400, asOf).catch(() => []),
+      getBurnBuckets(86400, asOf).catch(() => []),
+      getInfluenceBuckets(86400, asOf).catch(() => []),
+      getInfluenceBuckets(3600, asOf).catch(() => []),
+      getParticipantBuckets(86400, asOf).catch(() => []),
+      getActiveWalletBuckets(86400, asOf).catch(() => []),
+      getInfluenceStats(asOf), getVaultStats(asOf),
+      getCompanyStats(asOf),
+      demo ? Promise.resolve([]) : getCompanies('active'),
+      getSupplyHistoryForChart(86400, asOf).catch(() => []),
+      getDexRecentSwaps(20, asOf).catch(() => []),
+      getRecentTransfers(250, 0, asOf).catch(() => []),
+      getLatestEthPrice(asOf).catch(() => null),
+      demo ? Promise.resolve(null) : fetchDirtyPrice().catch(() => null),
+      demo ? Promise.resolve(null) : fetchLatestInfCost().catch(() => null),
+      demo ? Promise.resolve(now - GENESIS) : getLatestBlock().catch(() => null),
+      Promise.resolve(demo ? null : ethPriceFeed.getLatest()),
+      getEnhancedLeaderboard(15, 0, asOf).catch(() => []),
+      getDirtyMarketCapHistory(asOf).catch(() => []),
+      getPriceBaseline25h(asOf).catch(() => ({ dirty: null, infCost: null, eth: null })),
+      getInfluenceDaily(asOf).catch(() => []),
+      getInfNetFlow24h(asOf).catch(() => ({ net: 0, hours: [] })),
     ]);
+
+    // Demo mode: as-of prices from the recorded 60s tape + reconstructed
+    // active trades (the mutable `companies` table can't answer "at T").
+    const [pricesAt, demoActive, demoActiveCounts, demoStarts] = demo
+      ? await Promise.all([
+          getPricesAt(asOf).catch(() => ({ dirty: null, infCost: null })),
+          getActiveTradesAt(asOf).catch(() => []),
+          getActiveTradeCountsAt(asOf).catch(() => []),
+          getRecentStartsAt(asOf).catch(() => []),
+        ])
+      : [null, null, null, null];
 
     // Raw DB queries that need the connection directly
     const [heatmapRows, cycleRows, todayActiveRow, recentOpsRow,
@@ -94,17 +121,18 @@ export async function GET() {
           FLOOR((timestamp::bigint % 86400) / 3600)::int AS hour_idx,
           COUNT(*)::int AS cnt
         FROM transfers
-        WHERE kind = 'MINT'
+        WHERE kind = 'MINT' AND timestamp <= ${cap}
         GROUP BY 1, 2
       `.catch(() => []),
       db`
         SELECT timestamp::float AS ts, amount::float AS amount, recipient
         FROM vault_payouts
+        WHERE timestamp <= ${cap}
         ORDER BY timestamp ASC
       `.catch(() => []),
       db`
         SELECT COUNT(DISTINCT to_addr)::int AS cnt
-        FROM transfers WHERE kind = 'MINT' AND timestamp >= ${now - 86400}
+        FROM transfers WHERE kind = 'MINT' AND timestamp >= ${now - 86400} AND timestamp <= ${now}
       `.catch(() => [{ cnt: 0 }]),
       db`
         SELECT
@@ -113,54 +141,57 @@ export async function GET() {
         FROM transfers
         WHERE kind = 'MINT'
           AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL','FAIL')
-          AND timestamp >= ${now - 3600}
+          AND timestamp >= ${now - 3600} AND timestamp <= ${now}
       `.catch(() => [{ per_min: 0, per_hour: 0 }]),
       // Demo wallet aggregate stats
       db`
         SELECT
-          (SELECT COUNT(*)::int FROM transfers WHERE kind='MINT' AND to_addr=${DEMO_WALLET}) AS total_ops,
-          (SELECT COALESCE(SUM(amount),0)::float FROM transfers WHERE kind='MINT' AND to_addr=${DEMO_WALLET}) AS dirty_earned,
-          (SELECT COALESCE(SUM(amount),0)::float FROM transfers WHERE kind IN ('SPEND','BURN') AND from_addr=${DEMO_WALLET}) AS dirty_spent,
-          (SELECT COALESCE(SUM(amount),0)::float FROM influence_transfers WHERE to_addr=${DEMO_WALLET} AND kind='MINT') AS inf_bought_total,
-          (SELECT COUNT(*)::int FROM influence_transfers WHERE to_addr=${DEMO_WALLET} AND kind='MINT') AS inf_bought_purchases,
-          (SELECT COALESCE(SUM(amount),0)::float FROM influence_transfers WHERE from_addr=${DEMO_WALLET} AND kind='BURN') AS inf_refunded,
-          (SELECT COALESCE(SUM(amount),0)::float FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_SELL' AND from_addr=${DEMO_WALLET}) AS dex_sold,
-          (SELECT COUNT(*)::int FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_SELL' AND from_addr=${DEMO_WALLET}) AS dex_sold_txs,
-          (SELECT COALESCE(SUM(amount),0)::float FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_BUY' AND to_addr=${DEMO_WALLET}) AS dex_bought,
-          (SELECT COUNT(*)::int FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_BUY' AND to_addr=${DEMO_WALLET}) AS dex_bought_txs,
-          (SELECT COALESCE(SUM(amount),0)::float FROM vault_payouts WHERE recipient=${DEMO_WALLET}) AS vault_claimed,
-          (SELECT COUNT(*)::int FROM vault_payouts WHERE recipient=${DEMO_WALLET}) AS vault_payouts,
-          (SELECT COALESCE(balance,0)::float FROM token_holders WHERE address=${DEMO_WALLET}) AS balance
+          (SELECT COUNT(*)::int FROM transfers WHERE kind='MINT' AND to_addr=${DEMO_WALLET} AND timestamp <= ${cap}) AS total_ops,
+          (SELECT COALESCE(SUM(amount),0)::float FROM transfers WHERE kind='MINT' AND to_addr=${DEMO_WALLET} AND timestamp <= ${cap}) AS dirty_earned,
+          (SELECT COALESCE(SUM(amount),0)::float FROM transfers WHERE kind IN ('SPEND','BURN') AND from_addr=${DEMO_WALLET} AND timestamp <= ${cap}) AS dirty_spent,
+          (SELECT COALESCE(SUM(amount),0)::float FROM influence_transfers WHERE to_addr=${DEMO_WALLET} AND kind='MINT' AND timestamp <= ${cap}) AS inf_bought_total,
+          (SELECT COUNT(*)::int FROM influence_transfers WHERE to_addr=${DEMO_WALLET} AND kind='MINT' AND timestamp <= ${cap}) AS inf_bought_purchases,
+          (SELECT COALESCE(SUM(amount),0)::float FROM influence_transfers WHERE from_addr=${DEMO_WALLET} AND kind='BURN' AND timestamp <= ${cap}) AS inf_refunded,
+          (SELECT COALESCE(SUM(amount),0)::float FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_SELL' AND from_addr=${DEMO_WALLET} AND timestamp <= ${cap}) AS dex_sold,
+          (SELECT COUNT(*)::int FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_SELL' AND from_addr=${DEMO_WALLET} AND timestamp <= ${cap}) AS dex_sold_txs,
+          (SELECT COALESCE(SUM(amount),0)::float FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_BUY' AND to_addr=${DEMO_WALLET} AND timestamp <= ${cap}) AS dex_bought,
+          (SELECT COUNT(*)::int FROM transfers WHERE kind='TRANSFER' AND op_type='DEX_BUY' AND to_addr=${DEMO_WALLET} AND timestamp <= ${cap}) AS dex_bought_txs,
+          (SELECT COALESCE(SUM(amount),0)::float FROM vault_payouts WHERE recipient=${DEMO_WALLET} AND timestamp <= ${cap}) AS vault_claimed,
+          (SELECT COUNT(*)::int FROM vault_payouts WHERE recipient=${DEMO_WALLET} AND timestamp <= ${cap}) AS vault_payouts,
+          ${demo ? db`
+          (SELECT COALESCE(SUM(CASE WHEN to_addr=${DEMO_WALLET} THEN amount ELSE -amount END),0)::float
+             FROM transfers WHERE (to_addr=${DEMO_WALLET} OR from_addr=${DEMO_WALLET}) AND timestamp <= ${cap})` : db`
+          (SELECT COALESCE(balance,0)::float FROM token_holders WHERE address=${DEMO_WALLET})`} AS balance
       `.catch(() => [{}]),
       // Demo wallet earned breakdown by op type
       db`
         SELECT op_type, COUNT(*)::int as ops, SUM(amount)::float as dirty
-        FROM transfers WHERE kind='MINT' AND to_addr=${DEMO_WALLET}
+        FROM transfers WHERE kind='MINT' AND to_addr=${DEMO_WALLET} AND timestamp <= ${cap}
         GROUP BY op_type ORDER BY dirty DESC
       `.catch(() => []),
       // Demo wallet spent breakdown by op type
       db`
         SELECT op_type, COUNT(*)::int as ops, SUM(amount)::float as dirty
-        FROM transfers WHERE kind IN ('SPEND','BURN') AND from_addr=${DEMO_WALLET}
+        FROM transfers WHERE kind IN ('SPEND','BURN') AND from_addr=${DEMO_WALLET} AND timestamp <= ${cap}
         GROUP BY op_type ORDER BY dirty DESC
       `.catch(() => []),
       // Demo wallet daily earned
       db`
         SELECT FLOOR(timestamp / 86400)::int * 86400 AS day_ts, SUM(amount)::float AS earned
-        FROM transfers WHERE kind='MINT' AND to_addr=${DEMO_WALLET}
+        FROM transfers WHERE kind='MINT' AND to_addr=${DEMO_WALLET} AND timestamp <= ${cap}
         GROUP BY 1 ORDER BY 1 ASC
       `.catch(() => []),
       // Demo wallet daily spent
       db`
         SELECT FLOOR(timestamp / 86400)::int * 86400 AS day_ts, SUM(amount)::float AS spent
-        FROM transfers WHERE kind IN ('SPEND','BURN') AND from_addr=${DEMO_WALLET}
+        FROM transfers WHERE kind IN ('SPEND','BURN') AND from_addr=${DEMO_WALLET} AND timestamp <= ${cap}
         GROUP BY 1 ORDER BY 1 ASC
       `.catch(() => []),
       // INF cost history for ticker tooltip (all time, hourly)
       db`
         SELECT inf_cost::float AS v, timestamp AS t
         FROM price_snapshots
-        WHERE inf_cost IS NOT NULL
+        WHERE inf_cost IS NOT NULL AND timestamp <= ${cap}
         ORDER BY timestamp ASC
       `.catch(() => []),
       // ops matrix seed — structural completed/busted via the `result` column.
@@ -178,11 +209,12 @@ export async function GET() {
           COUNT(*) FILTER (WHERE timestamp::bigint >= ${now - 86400}) AS h24
         FROM transfers
         WHERE kind = 'MINT' AND op_type IN ('DRUG_DEAL','ARMS_DEAL','EXTORTION','PARTIAL')
-          AND timestamp::bigint >= ${now - 86400}
+          AND timestamp::bigint >= ${now - 86400} AND timestamp::bigint <= ${now}
         GROUP BY op_type, is_ok
       `.catch(() => []),
       // active counts from companies.trade_type (mirrors /api/ops-matrix).
-      db`
+      // Demo: reconstructed from settled trades instead (companies is mutable).
+      demo ? Promise.resolve(demoActiveCounts) : db`
         SELECT trade_type, COUNT(*)::int AS cnt
         FROM companies
         WHERE active = TRUE
@@ -193,9 +225,12 @@ export async function GET() {
     ]) : [[], [], [{ cnt: 0 }], [{ cnt: 0 }], [{}], [], [], [], [], [], [], []];
 
     // ── Resolve prices ───────────────────────────────────────────────────────
-    const dirtyPrice = dirtyPriceResult ?? 0;
-    const infCost    = typeof infCostResult === 'number' ? infCostResult : 12.41;
-    const ethPrice   = ethPriceLive ?? ethPriceDb ?? 2300;
+    const dirtyPrice = demo ? (pricesAt.dirty ?? 0) : (dirtyPriceResult ?? 0);
+    const infCost    = demo
+      ? (typeof pricesAt.infCost === 'number' ? pricesAt.infCost : 12.41)
+      : (typeof infCostResult === 'number' ? infCostResult : 12.41);
+    // Demo: as-of value from the backfilled oracle tape (eth_price_snapshots).
+    const ethPrice   = demo ? Number(ethPriceDb ?? 0) : (ethPriceLive ?? ethPriceDb ?? 2300);
 
     // ── hero ─────────────────────────────────────────────────────────────────
     const supply = Number(tokenInfo.supply ?? 0);
@@ -252,7 +287,9 @@ export async function GET() {
         refunded:    influenceStats.totalRefunded,
         circulating: Number(influenceStats.circulating ?? 0),
       },
-      days: (influenceDailyRows.length > 0 ? influenceDailyRows : influenceBuckets).slice(-9).map(r => ({
+      // influence_daily is an API-side rollup that stopped ingesting 05-16 —
+      // in demo, bucket from the chain-derived influence_transfers instead.
+      days: ((demo || influenceDailyRows.length === 0) ? influenceBuckets : influenceDailyRows).slice(-9).map(r => ({
         ts:       Number(r.day_ts ?? r.ts),
         x:        fmtDate(r.day_ts ?? r.ts),
         purchased: Number(r.purchased),
@@ -348,50 +385,77 @@ export async function GET() {
     };
 
     // ── companies ─────────────────────────────────────────────────────────────
+    const demoActiveCount = demo
+      ? (demoActiveCounts || []).reduce((s, r) => s + Number(r.cnt ?? 0), 0)
+      : null;
     const companiesData = {
       totalCompanies:     companyStats.total,
       uniqueOwners:       companyStats.uniqueOwners,
-      activeTrades:       companyStats.activeCount,
-      autoTradeOn:        companyStats.autoTradeCount,
-      autoTradeShareLabel: companyStats.total > 0
+      activeTrades:       demo ? demoActiveCount : companyStats.activeCount,
+      autoTradeOn:        demo ? null : companyStats.autoTradeCount,
+      autoTradeShareLabel: !demo && companyStats.total > 0
         ? `${Math.round(companyStats.autoTradeCount / companyStats.total * 100)}% of all`
-        : '0% of all',
+        : demo ? '—' : '0% of all',
     };
 
     // ── recentStarts ──────────────────────────────────────────────────────────
     // Ops that started in the last 5 minutes (start_time = end_time - duration).
-    const nowSec = Math.floor(Date.now() / 1000);
-    const recentStarts = [...companies]
-      .filter(c => c.active && c.op_type && c.end_time > 0)
-      .map(c => ({
-        company:    c.address,
-        wallet:     shortAddr(c.owner),
-        walletFull: c.owner,
-        opType:     c.op_type,
-        startTime:  Number(c.end_time) - (TRADE_DURATIONS[c.op_type] ?? 5400),
-        endTime:    Number(c.end_time),
-        liqPrice:   liqPriceUsd(c.liq_price),
-      }))
-      .filter(r => r.startTime >= nowSec - 300)
-      .sort((a, b) => b.startTime - a.startTime);
+    const nowSec = now;
+    const recentStarts = demo
+      ? demoStarts.map(t => ({
+          company:    t.hash,
+          wallet:     shortAddr(t.owner),
+          walletFull: t.owner,
+          opType:     t.opType,
+          startTime:  t.startTime,
+          endTime:    t.endTime,
+          liqPrice:   null,
+        }))
+      : [...companies]
+          .filter(c => c.active && c.op_type && c.end_time > 0)
+          .map(c => ({
+            company:    c.address,
+            wallet:     shortAddr(c.owner),
+            walletFull: c.owner,
+            opType:     c.op_type,
+            startTime:  Number(c.end_time) - (TRADE_DURATIONS[c.op_type] ?? 5400),
+            endTime:    Number(c.end_time),
+            liqPrice:   liqPriceUsd(c.liq_price),
+          }))
+          .filter(r => r.startTime >= nowSec - 300)
+          .sort((a, b) => b.startTime - a.startTime);
 
     // ── liveTrades ────────────────────────────────────────────────────────────
-    const liveTrades = companies.map(c => {
-      const liq = liqPriceUsd(c.liq_price);
-      return {
-        id:         shortAddr(c.address),
-        owner:      c.owner,
-        ownerShort: shortAddr(c.owner),
-        auto:     c.auto_trade,
-        active:   c.active,
-        endTime:  c.active ? Number(c.end_time) : null,
-        endsIn:   c.active ? fmtCountdown(c.end_time) : '—',
-        liqPrice: liq,
-        ethPrice,
-        buffer:   Math.round((ethPrice - liq) * 100) / 100,
-        opType:   c.op_type ? mapOpType(c.op_type) : '—',
-      };
-    });
+    const liveTrades = demo
+      ? demoActive.map(t => ({
+          id:         shortAddr(t.hash),
+          owner:      t.owner,
+          ownerShort: shortAddr(t.owner),
+          auto:     null,
+          active:   true,
+          endTime:  t.endTime,
+          endsIn:   fmtCountdown(t.endTime, now),
+          liqPrice: null,
+          ethPrice: null,
+          buffer:   null,
+          opType:   mapOpType(t.opType),
+        }))
+      : companies.map(c => {
+          const liq = liqPriceUsd(c.liq_price);
+          return {
+            id:         shortAddr(c.address),
+            owner:      c.owner,
+            ownerShort: shortAddr(c.owner),
+            auto:     c.auto_trade,
+            active:   c.active,
+            endTime:  c.active ? Number(c.end_time) : null,
+            endsIn:   c.active ? fmtCountdown(c.end_time) : '—',
+            liqPrice: liq,
+            ethPrice,
+            buffer:   Math.round((ethPrice - liq) * 100) / 100,
+            opType:   c.op_type ? mapOpType(c.op_type) : '—',
+          };
+        });
 
     // ── heatmap ───────────────────────────────────────────────────────────────
     const dayIds = heatmapRows.map(r => Number(r.day_idx));
@@ -510,6 +574,7 @@ export async function GET() {
       opsHour: Number(recentOpsRow[0]?.per_hour ?? 0),
       dirty:  dirtyPrice,
       opCost: infCost,
+      eth:    demo ? ethPrice : undefined,
       gas:    0.001,
     };
 
@@ -592,8 +657,8 @@ export async function GET() {
       dirtyBal:       fmtM(ws.balance || 0),
       opCost:         `${infCost.toFixed(2)} INF`,
       companies:      companyStats.total,
-      activeCompanies: companyStats.activeCount,
-      autoCompanies:  companyStats.autoTradeCount,
+      activeCompanies: demo ? demoActiveCount : companyStats.activeCount,
+      autoCompanies:  demo ? null : companyStats.autoTradeCount,
       status:         'OK',
     };
 
@@ -625,11 +690,15 @@ export async function GET() {
     // cycleHistory.length = last completed cycle number; current active cycle is +1
     const currentWorldTime = cycleHistory.length > 0 ? cycleQuarter(cycleHistory.length + 1) : 'Q1 2013';
 
-    const hits = await getHitsDashboard({ limit: 100, hoursWindow: 24 }).catch(() => ({ recent: [], summary: { total: 0, wins: 0, losses: 0, winRate: 0 }, buckets: [] }));
+    const hits = await getHitsDashboard({ limit: 100, hoursWindow: 24, asOf }).catch(() => ({ recent: [], summary: { total: 0, wins: 0, losses: 0, winRate: 0 }, buckets: [] }));
 
     const result = {
+      demo,
+      asOf: demo ? now : null,
+      demoWindow: demo ? { start: DEMO_START, end: DEMO_END } : null,
+      currentCycleId: cycleHistory.length + 1,
       hero, supplyOverTime, marketCapChart, emissionsVsBurn, emissionsVsBurnDaily, influenceFlow,
-      burnedDaily, loadout4PriceNow: loadout4PriceAt(Math.floor(Date.now() / 1000)),
+      burnedDaily, loadout4PriceNow: loadout4PriceAt(now),
       hits,
       newParticipants, newParticipantsTotal, totalPlayersChart,
       dailyActiveWallets, dailyActiveWalletsPeak,
@@ -666,9 +735,10 @@ export async function GET() {
       })(),
     };
 
-    _cache = result; _cacheTs = Date.now();
+    _cache.set(cacheKey, { data: result, ts: Date.now() });
+    while (_cache.size > CACHE_MAX) _cache.delete(_cache.keys().next().value);
     return new NextResponse(JSON.stringify(result), {
-      headers: { 'Content-Type': 'application/json', ...CORS },
+      headers: { 'Content-Type': 'application/json', ...CORS, ...extraHeaders },
     });
   } catch (err) {
     console.error('[offshore-data]', err);

@@ -103,9 +103,9 @@ export function liqPriceUsd(raw) {
   catch { return 0; }
 }
 
-export function fmtCountdown(endTime) {
+export function fmtCountdown(endTime, nowTs = null) {
   if (!endTime) return '—';
-  const diff = endTime - Math.floor(Date.now() / 1000);
+  const diff = endTime - (nowTs ?? Math.floor(Date.now() / 1000));
   if (diff <= 0) return '—';
   if (diff < 60) return `${diff}s`;
   const m = Math.floor(diff / 60), s = diff % 60;

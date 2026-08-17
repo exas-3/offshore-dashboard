@@ -71,7 +71,11 @@ function decodeItem(hex) {
   };
 }
 
+import { guardDemoDisabled } from '../../../../lib/api-guard.js';
+
 export async function GET(_req, { params }) {
+  const blocked = guardDemoDisabled();
+  if (blocked) return blocked;
   try {
     const address = params.address.toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(address)) {
